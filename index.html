@@ -305,6 +305,27 @@ const GRID_END_HOUR = 21;    // 9:00 PM
 const GRID_HOUR_PX = 40;
 const RECUR_HORIZON_DAYS = 56; // 8 weeks
 
+// Short original motivational lines, shown one at a time on the dashboard.
+// Kept local (no network) to preserve offline-first behavior.
+const QUOTES = [
+  "Small steps every day still add up to a harvest.",
+  "You don't have to see the whole semester, just today's row to hoe.",
+  "Rest is part of the work, not a break from it.",
+  "Progress, not perfection — turn in the draft, not the ideal.",
+  "One deadline at a time. You've handled hard weeks before.",
+  "Done is better than perfect when the clock is ticking.",
+  "A slow class today can still be a passed class in June.",
+  "Your effort compounds even on the days it doesn't feel like it.",
+  "Ask for help early — it's cheaper than asking for an extension.",
+  "You planted this schedule for a reason. Trust the plan you made.",
+  "Tough labs make for good stories later. Keep going.",
+  "Consistency beats intensity — show up again tomorrow.",
+  "Nobody aces every exam. You just need to ace enough of them.",
+  "Take the walk to class slow today. You've earned a breath.",
+  "The syllabus doesn't know how capable you actually are.",
+  "Every finished requirement is one less thing carrying weight."
+];
+
 // Campus building directory — building names, coordinates & directions.
 // Sourced from uplbtools/room-tba (MIT License): https://github.com/uplbtools/room-tba
 const BUILDINGS = [
@@ -372,7 +393,11 @@ let state = {
   campusSearch: '',
   campusUserLoc: null,     // {lat, lon} once geolocation succeeds; drives "sort by distance"
   campusLocating: false,   // true while a geolocation request is in flight
-  campusLocateError: null  // user-facing message if geolocation was denied/failed
+  campusLocateError: null, // user-facing message if geolocation was denied/failed
+  userName: '',                    // for the personalized dashboard greeting
+  notificationsEnabled: false,     // opt-in reminders toggle in Settings
+  notificationsPermissionDenied: false,
+  quoteIndex: null          // null = deterministic "quote of the day"; set once shuffled
 };
 
 /* ---------- HELPERS ---------- */
@@ -444,6 +469,9 @@ async function loadAll(){
   state.archives = storageGet('punla:archives', []);
   state.theme = storageGet('punla:theme', 'light');
   applyTheme();
+  state.userName = storageGet('punla:userName', '');
+  state.notificationsEnabled = storageGet('punla:notificationsEnabled', false)
+    && ('Notification' in window) && Notification.permission === 'granted';
 
   generateRecurringExpenses();
   generateRecurringDeadlines();
@@ -452,6 +480,14 @@ async function loadAll(){
   buildShell();
   render();
   registerServiceWorker();
+
+  if(state.notificationsEnabled){
+    checkReminders();
+  }
+  // Poll periodically rather than on a precise schedule — this only fires
+  // notifications while the app tab is open (no push server), so it's a
+  // best-effort "reminders while you're around" feature, not true background push.
+  setInterval(()=>{ if(state.notificationsEnabled) checkReminders(); }, 5 * 60 * 1000);
 }
 
 async function saveSchedule(){ storageSet('punla:schedule', state.schedule); }
@@ -461,6 +497,52 @@ async function saveDeadlineRules(){ storageSet('punla:deadlineRules', state.dead
 async function saveArchives(){ storageSet('punla:archives', state.archives); }
 async function saveTheme(){ storageSet('punla:theme', state.theme); }
 function applyTheme(){ document.documentElement.setAttribute('data-theme', state.theme); }
+async function saveUserName(){ storageSet('punla:userName', state.userName); }
+
+// Checks for classes starting soon and deadlines coming up, and fires a
+// browser Notification for each one not already notified today. Only works
+// while this tab/app is open — there's no push server behind it.
+function checkReminders(){
+  if(!('Notification' in window) || Notification.permission !== 'granted') return;
+  const now = new Date();
+  const today = todayStr();
+  const notified = new Set(storageGet('punla:notifiedKeys', []));
+  let changed = false;
+
+  state.deadlines.filter(d=>!d.done).forEach(d=>{
+    const days = daysUntil(d.due);
+    if(days>=0 && days<=1){
+      const key = `deadline:${d.id}:${today}`;
+      if(!notified.has(key)){
+        fireNotification(
+          days===0 ? `Due today: ${d.title}` : `Due tomorrow: ${d.title}`,
+          d.course || d.type
+        );
+        notified.add(key); changed = true;
+      }
+    }
+  });
+
+  const todayShort = now.toLocaleDateString('en-US',{weekday:'short'}).slice(0,3);
+  state.schedule.filter(c=>c.day===todayShort).forEach(c=>{
+    const [h,m] = c.start.split(':').map(Number);
+    const classTime = new Date(now); classTime.setHours(h,m,0,0);
+    const diffMin = (classTime - now) / 60000;
+    if(diffMin>=0 && diffMin<=15){
+      const key = `class:${c.id}:${today}:${c.start}`;
+      if(!notified.has(key)){
+        fireNotification(`${c.code} starts soon`, `${fmtTime(c.start)} · ${c.room || 'TBA'}`);
+        notified.add(key); changed = true;
+      }
+    }
+  });
+
+  if(changed) storageSet('punla:notifiedKeys', [...notified].slice(-200)); // cap growth
+}
+function fireNotification(title, body){
+  try{ new Notification(title, { body }); }
+  catch(e){ console.warn('notification failed', e); }
+}
 
 function registerServiceWorker(){
   if('serviceWorker' in navigator){
@@ -669,9 +751,32 @@ function getSpendingPace(){
 }
 
 /* ---------- DASHBOARD ---------- */
+function greetingText(){
+  const hour = new Date().getHours();
+  const timeGreeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+  const name = (state.userName || '').trim();
+  return name ? `${timeGreeting}, ${esc(name)}!` : `${timeGreeting}, Scholar!`;
+}
+function dayOfYear(){
+  const now = new Date();
+  const start = new Date(now.getFullYear(), 0, 0);
+  return Math.floor((now - start) / 86400000);
+}
+function quoteCard(){
+  const idx = state.quoteIndex != null ? state.quoteIndex : (dayOfYear() % QUOTES.length);
+  return `
+    <div class="card" style="background:var(--leaf-bg);border:none;">
+      <div class="muted" style="font-style:italic;line-height:1.5;color:var(--text);">"${esc(QUOTES[idx])}"</div>
+      <div class="form-actions" style="margin-top:8px;">
+        <button class="ghost small" data-action="shuffle-quote">New quote</button>
+      </div>
+    </div>
+  `;
+}
 function renderDashboard(){
   return `
-    <h2 class="section-title">Hello, Scholar!</h2>
+    <h2 class="section-title">${greetingText()}</h2>
+    ${quoteCard()}
     <div class="seg">
       <button data-action="set-dash-view" data-view="today" class="${state.dashboardView==='today'?'active':''}">Today</button>
       <button data-action="set-dash-view" data-view="week" class="${state.dashboardView==='week'?'active':''}">This week</button>
@@ -1303,6 +1408,12 @@ function renderSettings(){
     <h2 class="section-title">Settings</h2>
 
     <div class="card">
+      <div class="settings-label" style="margin-bottom:8px;">Your name</div>
+      <div class="muted" style="margin-bottom:10px;">Used for your dashboard greeting.</div>
+      <input type="text" id="userNameInput" placeholder="e.g. Maria" value="${esc(state.userName)}" autocomplete="off" style="max-width:260px;">
+    </div>
+
+    <div class="card">
       <div class="settings-row">
         <div>
           <div class="settings-label">Dark mode</div>
@@ -1310,6 +1421,17 @@ function renderSettings(){
         </div>
         <button class="switch ${state.theme==='dark'?'on':''}" data-action="toggle-theme" role="switch" aria-checked="${state.theme==='dark'}" aria-label="Toggle dark mode"></button>
       </div>
+    </div>
+
+    <div class="card">
+      <div class="settings-row">
+        <div>
+          <div class="settings-label">Reminders</div>
+          <div class="muted">Browser notification when a class starts soon or a deadline is due today/tomorrow — while Punla is open in a tab.</div>
+        </div>
+        <button class="switch ${state.notificationsEnabled?'on':''}" data-action="toggle-notifications" role="switch" aria-checked="${state.notificationsEnabled}" aria-label="Toggle reminders"></button>
+      </div>
+      ${state.notificationsPermissionDenied ? `<div class="muted" style="margin-top:8px;color:var(--danger);">Notifications are blocked. Enable them in your browser's site settings, then try again.</div>` : ''}
     </div>
 
     <div class="card">
@@ -1415,6 +1537,10 @@ function onInput(e){
         : list.map(b=>campusCard(b)).join('');
     }
   }
+  else if(e.target && e.target.id==='userNameInput'){
+    state.userName = e.target.value;
+    saveUserName();
+  }
 }
 
 function onChange(e){
@@ -1458,6 +1584,35 @@ function onClick(e){
     }
   }
   else if(action==='clear-campus-location'){ state.campusUserLoc = null; state.campusLocateError = null; render(); }
+  else if(action==='shuffle-quote'){
+    let idx;
+    do { idx = Math.floor(Math.random() * QUOTES.length); }
+    while(QUOTES.length > 1 && idx === state.quoteIndex);
+    state.quoteIndex = idx;
+    render();
+  }
+  else if(action==='toggle-notifications'){
+    if(state.notificationsEnabled){
+      state.notificationsEnabled = false;
+      storageSet('punla:notificationsEnabled', false);
+      render();
+    } else if(!('Notification' in window)){
+      state.notificationsPermissionDenied = true;
+      render();
+    } else {
+      Notification.requestPermission().then(perm=>{
+        if(perm === 'granted'){
+          state.notificationsEnabled = true;
+          state.notificationsPermissionDenied = false;
+          storageSet('punla:notificationsEnabled', true);
+          checkReminders();
+        } else {
+          state.notificationsPermissionDenied = true;
+        }
+        render();
+      });
+    }
+  }
   else if(action==='pick-day'){ state.scheduleDay = btn.dataset.day; render(); }
   else if(action==='toggle-class-form'){ state.showClassForm = !state.showClassForm; if(!state.showClassForm){ state.editingClass=null; state.classFormConflict=null; } render(); }
   else if(action==='toggle-expense-form'){ state.showExpenseForm = !state.showExpenseForm; render(); }
