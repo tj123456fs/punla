@@ -369,13 +369,29 @@ let state = {
   calendarCursor: new Date(),  // month currently shown in deadline calendar
   calendarSelectedDate: null,
   showArchives: false,
-  campusSearch: ''
+  campusSearch: '',
+  campusUserLoc: null,     // {lat, lon} once geolocation succeeds; drives "sort by distance"
+  campusLocating: false,   // true while a geolocation request is in flight
+  campusLocateError: null  // user-facing message if geolocation was denied/failed
 };
 
 /* ---------- HELPERS ---------- */
 function uid(){ return Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
 function peso(n){ return '₱' + Number(n||0).toLocaleString('en-PH',{minimumFractionDigits:0,maximumFractionDigits:2}); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+// Great-circle distance between two lat/lon points, in meters (haversine formula).
+function haversineMeters(lat1, lon1, lat2, lon2){
+  const R = 6371000; // mean Earth radius, meters
+  const toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+function fmtDistance(m){
+  if(m < 1000) return `${Math.round(m)} m`;
+  return `${(m/1000).toFixed(1)} km`;
+}
 function fmtTime(t){
   if(!t) return '';
   const [h,m] = t.split(':').map(Number);
@@ -1207,21 +1223,48 @@ function renderDeadlinesCalendar(){
 }
 
 /* ---------- CAMPUS ---------- */
-function renderCampus(){
+// Shared filter (+ optional distance-sort) logic. Used by both renderCampus()
+// (full render) and onInput() (live search, DOM patch only) so there's a
+// single place to change matching/sorting behavior instead of two.
+function getCampusList(){
   const q = (state.campusSearch||'').trim().toLowerCase();
-  const list = !q ? BUILDINGS : BUILDINGS.filter(b=>
+  let list = !q ? BUILDINGS.slice() : BUILDINGS.filter(b=>
     b.name.toLowerCase().includes(q) ||
     (b.aka && b.aka.toLowerCase().includes(q)) ||
     b.directions.toLowerCase().includes(q)
   );
+  if(state.campusUserLoc){
+    const { lat, lon } = state.campusUserLoc;
+    list = list
+      .map(b => ({ b, dist: haversineMeters(lat, lon, b.lat, b.lon) }))
+      .sort((x, y) => x.dist - y.dist)
+      .map(({ b, dist }) => ({ ...b, _distance: dist }));
+  }
+  return list;
+}
+function renderCampus(){
+  const list = getCampusList();
   return `
     <h2 class="section-title">Campus map</h2>
     <div class="muted" style="margin:-6px 0 12px;">Find a building and get directions on the map.</div>
 
-    <div style="position:relative;margin-bottom:14px;">
+    <div style="position:relative;margin-bottom:10px;">
       <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--bark);width:15px;height:15px;">${iconSearch()}</span>
       <input type="text" id="campusSearchInput" placeholder="Search building name…" value="${esc(state.campusSearch)}" style="padding-left:32px;" autocomplete="off">
     </div>
+
+    <div class="form-actions" style="margin-bottom:10px;">
+      ${state.campusUserLoc ? `
+        <button class="ghost small" data-action="clear-campus-location" style="display:inline-flex;align-items:center;gap:5px;">
+          ${iconMapPin()} Sorted by distance — clear
+        </button>
+      ` : `
+        <button class="ghost small" data-action="locate-campus" style="display:inline-flex;align-items:center;gap:5px;" ${state.campusLocating ? 'disabled' : ''}>
+          ${iconMapPin()} ${state.campusLocating ? 'Locating…' : 'Sort by nearest'}
+        </button>
+      `}
+    </div>
+    ${state.campusLocateError ? `<div class="muted" style="margin:-4px 0 10px;color:var(--danger);">${esc(state.campusLocateError)}</div>` : ''}
 
     <div id="campusList">
       ${list.length===0 ? `
@@ -1235,14 +1278,19 @@ function renderCampus(){
 }
 function campusCard(b){
   const osmUrl = `https://www.openstreetmap.org/?mlat=${b.lat}&mlon=${b.lon}#map=18/${b.lat}/${b.lon}`;
+  const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${b.lat},${b.lon}`;
   return `
     <div class="card campus-card">
       <div class="class-title" style="margin-bottom:0;">${esc(b.name)}</div>
       ${b.aka ? `<div class="muted" style="margin-bottom:6px;">${esc(b.aka)}</div>` : ''}
-      <div class="muted" style="line-height:1.5;margin-top:${b.aka?'0':'4px'};">${esc(b.directions)}</div>
-      <div class="form-actions" style="margin-top:10px;">
+      ${b._distance != null ? `<div class="muted" style="margin-bottom:6px;">${fmtDistance(b._distance)} away</div>` : ''}
+      <div class="muted" style="line-height:1.5;margin-top:${(b.aka || b._distance != null) ? '0' : '4px'};">${esc(b.directions)}</div>
+      <div class="form-actions" style="margin-top:10px;flex-wrap:wrap;">
         <a href="${osmUrl}" target="_blank" rel="noopener" class="ghost small" style="display:inline-flex;align-items:center;gap:5px;text-decoration:none;">
           ${iconMapPin()} View on map
+        </a>
+        <a href="${gmapsUrl}" target="_blank" rel="noopener" class="ghost small" style="display:inline-flex;align-items:center;gap:5px;text-decoration:none;">
+          ${iconExternal()} Google Maps
         </a>
       </div>
     </div>
@@ -1359,12 +1407,7 @@ function onKeydown(e){
 function onInput(e){
   if(e.target && e.target.id==='campusSearchInput'){
     state.campusSearch = e.target.value;
-    const q = state.campusSearch.trim().toLowerCase();
-    const list = !q ? BUILDINGS : BUILDINGS.filter(b=>
-      b.name.toLowerCase().includes(q) ||
-      (b.aka && b.aka.toLowerCase().includes(q)) ||
-      b.directions.toLowerCase().includes(q)
-    );
+    const list = getCampusList();
     const listEl = document.getElementById('campusList');
     if(listEl){
       listEl.innerHTML = list.length===0
@@ -1389,6 +1432,32 @@ function onClick(e){
   const action = btn.dataset.action;
 
   if(action==='tab'){ state.tab = btn.dataset.tab; state.showClassForm=false; state.showExpenseForm=false; state.showDeadlineForm=false; state.editingClass=null; state.classFormConflict=null; render(); }
+  else if(action==='locate-campus'){
+    if(!navigator.geolocation){
+      state.campusLocateError = 'Geolocation is not supported on this device.';
+      render();
+    } else {
+      state.campusLocating = true;
+      state.campusLocateError = null;
+      render();
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          state.campusUserLoc = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+          state.campusLocating = false;
+          render();
+        },
+        err => {
+          state.campusLocating = false;
+          state.campusLocateError = err.code === err.PERMISSION_DENIED
+            ? 'Location permission denied. Enable it in your browser settings to sort by distance.'
+            : 'Could not get your location. Please try again.';
+          render();
+        },
+        { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+      );
+    }
+  }
+  else if(action==='clear-campus-location'){ state.campusUserLoc = null; state.campusLocateError = null; render(); }
   else if(action==='pick-day'){ state.scheduleDay = btn.dataset.day; render(); }
   else if(action==='toggle-class-form'){ state.showClassForm = !state.showClassForm; if(!state.showClassForm){ state.editingClass=null; state.classFormConflict=null; } render(); }
   else if(action==='toggle-expense-form'){ state.showExpenseForm = !state.showExpenseForm; render(); }
