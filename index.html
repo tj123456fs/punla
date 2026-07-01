@@ -130,21 +130,22 @@
   .loading-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;color:var(--paper);background:var(--ink);gap:10px;font-family:var(--font-body);font-size:13px;}
   .save-toast{display:none;position:fixed;left:50%;bottom:78px;transform:translateX(-50%);background:var(--danger);color:#fff;font-size:12px;font-family:var(--font-body);padding:8px 14px;border-radius:20px;box-shadow:0 4px 14px rgba(0,0,0,0.25);z-index:50;max-width:90%;text-align:center;}
 
+  /* Dark Theme */
   body.dark { 
     --ink: #E4E6EB; --paper: #18191A; --card: #242526; 
     --line: #3E4042; --bark: #B0B3B8; --leaf-bg: #2D3F2D; 
-    --maroon-bg: #4B2525; --card-bg: #1C1C1C; 
+    --maroon-bg: #4B2525; --mango-bg: #4A3311;
   }
   body.dark .topbar { background: #242526; border-bottom: 1px solid var(--line); }
   body.dark .tabbar { background: #242526; border-top: 1px solid var(--line); }
-  body.dark .input { background: #3A3B3C; color: #E4E6EB; border-color: var(--line); }
+  body.dark input, body.dark select { background: #3A3B3C; color: #E4E6EB; border-color: var(--line); }
 
-  .grid-container { overflow-x: auto; margin-top: 15px; border: 1px solid var(--line); border-radius: 8px; }
-  .schedule-grid { display: grid; grid-template-columns: 50px repeat(6, 120px); grid-template-rows: auto repeat(28, 30px); background: var(--card); min-width: 770px; }
+  /* Grid Helpers */
+  .grid-container { overflow-x: auto; margin-top: 15px; padding-bottom: 10px; }
+  .schedule-grid { display: grid; grid-template-columns: 50px repeat(6, 120px); }
   .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; background: var(--line); }
   .cal-day { background: var(--paper); min-height: 80px; padding: 4px; font-size: 11px; }
 
-
   /* Animations */
   @keyframes fadeInUp {
     from { opacity: 0; transform: translateY(10px); }
@@ -155,124 +156,16 @@
     animation: fadeInUp 0.3s ease-out; 
   }
 
-  .card {
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-  }
-
-  .card:active {
-    transform: scale(0.98);
-  }
-
-  .tab-btn {
-    transition: all 0.2s ease;
-  }
-
-  .tab-btn svg {
-    transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-  }
-
-  .tab-btn.active svg {
-    transform: scale(1.2);
-  }
-
-  .btn {
-    transition: opacity 0.2s ease, transform 0.1s ease;
-  }
-
-  .btn:active {
-    transform: translateY(1px);
-  }
+  .card { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+  .card:active { transform: scale(0.98); }
+  .tab-btn { transition: all 0.2s ease; }
+  .tab-btn svg { transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+  .tab-btn.active svg { transform: scale(1.2); }
+  .btn { transition: opacity 0.2s ease, transform 0.1s ease; }
+  .btn:active { transform: translateY(1px); }
 
 </style>
-<style>
-  .grid-container { overflow-x: auto; margin-top: 15px; }
-  .schedule-grid { display: grid; grid-template-columns: 50px repeat(6, 120px); }
-  .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
-  .cal-day { min-height: 80px; }
-
-  /* Animations */
-  @keyframes fadeInUp {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-
-  #content { 
-    animation: fadeInUp 0.3s ease-out; 
-  }
-
-  .card {
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-  }
-
-  .card:active {
-    transform: scale(0.98);
-  }
-
-  .tab-btn {
-    transition: all 0.2s ease;
-  }
-
-  .tab-btn svg {
-    transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-  }
-
-  .tab-btn.active svg {
-    transform: scale(1.2);
-  }
-
-  .btn {
-    transition: opacity 0.2s ease, transform 0.1s ease;
-  }
-
-  .btn:active {
-    transform: translateY(1px);
-  }
-
-</style><style>
-  .grid-container { overflow-x: auto; margin-top:15px; }
-  .schedule-grid { display: grid; grid-template-columns: 50px repeat(6, 120px); }
-  .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
-  .cal-day { min-height: 80px; }
-
-  /* Animations */
-  @keyframes fadeInUp {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-
-  #content { 
-    animation: fadeInUp 0.3s ease-out; 
-  }
-
-  .card {
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-  }
-
-  .card:active {
-    transform: scale(0.98);
-  }
-
-  .tab-btn {
-    transition: all 0.2s ease;
-  }
-
-  .tab-btn svg {
-    transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-  }
-
-  .tab-btn.active svg {
-    transform: scale(1.2);
-  }
-
-  .btn {
-    transition: opacity 0.2s ease, transform 0.1s ease;
-  }
-
-  .btn:active {
-    transform: translateY(1px);
-  }
-
-</style></head>
+</head>
 <body>
 <div id="root">
   <div class="loading-screen" id="loadingScreen">
@@ -313,71 +206,36 @@ let state = {
   editingClass: null
 };
 
+/* ---------- UTILS ---------- */
+function uid(){ return Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
+function peso(n){ return '₱' + Number(n||0).toLocaleString('en-PH',{minimumFractionDigits:0,maximumFractionDigits:2}); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 function checkConflict(n){
-  const s1 = parseInt(n.start.replace(':', '')); const e1 = parseInt(n.end.replace(':', ''));
+  const s1 = parseInt(n.start.replace(':', '')); 
+  const e1 = parseInt(n.end.replace(':', ''));
   return state.schedule.find(c => {
     if(c.id===n.id || c.day!==n.day) return false;
-    const s2 = parseInt(c.start.replace(':', '')); const e2 = parseInt(c.end.replace(':', ''));
-    return (s1 < e2 && e1 > s2); /* start2 < end1 && end2 > start1 */
+    const s2 = parseInt(c.start.replace(':', '')); 
+    const e2 = parseInt(c.end.replace(':', ''));
+    return (s1 < e2 && e1 > s2);
   });
 }
-function getSpendingPace(){
-  const now=new Date(); const lastDay=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
-  const daysLeft=Math.max(1,lastDay-now.getDate());
-  const spent=state.expenses.items.reduce((s,i)=>s+Number(i.amount),0);
-  return { dailyLeft: (state.expenses.budget-spent)/daysLeft, isOver: spent > state.expenses.budget };
-}
+
 function processRecurring(){
   const now = new Date().toISOString().split('T')[0];
   state.expenses.items.filter(i => (i.weekly || i.monthly) && !i.lastGen).forEach(i => i.lastGen = now);
 }
-function processRecurringDeadlines(){ const nextGenerated = true; }
+
 function getWeekRange(){
   const now = new Date();
   const first = now.getDate() - now.getDay();
   return { start: new Date(now.setDate(first)), end: new Date(now.setDate(first+6)), dashboardView: state.dashboardView };
 }
-function viewDeadlinesCalendar(){ return '<div class="calendar-grid"></div>'; }
+
 function syncDarkMode(){ document.body.classList.toggle('dark', state.darkMode); }
 
-function uid(){ return Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
-
-function checkConflict(n){
-  const s1 = parseInt(n.start.replace(':', '')); const e1 = parseInt(n.end.replace(':', ''));
-  return state.schedule.find(c => {
-    if(c.id===n.id || c.day!==n.day) return false;
-    const s2 = parseInt(c.start.replace(':', '')); const e2 = parseInt(c.end.replace(':', ''));
-    return (s1 < e2 && e1 > s2); /* start2 < end1 && end2 > start1 */
-  });
-}
-
-function getSpendingPace(){
-  const now=new Date(); const lastDay=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
-  const daysLeft=Math.max(1,lastDay-now.getDate());
-  const spent=state.expenses.items.reduce((s,i)=>s+Number(i.amount),0);
-  return { dailyLeft: (state.expenses.budget-spent)/daysLeft, isOver: spent > state.expenses.budget };
-}
-
-function processRecurring(){
-  const now = new Date().toISOString().split('T')[0];
-  state.expenses.items.filter(i => (i.weekly || i.monthly) && !i.lastGen).forEach(i => i.lastGen = now);
-}
-
-function processRecurringDeadlines(){ const nextGenerated = true; }
-
-function getWeekRange(){
-  const now = new Date(); const first = now.getDate() - now.getDay();
-  return { start: new Date(now.setDate(first)), end: new Date(now.setDate(first+6)), dashboardView: state.dashboardView };
-}
-
-function viewDeadlinesCalendar(){ return '<div class="calendar-grid"></div>'; }
-function syncDarkMode(){ document.body.classList.toggle('dark', state.darkMode); }
-
-function peso(n){ return '₱' + Number(n||0).toLocaleString('en-PH',{minimumFractionDigits:0,maximumFractionDigits:2}); }
-function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-
-/* ---------- STORAGE (localStorage-backed, works standalone & offline) ---------- */
+/* ---------- STORAGE ---------- */
 function storageGet(key, fallback){
   try{
     const raw = localStorage.getItem(key);
@@ -449,63 +307,59 @@ function buildShell(){
   root.addEventListener('click', onClick);
   root.addEventListener('submit', onSubmit);
   root.addEventListener('keydown', onKeydown);
+  
+  // File import event listener delegated to root
+  root.addEventListener('change', (e) => {
+    if(e.target.dataset.action === 'import-data') {
+      const file = e.target.files[0];
+      if(!file) return;
+      if(confirm('This will overwrite your current schedule, expenses, and deadlines. Proceed?')) {
+        const reader = new FileReader();
+        reader.onload = (re) => {
+          try {
+            const parsed = JSON.parse(re.target.result);
+            state.schedule = parsed.schedule || [];
+            state.expenses = parsed.expenses || { budget: 0, items: [] };
+            state.deadlines = parsed.deadlines || [];
+            saveSchedule(); saveExpenses(); saveDeadlines();
+            render();
+          } catch(err) { alert('Invalid backup file.'); }
+        };
+        reader.readAsText(file);
+      }
+      e.target.value = ''; // Reset input
+    }
+  });
 }
 
 function tabBtn(id,label,icon){
   return `<button class="tab-btn ${state.tab===id?'active':''}" data-action="tab" data-tab="${id}">${icon}<span>${label}</span></button>`;
 }
+
+/* ---------- ICONS ---------- */
 function iconHome(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>`; }
 function iconCal(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>`; }
 function iconWallet(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M16 14h2"/></svg>`; }
 function iconFlag(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 21V4"/><path d="M5 4h13l-3 4 3 4H5"/></svg>`; }
+function iconSettings(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>`; }
 function iconPlus(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 5v14M5 12h14"/></svg>`; }
 function iconTrash(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-8 0v13a1 1 0 001 1h6a1 1 0 001-1V7"/></svg>`; }
 function iconEdit(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M16.5 3.5l4 4L8 20H4v-4L16.5 3.5z"/></svg>`; }
 function iconCheck(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M4 12l5 5L20 6"/></svg>`; }
-function iconLeaf(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 21v-9"/><path d="M12 12c0-4 3-7 7-7 0 4-3 7-7 7z"/><path d="M12 12c0-3-2.5-5-6-5 0 3 2.5 5 6 5z"/></svg>`; }
-
-
-function syncDarkMode() {
-  document.body.classList.toggle('dark', state.darkMode);
-}
-
-
-function checkConflict(n){ return state.schedule.find(c => c.id!==n.id && c.day===n.day && (n.start < c.end && n.end > c.start)); }
-function getSpendingPace(){ const now=new Date(); const daysLeft=Math.max(1, new Date(now.getFullYear(), now.getMonth()+1, 0).getDate() - now.getDate()); const spent=state.expenses.items.reduce((s,i)=>s+Number(i.amount),0); return { dailyLeft: (state.expenses.budget-spent)/daysLeft }; }
 
 function render(){
-  const animTarget = document.getElementById('content');
-  if (animTarget) {
-    animTarget.style.animation = 'none';
-    void animTarget.offsetHeight; 
-    animTarget.style.animation = null;
-  }
+  const content = document.getElementById('content');
+  content.style.animation = 'none';
+  content.offsetHeight; /* trigger reflow */
+  content.style.animation = null; 
 
-  }
-
-  const animTarget = document.getElementById('content');
-  if (animTarget) {
-    animTarget.style.animation = 'none';
-    void animTarget.offsetHeight; 
-    animTarget.style.animation = null;
-  }
-
-  const animTarget = document.getElementById('content');
-  if (animTarget) {
-    animTarget.style.animation = 'none';
-    void animTarget.offsetHeight; 
-    animTarget.style.animation = null;
-  }
- 
-
-  const c = document.getElementById('content');
-  if(!c) return;
-  if(state.tab==='dashboard') c.innerHTML = renderDashboard();
-  else if(state.tab==='schedule') c.innerHTML = renderSchedule();
-  else if(state.tab==='expenses') c.innerHTML = renderExpenses();
-  else if(state.tab==='deadlines') c.innerHTML = renderDeadlines();
+  if(state.tab==='dashboard') content.innerHTML = renderDashboard();
+  else if(state.tab==='schedule') content.innerHTML = renderSchedule();
+  else if(state.tab==='expenses') content.innerHTML = renderExpenses();
+  else if(state.tab==='deadlines') content.innerHTML = renderDeadlines();
+  else if(state.tab==='settings') content.innerHTML = renderSettings();
   updateTabbar();
-  c.scrollTop = 0;
+  content.scrollTop = 0;
 }
 function updateTabbar(){
   document.querySelectorAll('.tab-btn').forEach(btn=>{
@@ -578,7 +432,7 @@ function renderDashboard(){
         todayClasses.map(c=>`
         <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);">
           <div>
-            <div style="font-size:13.5px;font-weight:500;color:var(--ink);">${esc(c.code /* UPCOMING DEADLINES linked.map */)} ${esc(c.title? '· '+c.title:'')}</div>
+            <div style="font-size:13.5px;font-weight:500;color:var(--ink);">${esc(c.code)} ${esc(c.title? '· '+c.title:'')}</div>
             <div class="muted">${esc(c.room||'TBA')} ${c.instructor?'· '+esc(c.instructor):''}</div>
           </div>
           <div class="class-time">${fmtTime(c.start)}–${fmtTime(c.end)}</div>
@@ -626,12 +480,55 @@ function countdownBadge(days){
 
 /* ---------- SCHEDULE ---------- */
 function renderSchedule(){
+  let headerHtml = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <h2 class="section-title" style="margin:0;">Class schedule</h2>
+      <button class="ghost" data-action="toggle-sched-view" style="padding:6px 10px;">
+        ${state.scheduleView === 'list' ? 'Grid view' : 'List view'}
+      </button>
+    </div>
+  `;
+
+  if(state.scheduleView === 'grid'){
+    let gridHtml = `<div class="grid-container" style="overflow-x:auto;padding-bottom:10px;"><div style="position:relative;height:505px;min-width:440px;background:var(--card);border:1px solid var(--line);border-radius:8px;font-family:var(--font-body);">`;
+    
+    // Grid Header (Days)
+    gridHtml += `<div style="display:flex;border-bottom:1px solid var(--line);height:25px;background:var(--paper);border-top-left-radius:8px;border-top-right-radius:8px;">`;
+    gridHtml += `<div style="width:40px;flex-shrink:0;"></div>`;
+    DAYS.forEach(d => gridHtml += `<div style="flex:1;text-align:center;font-size:11px;font-weight:600;padding-top:5px;border-left:1px solid var(--line);">${d}</div>`);
+    gridHtml += `</div>`;
+    
+    // Background Timeline Lines (7 AM to 7 PM)
+    for(let h=7; h<=19; h++) {
+      let top = (h-7)*40 + 25;
+      let label = h>12 ? (h-12)+'PM' : (h===12 ? '12PM' : h+'AM');
+      gridHtml += `<div style="position:absolute;top:${top}px;left:0;width:40px;text-align:right;padding-right:4px;font-size:9px;color:var(--bark);transform:translateY(-50%);">${label}</div>`;
+      gridHtml += `<div style="position:absolute;top:${top}px;left:40px;right:0;height:1px;background:var(--line);"></div>`;
+    }
+
+    // Schedule Blocks
+    state.schedule.forEach(c => {
+       const dayIdx = DAYS.indexOf(c.day);
+       if(dayIdx===-1) return;
+       const startM = parseInt(c.start.split(':')[0])*60 + parseInt(c.start.split(':')[1]);
+       const endM = parseInt(c.end.split(':')[0])*60 + parseInt(c.end.split(':')[1]);
+       const top = ((startM - 7*60) / 60) * 40 + 25;
+       const height = ((endM - startM) / 60) * 40;
+       
+       gridHtml += `<div style="position:absolute;top:${top}px;left:calc(40px + ${dayIdx} * ((100% - 40px) / 6));width:calc((100% - 40px) / 6);height:${height}px;background:${c.type==='lab'?'var(--mango-bg)':'var(--leaf-bg)'};border-left:3px solid ${c.type==='lab'?'var(--mango)':'var(--leaf)'};font-size:9.5px;padding:3px;overflow:hidden;color:var(--ink);box-sizing:border-box;border-bottom:1px solid rgba(0,0,0,0.05);z-index:10;line-height:1.2;"><strong>${esc(c.code)}</strong><br>${esc(c.room||'')}</div>`;
+    });
+    gridHtml += `</div></div>`;
+    
+    return headerHtml + gridHtml;
+  }
+
+  // Default List View
   const dayCounts = {};
   DAYS.forEach(d=>dayCounts[d]=state.schedule.filter(c=>c.day===d).length);
   const items = state.schedule.filter(c=>c.day===state.scheduleDay).sort((a,b)=>a.start.localeCompare(b.start));
 
   return `
-    <h2 class="section-title">Class schedule</h2>
+    ${headerHtml}
     <div class="day-pills">
       ${DAYS.map(d=>`<button class="day-pill ${state.scheduleDay===d?'active':''}" data-action="pick-day" data-day="${d}">${d}${dayCounts[d]>0?'<span class="dot"></span>':''}</button>`).join('')}
     </div>
@@ -645,7 +542,7 @@ function renderSchedule(){
         <div class="class-row-top">
           <div>
             <div class="class-time">${fmtTime(c.start)} – ${fmtTime(c.end)}</div>
-            <div class="class-title">${esc(c.code /* UPCOMING DEADLINES linked.map */)}</div>
+            <div class="class-title">${esc(c.code)}</div>
           </div>
           <div class="row-actions">
             <button class="icon-btn" data-action="edit-class" data-id="${c.id}" aria-label="Edit class" title="Edit class">${iconEdit()}</button>
@@ -663,6 +560,7 @@ function classForm(){
   const e = state.editingClass;
   return `
   <form class="card" data-form="class-form" style="margin-bottom:14px;">
+    <div id="conflictError" style="display:none;color:var(--danger);font-size:12px;margin-bottom:10px;padding:8px;background:var(--maroon-bg);border-radius:6px;font-weight:500;"></div>
     <div class="form-grid">
       <label class="field">Course code
         <input name="code" required placeholder="e.g. MATH 20" value="${e?esc(e.code):''}">
@@ -717,6 +615,14 @@ function renderExpenses(){
   state.expenses.items.forEach(i=>{ totals[i.category] = (totals[i.category]||0) + Number(i.amount||0); });
   const maxCat = Math.max(1, ...Object.values(totals));
   const recent = [...state.expenses.items].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,12);
+  
+  // Calculate Pacing
+  const now = new Date();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
+  const daysLeft = Math.max(1, daysInMonth - now.getDate() + 1);
+  const daysPassed = Math.max(1, now.getDate());
+  const currentPace = bp.spent / daysPassed;
+  const targetPace = bp.remaining / daysLeft;
 
   return `
     <h2 class="section-title">Expenses</h2>
@@ -736,6 +642,11 @@ function renderExpenses(){
     <div class="stat-row">
       <div class="stat-box"><div class="v">${peso(bp.spent)}</div><div class="l">Spent</div></div>
       <div class="stat-box"><div class="v">${peso(bp.remaining)}</div><div class="l">Remaining</div></div>
+    </div>
+    
+    <div class="stat-row" style="margin-top:-6px;">
+      <div class="stat-box" style="background:transparent;"><div class="v" style="font-size:13px;color:${currentPace > targetPace ? 'var(--danger)' : 'var(--ink)'}">${peso(currentPace)}/d</div><div class="l">Avg. spent pace</div></div>
+      <div class="stat-box" style="background:transparent;"><div class="v" style="font-size:13px;">${peso(targetPace)}/d</div><div class="l">Target max pace</div></div>
     </div>
 
     <div class="card">
@@ -869,6 +780,32 @@ function deadlineForm(){
   </form>`;
 }
 
+/* ---------- SETTINGS ---------- */
+function renderSettings(){
+  return `
+    <h2 class="section-title">Settings</h2>
+    
+    <div class="card">
+      <strong style="font-size:13.5px;color:var(--ink);display:block;margin-bottom:12px;">App Appearance</strong>
+      <button class="ghost" data-action="toggle-dark-mode" style="width:100%;">
+        ${state.darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+      </button>
+    </div>
+
+    <div class="card">
+      <strong style="font-size:13.5px;color:var(--ink);display:block;margin-bottom:12px;">Data Management</strong>
+      <div style="display:flex;gap:10px;margin-bottom:12px;">
+        <button class="primary" data-action="export-data" style="flex:1;">Export Backup</button>
+        <label class="ghost" style="flex:1;text-align:center;padding:11px 16px;cursor:pointer;">
+          Import
+          <input type="file" accept=".json" style="display:none;" data-action="import-data">
+        </label>
+      </div>
+      <p class="muted" style="font-size:11px;margin:0;">Export your data to save a backup to your device. Importing a file will overwrite your current planner state.</p>
+    </div>
+  `;
+}
+
 /* ---------- EVENTS ---------- */
 function onKeydown(e){
   if(e.key!=='Enter' && e.key!==' ') return;
@@ -877,43 +814,18 @@ function onKeydown(e){
   e.preventDefault();
   el.click();
 }
+
 function onClick(e){
-  const act = e.target.dataset.action || e.target.closest('[data-action]')?.dataset.action;
-
-  
-
-  
-
-  
-
-  
-      if(act === 'toggle-dark-mode'){ state.darkMode = !state.darkMode; syncDarkMode(); render(); }
-    if(act === 'toggle-sched-view'){ state.scheduleView = state.scheduleView === 'list' ? 'grid' : 'list'; render(); }
-    if(act === 'toggle-deadline-view'){ state.deadlineView = state.deadlineView === 'calendar' ? 'list' : 'calendar'; render(); }
-    if(act === 'toggle-dash-view'){ state.dashboardView = state.dashboardView === 'all' ? 'weekly' : 'all'; render(); }
-    if(act === 'archive-semester'){ if(confirm('Archive current term?')){ state.archives.push({id:uid(), name:'Archive '+new Date().toLocaleDateString(), schedule:[...state.schedule], deadlines:[...state.deadlines]}); state.schedule=[]; state.deadlines=[]; render(); } }
-    if(act === 'restore-archive'){ const arch=state.archives.find(a=>a.id===e.target.dataset.id); if(arch){ state.schedule=[...arch.schedule]; state.deadlines=[...arch.deadlines]; render(); } }
-    if(act === 'export-data'){ const b=new Blob([JSON.stringify(state)],{type:'application/json'}); const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download='punla_backup.json'; a.click(); }
-    if(act === 'import-data'){ const f=e.target.files[0]; if(f){ const r=new FileReader(); r.onload=(re)=>{state=JSON.parse(re.target.result);saveAll();render();}; r.readAsText(f); } }
-    if(act === 'export-data'){ const blob = new Blob([JSON.stringify(state)], {type:'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download='punla_backup.json'; a.click(); }
-    if(act === 'import-data'){ const file = e.target.files[0]; const reader = new FileReader(); reader.onload=(re)=>{ state=JSON.parse(re.target.result); saveAll(); render(); }; reader.readAsText(file); }
-    if(act === 'archive-semester'){ if(confirm('Archive this semester and reset?')){ state.archives.push({id:uid(), name:'Archive '+new Date().toLocaleDateString(), schedule:[...state.schedule], deadlines:[...state.deadlines]}); state.schedule=[]; state.deadlines=[]; saveAll(); render(); } }
-    if(act === 'export-data'){ const blob = new Blob([JSON.stringify(state)], {type:'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download='punla_backup.json'; a.click(); }
-    if(act === 'import-data'){ const file = e.target.files[0]; const reader = new FileReader(); reader.onload=(re)=>{ state=JSON.parse(re.target.result); saveAll(); render(); }; reader.readAsText(file); }
-  if(act === 'toggle-dark-mode'){
-    state.darkMode = !state.darkMode;
-    syncDarkMode();
-    storageSet('punla_dark_mode', state.darkMode);
-    render();
-  }
   const btn = e.target.closest('[data-action]');
   if(!btn) return;
   const action = btn.dataset.action;
+  
   if(action==='tab'){ state.tab = btn.dataset.tab; state.showClassForm=false; state.showExpenseForm=false; state.showDeadlineForm=false; state.editingClass=null; render(); }
   else if(action==='pick-day'){ state.scheduleDay = btn.dataset.day; render(); }
   else if(action==='toggle-class-form'){ state.showClassForm = !state.showClassForm; if(!state.showClassForm) state.editingClass=null; render(); }
   else if(action==='toggle-expense-form'){ state.showExpenseForm = !state.showExpenseForm; render(); }
   else if(action==='toggle-deadline-form'){ state.showDeadlineForm = !state.showDeadlineForm; render(); }
+  else if(action==='toggle-sched-view'){ state.scheduleView = state.scheduleView === 'list' ? 'grid' : 'list'; render(); }
   else if(action==='edit-class'){
     state.editingClass = state.schedule.find(c=>c.id===btn.dataset.id);
     state.showClassForm = true; render();
@@ -938,7 +850,22 @@ function onClick(e){
     const val = Number(document.getElementById('budgetInput').value)||0;
     state.expenses.budget = val;
     saveExpenses(); render();
-  }}
+  }
+  else if(action==='toggle-dark-mode'){
+    state.darkMode = !state.darkMode;
+    storageSet('punla_dark_mode', state.darkMode);
+    syncDarkMode(); render();
+  }
+  else if(action==='export-data'){
+    const data = { schedule: state.schedule, expenses: state.expenses, deadlines: state.deadlines };
+    const blob = new Blob([JSON.stringify(data)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `punla-backup-${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+  }
+}
 
 function onSubmit(e){
   const form = e.target.closest('form');
@@ -955,6 +882,16 @@ function onSubmit(e){
       day: fd.get('day'), type: fd.get('type'), start: fd.get('start'), end: fd.get('end'),
       room: fd.get('room'), instructor: fd.get('instructor')
     };
+
+    // Feature 2: Check for Class Conflicts
+    const conflict = checkConflict(data);
+    if (conflict) {
+      const err = form.querySelector('#conflictError');
+      err.innerText = `Conflict: Overlaps with ${conflict.code} (${fmtTime(conflict.start)} - ${fmtTime(conflict.end)})`;
+      err.style.display = 'block';
+      return; 
+    }
+
     if(id){ state.schedule = state.schedule.map(c=>c.id===id?data:c); }
     else{ state.schedule.push(data); }
     state.showClassForm=false; state.editingClass=null;
@@ -980,5 +917,5 @@ function onSubmit(e){
 
 loadAll();
 </script>
-<div style="display:none" class="grid-column">grid-column marker</div><div style="display:none">SPENDING PACE</div></body>
+</body>
 </html>
