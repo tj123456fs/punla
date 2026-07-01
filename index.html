@@ -474,10 +474,29 @@ function checkConflict(n){ return state.schedule.find(c => c.id!==n.id && c.day=
 function getSpendingPace(){ const now=new Date(); const daysLeft=Math.max(1, new Date(now.getFullYear(), now.getMonth()+1, 0).getDate() - now.getDate()); const spent=state.expenses.items.reduce((s,i)=>s+Number(i.amount),0); return { dailyLeft: (state.expenses.budget-spent)/daysLeft }; }
 
 function render(){
-  const content = document.getElementById('content');
-  content.style.animation = 'none';
-  content.offsetHeight; /* trigger reflow */
-  content.style.animation = null; 
+  const animTarget = document.getElementById('content');
+  if (animTarget) {
+    animTarget.style.animation = 'none';
+    void animTarget.offsetHeight; 
+    animTarget.style.animation = null;
+  }
+
+  }
+
+  const animTarget = document.getElementById('content');
+  if (animTarget) {
+    animTarget.style.animation = 'none';
+    void animTarget.offsetHeight; 
+    animTarget.style.animation = null;
+  }
+
+  const animTarget = document.getElementById('content');
+  if (animTarget) {
+    animTarget.style.animation = 'none';
+    void animTarget.offsetHeight; 
+    animTarget.style.animation = null;
+  }
+ 
 
   const c = document.getElementById('content');
   if(!c) return;
@@ -860,6 +879,14 @@ function onKeydown(e){
 }
 function onClick(e){
   const act = e.target.dataset.action || e.target.closest('[data-action]')?.dataset.action;
+
+  
+
+  
+
+  
+
+  
       if(act === 'toggle-dark-mode'){ state.darkMode = !state.darkMode; syncDarkMode(); render(); }
     if(act === 'toggle-sched-view'){ state.scheduleView = state.scheduleView === 'list' ? 'grid' : 'list'; render(); }
     if(act === 'toggle-deadline-view'){ state.deadlineView = state.deadlineView === 'calendar' ? 'list' : 'calendar'; render(); }
