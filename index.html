@@ -65,7 +65,14 @@
   .tab-btn svg{width:20px;height:20px;transition:transform .2s ease;}
 
   h2.section-title{font-family:var(--font-display);font-size:19px;font-weight:600;color:var(--text);margin:0 0 12px;}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(27,46,35,0.05);transition:background-color .3s ease,border-color .3s ease,box-shadow .2s ease,transform .2s ease;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(27,46,35,0.05);transition:background-color .3s ease,border-color .3s ease,box-shadow .2s ease,transform .2s ease;animation:fadeInUp .38s cubic-bezier(.16,1,.3,1) both;}
+  .card:hover{box-shadow:0 4px 14px rgba(27,46,35,0.09);transform:translateY(-1px);}
+  .card:nth-of-type(1){animation-delay:.01s;}
+  .card:nth-of-type(2){animation-delay:.05s;}
+  .card:nth-of-type(3){animation-delay:.09s;}
+  .card:nth-of-type(4){animation-delay:.13s;}
+  .card:nth-of-type(5){animation-delay:.17s;}
+  .card:nth-of-type(n+6){animation-delay:.2s;}
   .muted{color:var(--bark);font-size:12.5px;}
   .empty{text-align:center;padding:30px 10px;color:var(--bark);font-size:13px;}
   .empty svg{width:34px;height:34px;margin-bottom:8px;opacity:0.6;animation:floatY 3s ease-in-out infinite;}
@@ -115,7 +122,7 @@
   .seed-amount{font-family:var(--font-mono);font-size:24px;font-weight:600;color:var(--text);}
   .seed-label{font-size:11.5px;color:var(--bark);margin-bottom:2px;}
   .bar-track{height:8px;background:var(--line);border-radius:6px;overflow:hidden;margin-top:8px;}
-  .bar-fill{height:100%;border-radius:6px;width:0;animation:barGrow .7s cubic-bezier(.16,1,.3,1) forwards;transition:background-color .3s ease;}
+  .bar-fill{height:100%;border-radius:6px;width:var(--bf,0%);animation:barGrow .8s cubic-bezier(.16,1,.3,1) both;transition:background-color .3s ease;}
   @property --bf{syntax:'<percentage>';inherits:false;initial-value:0%;}
 
   .stat-row{display:flex;gap:10px;margin-bottom:12px;}
@@ -162,12 +169,15 @@
   .fab-row{display:flex;justify-content:flex-end;margin-bottom:12px;}
   .toggle-form{border-top:1px dashed var(--line);margin-top:10px;padding-top:12px;}
   .row-actions{display:flex;gap:8px;align-items:center;}
-  .checkbox-circle{width:20px;height:20px;border-radius:50%;border:2px solid var(--line);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--card);}
-  .checkbox-circle.checked{background:var(--leaf);border-color:var(--leaf);}
+  .checkbox-circle{width:20px;height:20px;border-radius:50%;border:2px solid var(--line);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--card);transition:background-color .18s ease,border-color .18s ease,transform .15s ease;}
+  .checkbox-circle:active{transform:scale(0.85);}
+  .checkbox-circle.checked{background:var(--leaf);border-color:var(--leaf);animation:popIn .3s cubic-bezier(.34,1.56,.64,1);}
   .checkbox-circle svg{width:12px;height:12px;stroke:#fff;display:none;}
   .checkbox-circle.checked svg{display:block;}
   .loading-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;color:var(--paper);background:var(--ink);gap:10px;font-family:var(--font-body);font-size:13px;}
-  .save-toast{display:none;position:fixed;left:50%;bottom:78px;transform:translateX(-50%);background:var(--danger);color:#fff;font-size:12px;font-family:var(--font-body);padding:8px 14px;border-radius:20px;box-shadow:0 4px 14px rgba(0,0,0,0.25);z-index:50;max-width:90%;text-align:center;}
+  .loading-screen svg{animation:pulseSoft 1.6s ease-in-out infinite;}
+  .save-toast{position:fixed;left:50%;bottom:78px;transform:translate(-50%,10px);background:var(--danger);color:#fff;font-size:12px;font-family:var(--font-body);padding:8px 14px;border-radius:20px;box-shadow:0 4px 14px rgba(0,0,0,0.25);z-index:50;max-width:90%;text-align:center;opacity:0;pointer-events:none;transition:opacity .25s ease,transform .25s cubic-bezier(.34,1.56,.64,1);}
+  .save-toast.show{opacity:1;transform:translate(-50%,0);pointer-events:auto;}
 
   /* Settings */
   .settings-row{display:flex;justify-content:space-between;align-items:center;gap:12px;}
@@ -180,8 +190,9 @@
 
   /* Segmented toggle */
   .seg{display:flex;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:3px;margin-bottom:14px;}
-  .seg button{flex:1;background:none;border:none;padding:7px 0;border-radius:8px;font-size:12.5px;font-weight:600;color:var(--bark);cursor:pointer;font-family:var(--font-body);}
+  .seg button{flex:1;background:none;border:none;padding:7px 0;border-radius:8px;font-size:12.5px;font-weight:600;color:var(--bark);cursor:pointer;font-family:var(--font-body);transition:background-color .2s ease,color .2s ease,transform .15s ease;}
   .seg button.active{background:var(--ink);color:var(--paper);}
+  .seg button:active{transform:scale(0.96);}
 
   /* Weekly timetable grid */
   .grid-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;margin-bottom:14px;-webkit-overflow-scrolling:touch;}
@@ -206,7 +217,8 @@
   .cal-nav button{background:var(--card);border:1px solid var(--line);color:var(--text);width:28px;height:28px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
   .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:14px;}
   .cal-dow{text-align:center;font-size:9.5px;color:var(--bark);font-weight:600;padding-bottom:3px;}
-  .cal-cell{aspect-ratio:1;border-radius:8px;border:1px solid var(--line);background:var(--card);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:11px;color:var(--text);cursor:pointer;gap:2px;padding:0;font-family:var(--font-body);}
+  .cal-cell{aspect-ratio:1;border-radius:8px;border:1px solid var(--line);background:var(--card);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:11px;color:var(--text);cursor:pointer;gap:2px;padding:0;font-family:var(--font-body);transition:background-color .18s ease,color .18s ease,border-color .18s ease,transform .12s ease;}
+  .cal-cell:active{transform:scale(0.92);}
   .cal-cell.empty{border:none;background:transparent;cursor:default;}
   .cal-cell.today{border-color:var(--leaf);border-width:2px;}
   .cal-cell.selected{background:var(--ink);color:var(--paper);}
@@ -219,6 +231,48 @@
   /* This week dashboard */
   .week-day-group{margin-bottom:14px;}
   .week-day-label{font-size:11.5px;font-weight:700;color:var(--bark);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px;}
+
+  /* ---------- Animations ---------- */
+  @keyframes fadeInUp{
+    from{opacity:0;transform:translateY(8px);}
+    to{opacity:1;transform:translateY(0);}
+  }
+  @keyframes fadeIn{
+    from{opacity:0;}
+    to{opacity:1;}
+  }
+  @keyframes popIn{
+    0%{opacity:0;transform:scale(0.5);}
+    70%{opacity:1;transform:scale(1.12);}
+    100%{transform:scale(1);}
+  }
+  @keyframes tabPop{
+    0%{transform:scale(0.7);}
+    55%{transform:scale(1.22);}
+    100%{transform:scale(1);}
+  }
+  @keyframes floatY{
+    0%,100%{transform:translateY(0);}
+    50%{transform:translateY(-6px);}
+  }
+  @keyframes leafSway{
+    0%,100%{transform:rotate(-5deg);}
+    50%{transform:rotate(5deg);}
+  }
+  @keyframes barGrow{
+    from{--bf:0%;}
+  }
+  @keyframes pulseSoft{
+    0%,100%{opacity:1;}
+    50%{opacity:.55;}
+  }
+  @keyframes toastIn{
+    from{opacity:0;transform:translate(-50%,10px);}
+    to{opacity:1;transform:translate(-50%,0);}
+  }
+  @media (prefers-reduced-motion: reduce){
+    *,*::before,*::after{animation-duration:0.001ms !important;animation-iteration-count:1 !important;transition-duration:0.001ms !important;}
+  }
 </style>
 </head>
 <body>
@@ -309,9 +363,9 @@ function showToast(msg){
   const el = document.getElementById('saveToast');
   if(!el) return;
   el.textContent = msg;
-  el.style.display = 'block';
+  el.classList.add('show');
   clearTimeout(showToast._t);
-  showToast._t = setTimeout(()=>{ el.style.display='none'; }, 4000);
+  showToast._t = setTimeout(()=>{ el.classList.remove('show'); }, 4000);
 }
 function showSaveError(){
   showToast("Couldn't save — your device storage may be full or private-browsing is blocking it.");
@@ -570,7 +624,7 @@ function renderDashboardToday(){
         <div class="seed-label">Remaining this month</div>
         <div class="seed-amount">${peso(bp.remaining)}</div>
         <div class="muted" style="margin-top:2px;">${esc(statusText)}</div>
-        <div class="bar-track"><div class="bar-fill" style="width:${Math.max(0,Math.min(100,bp.percent*100))}%;background:${bp.percent<0?'#A33131':bp.percent<0.25?'#C97F1E':'#4F7A2A'};"></div></div>
+        <div class="bar-track"><div class="bar-fill" style="--bf:${Math.max(0,Math.min(100,bp.percent*100))}%;background:${bp.percent<0?'#A33131':bp.percent<0.25?'#C97F1E':'#4F7A2A'};"></div></div>
       </div>
     </div>
 
@@ -891,7 +945,7 @@ function renderExpenses(){
           <span class="cat-name">${c.label}</span>
           <span class="cat-amt">${peso(totals[c.key])}</span>
         </div>
-        <div class="bar-track" style="margin:-4px 0 8px;"><div class="bar-fill" style="width:${(totals[c.key]/maxCat)*100}%;background:${c.color};"></div></div>
+        <div class="bar-track" style="margin:-4px 0 8px;"><div class="bar-fill" style="--bf:${maxCat>0?(totals[c.key]/maxCat)*100:0}%;background:${c.color};"></div></div>
       `).join('')}
     </div>
 
