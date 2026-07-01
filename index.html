@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Punla — UPLB Freshman Planner</title>
+<meta name="theme-color" content="#1B2E23">
+<meta name="description" content="Punla — schedule, budget, and deadline planner for UPLB freshmen.">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Punla">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1B2E23;
+    --ink-2:#24392C;
+    --paper:#FAF7ED;
+    --card:#FFFFFF;
+    --maroon:#7A2942;
+    --maroon-bg:#F6E7EC;
+    --mango:#C97F1E;
+    --mango-bg:#FBEEDA;
+    --leaf:#4F7A2A;
+    --leaf-light:#8FB35C;
+    --leaf-bg:#EAF1DE;
+    --bark:#7A6A54;
+    --line:#E6E0CE;
+    --danger:#A33131;
+    --font-display:'Fraunces',serif;
+    --font-body:'Inter',-apple-system,sans-serif;
+    --font-mono:'IBM Plex Mono',monospace;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--ink);font-family:var(--font-body);}
+  #root{max-width:460px;margin:0 auto;min-height:100vh;background:var(--paper);display:flex;flex-direction:column;box-shadow:0 0 40px rgba(0,0,0,0.25);}
+  .topbar{background:var(--ink);color:var(--paper);padding:18px 20px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+  .brand{display:flex;align-items:center;gap:10px;}
+  .brand-name{font-family:var(--font-display);font-size:22px;font-weight:600;letter-spacing:0.3px;line-height:1;}
+  .brand-sub{font-size:11px;color:#B9C9BB;margin-top:3px;letter-spacing:0.2px;}
+  .date-chip{font-family:var(--font-mono);font-size:11px;color:#B9C9BB;text-align:right;line-height:1.5;}
+  #content{flex:1;padding:16px 16px 90px;overflow-y:auto;}
+  .tabbar{position:sticky;bottom:0;background:var(--ink);display:flex;padding:8px 10px calc(8px + env(safe-area-inset-bottom));flex-shrink:0;max-width:460px;margin:0 auto;width:100%;}
+  .tab-btn{flex:1;background:none;border:none;color:#8FA093;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 2px;cursor:pointer;font-family:var(--font-body);font-size:10px;letter-spacing:0.2px;border-radius:10px;transition:color .15s;}
+  .tab-btn.active{color:var(--paper);background:var(--ink-2);}
+  .tab-btn svg{width:20px;height:20px;}
+
+  h2.section-title{font-family:var(--font-display);font-size:19px;font-weight:600;color:var(--ink);margin:0 0 12px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:12px;}
+  .muted{color:var(--bark);font-size:12.5px;}
+  .empty{text-align:center;padding:30px 10px;color:var(--bark);font-size:13px;}
+  .empty svg{width:34px;height:34px;margin-bottom:8px;opacity:0.6;}
+
+  button.primary{background:var(--ink);color:var(--paper);border:none;border-radius:10px;padding:11px 16px;font-family:var(--font-body);font-weight:600;font-size:14px;cursor:pointer;}
+  button.primary:active{transform:scale(0.98);}
+  button.ghost{background:transparent;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:10px 14px;font-family:var(--font-body);font-weight:500;font-size:13px;cursor:pointer;}
+  button.icon-btn{background:none;border:none;cursor:pointer;color:var(--bark);padding:4px;display:flex;}
+  button.icon-btn svg{width:16px;height:16px;}
+  button.icon-btn.danger:hover{color:var(--danger);}
+
+  input,select{width:100%;font-family:var(--font-body);font-size:14px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);}
+  input:focus,select:focus{outline:2px solid var(--leaf-light);outline-offset:-1px;}
+  label.field{display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:var(--bark);font-weight:500;}
+  .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;}
+  .form-actions{display:flex;gap:8px;margin-top:4px;}
+
+  .day-pills{display:flex;gap:6px;overflow-x:auto;margin-bottom:14px;padding-bottom:2px;}
+  .day-pill{flex-shrink:0;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:20px;padding:7px 14px;font-size:12.5px;font-weight:500;cursor:pointer;position:relative;}
+  .day-pill.active{background:var(--leaf);border-color:var(--leaf);color:#fff;}
+  .day-pill .dot{position:absolute;top:4px;right:6px;width:5px;height:5px;border-radius:50%;background:var(--mango);}
+
+  .class-card{border-left:4px solid var(--leaf);}
+  .class-card.lab{border-left-color:var(--mango);}
+  .class-row-top{display:flex;justify-content:space-between;align-items:flex-start;}
+  .class-time{font-family:var(--font-mono);font-size:12px;color:var(--bark);font-weight:600;}
+  .class-title{font-family:var(--font-display);font-size:16px;font-weight:600;color:var(--ink);margin:2px 0 3px;}
+  .badge{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;letter-spacing:0.3px;}
+  .badge.lec{background:var(--leaf-bg);color:var(--leaf);}
+  .badge.lab{background:var(--mango-bg);color:var(--mango);}
+
+  .seed-card{display:flex;align-items:center;gap:14px;}
+  .seed-stats{flex:1;}
+  .seed-amount{font-family:var(--font-mono);font-size:24px;font-weight:600;color:var(--ink);}
+  .seed-label{font-size:11.5px;color:var(--bark);margin-bottom:2px;}
+  .bar-track{height:8px;background:var(--line);border-radius:6px;overflow:hidden;margin-top:8px;}
+  .bar-fill{height:100%;border-radius:6px;}
+
+  .stat-row{display:flex;gap:10px;margin-bottom:12px;}
+  .stat-box{flex:1;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;}
+  .stat-box .v{font-family:var(--font-mono);font-size:16px;font-weight:600;color:var(--ink);}
+  .stat-box .l{font-size:10.5px;color:var(--bark);margin-top:2px;}
+
+  .cat-bar-row{display:flex;align-items:center;gap:8px;margin-bottom:9px;}
+  .cat-swatch{width:9px;height:9px;border-radius:3px;flex-shrink:0;}
+  .cat-name{font-size:12px;color:var(--ink);flex:1;}
+  .cat-amt{font-family:var(--font-mono);font-size:12px;color:var(--bark);}
+
+  .expense-item{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);}
+  .expense-item:last-child{border-bottom:none;}
+  .expense-left{display:flex;flex-direction:column;}
+  .expense-cat{font-size:12.5px;color:var(--ink);font-weight:500;}
+  .expense-note{font-size:11px;color:var(--bark);}
+  .expense-amt{font-family:var(--font-mono);font-size:14px;font-weight:600;color:var(--maroon);}
+
+  .deadline-card{border-left:4px solid var(--line);display:flex;justify-content:space-between;gap:10px;align-items:flex-start;}
+  .deadline-card.urgent{border-left-color:var(--danger);}
+  .deadline-card.soon{border-left-color:var(--mango);}
+  .deadline-card.ok{border-left-color:var(--leaf);}
+  .deadline-card.done{opacity:0.5;}
+  .dl-title{font-family:var(--font-display);font-size:15.5px;font-weight:600;color:var(--ink);}
+  .dl-title.strike{text-decoration:line-through;}
+  .dl-meta{font-size:11.5px;color:var(--bark);margin-top:2px;}
+  .dl-count{font-family:var(--font-mono);font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;white-space:nowrap;}
+  .dl-count.urgent{background:var(--maroon-bg);color:var(--maroon);}
+  .dl-count.soon{background:var(--mango-bg);color:var(--mango);}
+  .dl-count.ok{background:var(--leaf-bg);color:var(--leaf);}
+
+  .fab-row{display:flex;justify-content:flex-end;margin-bottom:12px;}
+  .toggle-form{border-top:1px dashed var(--line);margin-top:10px;padding-top:12px;}
+  .row-actions{display:flex;gap:8px;align-items:center;}
+  .checkbox-circle{width:20px;height:20px;border-radius:50%;border:2px solid var(--line);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:#fff;}
+  .checkbox-circle.checked{background:var(--leaf);border-color:var(--leaf);}
+  .checkbox-circle svg{width:12px;height:12px;stroke:#fff;display:none;}
+  .checkbox-circle.checked svg{display:block;}
+  .loading-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;color:var(--paper);background:var(--ink);gap:10px;font-family:var(--font-body);font-size:13px;}
+  .save-toast{display:none;position:fixed;left:50%;bottom:78px;transform:translateX(-50%);background:var(--danger);color:#fff;font-size:12px;font-family:var(--font-body);padding:8px 14px;border-radius:20px;box-shadow:0 4px 14px rgba(0,0,0,0.25);z-index:50;max-width:90%;text-align:center;}
+</style>
+</head>
+<body>
+<div id="root">
+  <div class="loading-screen" id="loadingScreen">
+    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#8FB35C" stroke-width="1.6"><path d="M12 21v-9"/><path d="M12 12c0-4 3-7 7-7 0 4-3 7-7 7z"/><path d="M12 12c0-3-2.5-5-6-5 0 3 2.5 5 6 5z"/></svg>
+    <div>Loading your planner…</div>
+  </div>
+  <div class="save-toast" id="saveError">Couldn't save — your device storage may be full or private-browsing is blocking it.</div>
+</div>
+
+<script>
+const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat'];
+const DAY_FULL = {Mon:'Monday',Tue:'Tuesday',Wed:'Wednesday',Thu:'Thursday',Fri:'Friday',Sat:'Saturday'};
+const CATEGORIES = [
+  {key:'food',label:'Baon / Pagkain',color:'#4F7A2A'},
+  {key:'transpo',label:'Transportasyon',color:'#C97F1E'},
+  {key:'load',label:'Load / Internet',color:'#7A2942'},
+  {key:'supplies',label:'Kagamitan',color:'#3D6B8A'},
+  {key:'org',label:'Org / Activities',color:'#9C6B30'},
+  {key:'misc',label:'Iba pa',color:'#7A6A54'}
+];
+const DEADLINE_TYPES = ['Requirement','Exam','Project','Org','Iba pa'];
+const PRIORITIES = ['High','Medium','Low'];
+
+let state = {
+  tab: 'dashboard',
+  scheduleDay: new Date().toLocaleDateString('en-US',{weekday:'short'}).slice(0,3),
+  schedule: [],
+  expenses: { budget: 0, items: [] },
+  deadlines: [],
+  showClassForm: false,
+  showExpenseForm: false,
+  showDeadlineForm: false,
+  editingClass: null
+};
+
+function uid(){ return Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
+function peso(n){ return '₱' + Number(n||0).toLocaleString('en-PH',{minimumFractionDigits:0,maximumFractionDigits:2}); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* ---------- STORAGE (localStorage-backed, works standalone & offline) ---------- */
+function storageGet(key, fallback){
+  try{
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  }catch(e){ console.error('storage read error', key, e); return fallback; }
+}
+function storageSet(key, value){
+  try{
+    localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  }catch(e){
+    console.error('storage write error', key, e);
+    showSaveError();
+    return false;
+  }
+}
+function showSaveError(){
+  const el = document.getElementById('saveError');
+  if(!el) return;
+  el.style.display = 'block';
+  clearTimeout(showSaveError._t);
+  showSaveError._t = setTimeout(()=>{ el.style.display='none'; }, 4000);
+}
+
+async function loadAll(){
+  state.schedule = storageGet('punla:schedule', []);
+  state.expenses = storageGet('punla:expenses', { budget: 0, items: [] });
+  state.deadlines = storageGet('punla:deadlines', []);
+  document.getElementById('loadingScreen').remove();
+  buildShell();
+  render();
+  registerServiceWorker();
+}
+
+async function saveSchedule(){ storageSet('punla:schedule', state.schedule); }
+async function saveExpenses(){ storageSet('punla:expenses', state.expenses); }
+async function saveDeadlines(){ storageSet('punla:deadlines', state.deadlines); }
+
+function registerServiceWorker(){
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('sw.js').catch(e=>console.warn('SW registration failed', e));
+  }
+}
+
+function buildShell(){
+  const root = document.getElementById('root');
+  const today = new Date();
+  root.innerHTML = `
+    <div class="topbar">
+      <div class="brand">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#8FB35C" stroke-width="1.6"><path d="M12 21v-9"/><path d="M12 12c0-4 3-7 7-7 0 4-3 7-7 7z"/><path d="M12 12c0-3-2.5-5-6-5 0 3 2.5 5 6 5z"/></svg>
+        <div>
+          <div class="brand-name">Punla</div>
+          <div class="brand-sub">UPLB freshman planner</div>
+        </div>
+      </div>
+      <div class="date-chip">${today.toLocaleDateString('en-US',{weekday:'short'})}<br>${today.toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div>
+    </div>
+    <div id="content"></div>
+    <nav class="tabbar">
+      ${tabBtn('dashboard','Home', iconHome())}
+      ${tabBtn('schedule','Schedule', iconCal())}
+      ${tabBtn('expenses','Expenses', iconWallet())}
+      ${tabBtn('deadlines','Deadlines', iconFlag())}
+    </nav>
+  `;
+  root.addEventListener('click', onClick);
+  root.addEventListener('submit', onSubmit);
+}
+
+function tabBtn(id,label,icon){
+  return `<button class="tab-btn ${state.tab===id?'active':''}" data-action="tab" data-tab="${id}">${icon}<span>${label}</span></button>`;
+}
+function iconHome(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>`; }
+function iconCal(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>`; }
+function iconWallet(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M16 14h2"/></svg>`; }
+function iconFlag(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 21V4"/><path d="M5 4h13l-3 4 3 4H5"/></svg>`; }
+function iconPlus(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 5v14M5 12h14"/></svg>`; }
+function iconTrash(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-8 0v13a1 1 0 001 1h6a1 1 0 001-1V7"/></svg>`; }
+function iconEdit(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M16.5 3.5l4 4L8 20H4v-4L16.5 3.5z"/></svg>`; }
+function iconCheck(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M4 12l5 5L20 6"/></svg>`; }
+function iconLeaf(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 21v-9"/><path d="M12 12c0-4 3-7 7-7 0 4-3 7-7 7z"/><path d="M12 12c0-3-2.5-5-6-5 0 3 2.5 5 6 5z"/></svg>`; }
+
+function render(){
+  const c = document.getElementById('content');
+  if(!c) return;
+  if(state.tab==='dashboard') c.innerHTML = renderDashboard();
+  else if(state.tab==='schedule') c.innerHTML = renderSchedule();
+  else if(state.tab==='expenses') c.innerHTML = renderExpenses();
+  else if(state.tab==='deadlines') c.innerHTML = renderDeadlines();
+}
+
+/* ---------- SEEDLING VISUAL ---------- */
+function seedlingSvg(percent){
+  const p = Math.max(-0.3, Math.min(1, percent));
+  const wilted = p < 0;
+  let color = '#4F7A2A', leafCount = 5;
+  if(wilted){ color = '#A33131'; leafCount = 1; }
+  else if(p < 0.25){ color = '#C97F1E'; leafCount = 1; }
+  else if(p < 0.5){ color = '#C97F1E'; leafCount = 2; }
+  else if(p < 0.75){ color = '#8FB35C'; leafCount = 3; }
+  else { color = '#4F7A2A'; leafCount = 5; }
+  const stemH = wilted ? 18 : 16 + Math.max(0,p) * 30;
+  const baseY = 58;
+  const topY = baseY - stemH;
+  let leaves = '';
+  for(let i=0;i<leafCount;i++){
+    const t = (i+1)/(leafCount+0.5);
+    const y = baseY - stemH*t;
+    const side = i%2===0 ? 1 : -1;
+    const droop = wilted ? 10 : -4;
+    leaves += `<path d="M20 ${y} Q ${20+side*14} ${y+droop} ${20+side*3} ${y+14}" stroke="${color}" stroke-width="2.4" fill="none" stroke-linecap="round"/>`;
+  }
+  return `<svg width="46" height="64" viewBox="0 0 40 64" fill="none">
+    <ellipse cx="20" cy="60" rx="13" ry="3" fill="#E6E0CE"/>
+    <path d="M20 ${baseY} L20 ${topY}" stroke="${wilted?'#A33131':'#5C4A34'}" stroke-width="2.4" stroke-linecap="round" ${wilted?'stroke-dasharray="1 3"':''}/>
+    ${leaves}
+  </svg>`;
+}
+
+function budgetPercent(){
+  const spent = state.expenses.items.reduce((s,i)=>s+Number(i.amount||0),0);
+  const budget = Number(state.expenses.budget||0);
+  if(budget<=0) return {percent:1, spent, budget, remaining:0};
+  return {percent:(budget-spent)/budget, spent, budget, remaining: budget-spent};
+}
+
+/* ---------- DASHBOARD ---------- */
+function renderDashboard(){
+  const todayShort = new Date().toLocaleDateString('en-US',{weekday:'short'}).slice(0,3);
+  const todayClasses = state.schedule.filter(c=>c.day===todayShort).sort((a,b)=>a.start.localeCompare(b.start));
+  const upcoming = state.deadlines.filter(d=>!d.done).map(d=>({...d, days:daysUntil(d.due)})).sort((a,b)=>a.days-b.days).slice(0,4);
+  const bp = budgetPercent();
+  const statusText = bp.percent<0 ? 'Over budget — laging tignan ang gastos' : bp.percent<0.25 ? 'Kaunti na lang natitira' : bp.percent<0.6 ? 'Konti-konti, tama lang' : 'Malusog ang badyet mo';
+
+  return `
+    <h2 class="section-title">Kumusta, Iskolar!</h2>
+
+    <div class="card seed-card">
+      ${seedlingSvg(bp.percent)}
+      <div class="seed-stats">
+        <div class="seed-label">Natitira ngayong buwan</div>
+        <div class="seed-amount">${peso(bp.remaining)}</div>
+        <div class="muted" style="margin-top:2px;">${esc(statusText)}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${Math.max(0,Math.min(100,bp.percent*100))}%;background:${bp.percent<0?'#A33131':bp.percent<0.25?'#C97F1E':'#4F7A2A'};"></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <strong style="font-size:13.5px;color:var(--ink);">Klase ngayong araw</strong>
+        <span class="muted">${DAY_FULL[todayShort]||''}</span>
+      </div>
+      ${todayClasses.length===0 ? `<div class="empty">Walang klase ngayong araw. Enjoy!</div>` :
+        todayClasses.map(c=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);">
+          <div>
+            <div style="font-size:13.5px;font-weight:500;color:var(--ink);">${esc(c.code)} ${esc(c.title? '· '+c.title:'')}</div>
+            <div class="muted">${esc(c.room||'TBA')} ${c.instructor?'· '+esc(c.instructor):''}</div>
+          </div>
+          <div class="class-time">${fmtTime(c.start)}–${fmtTime(c.end)}</div>
+        </div>`).join('')}
+    </div>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <strong style="font-size:13.5px;color:var(--ink);">Paparating na deadlines</strong>
+      </div>
+      ${upcoming.length===0 ? `<div class="empty">Wala pang deadline na naka-log. Manatiling updated!</div>` :
+        upcoming.map(d=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);">
+          <div>
+            <div style="font-size:13.5px;font-weight:500;color:var(--ink);">${esc(d.title)}</div>
+            <div class="muted">${esc(d.course||d.type)}</div>
+          </div>
+          ${countdownBadge(d.days)}
+        </div>`).join('')}
+    </div>
+  `;
+}
+
+function fmtTime(t){
+  if(!t) return '';
+  const [h,m] = t.split(':').map(Number);
+  const ap = h>=12?'PM':'AM';
+  let hh = h%12; if(hh===0) hh=12;
+  return `${hh}:${String(m).padStart(2,'0')}${ap}`;
+}
+function daysUntil(dateStr){
+  const today = new Date(); today.setHours(0,0,0,0);
+  const due = new Date(dateStr+'T00:00:00');
+  return Math.round((due-today)/86400000);
+}
+function countdownBadge(days){
+  let cls='ok', txt='';
+  if(days<0){ cls='urgent'; txt=`${Math.abs(days)}d overdue`; }
+  else if(days===0){ cls='urgent'; txt='Due today'; }
+  else if(days<=3){ cls='urgent'; txt=`${days}d left`; }
+  else if(days<=7){ cls='soon'; txt=`${days}d left`; }
+  else { cls='ok'; txt=`${days}d left`; }
+  return `<span class="dl-count ${cls}">${txt}</span>`;
+}
+
+/* ---------- SCHEDULE ---------- */
+function renderSchedule(){
+  const dayCounts = {};
+  DAYS.forEach(d=>dayCounts[d]=state.schedule.filter(c=>c.day===d).length);
+  const items = state.schedule.filter(c=>c.day===state.scheduleDay).sort((a,b)=>a.start.localeCompare(b.start));
+
+  return `
+    <h2 class="section-title">Class schedule</h2>
+    <div class="day-pills">
+      ${DAYS.map(d=>`<button class="day-pill ${state.scheduleDay===d?'active':''}" data-action="pick-day" data-day="${d}">${d}${dayCounts[d]>0?'<span class="dot"></span>':''}</button>`).join('')}
+    </div>
+    <div class="fab-row">
+      <button class="primary" data-action="toggle-class-form">${iconPlus()} <span style="vertical-align:2px;">Add class</span></button>
+    </div>
+    ${state.showClassForm ? classForm() : ''}
+    ${items.length===0 ? `<div class="empty">${iconCal()}<br>Walang class na naka-schedule sa ${DAY_FULL[state.scheduleDay]}.</div>` :
+      items.map(c=>`
+      <div class="card class-card ${c.type==='lab'?'lab':''}">
+        <div class="class-row-top">
+          <div>
+            <div class="class-time">${fmtTime(c.start)} – ${fmtTime(c.end)}</div>
+            <div class="class-title">${esc(c.code)}</div>
+          </div>
+          <div class="row-actions">
+            <button class="icon-btn" data-action="edit-class" data-id="${c.id}">${iconEdit()}</button>
+            <button class="icon-btn danger" data-action="delete-class" data-id="${c.id}">${iconTrash()}</button>
+          </div>
+        </div>
+        <div class="muted" style="margin-bottom:6px;">${esc(c.title||'')}${c.section?' · Sec '+esc(c.section):''}</div>
+        <div class="muted">${esc(c.room||'Room TBA')}${c.instructor?' · '+esc(c.instructor):''}</div>
+        <div style="margin-top:8px;"><span class="badge ${c.type==='lab'?'lab':'lec'}">${c.type==='lab'?'LAB':'LECTURE'}</span></div>
+      </div>`).join('')}
+  `;
+}
+
+function classForm(){
+  const e = state.editingClass;
+  return `
+  <form class="card" data-form="class-form" style="margin-bottom:14px;">
+    <div class="form-grid">
+      <label class="field">Course code
+        <input name="code" required placeholder="e.g. MATH 20" value="${e?esc(e.code):''}">
+      </label>
+      <label class="field">Section
+        <input name="section" placeholder="e.g. WFY-2L" value="${e?esc(e.section||''):''}">
+      </label>
+    </div>
+    <label class="field" style="margin-bottom:10px;">Course title
+      <input name="title" placeholder="e.g. Analytic Geometry" value="${e?esc(e.title||''):''}">
+    </label>
+    <div class="form-grid">
+      <label class="field">Day
+        <select name="day">${DAYS.map(d=>`<option value="${d}" ${(e?e.day:state.scheduleDay)===d?'selected':''}>${DAY_FULL[d]}</option>`).join('')}</select>
+      </label>
+      <label class="field">Type
+        <select name="type">
+          <option value="lec" ${e&&e.type==='lec'?'selected':''}>Lecture</option>
+          <option value="lab" ${e&&e.type==='lab'?'selected':''}>Laboratory</option>
+        </select>
+      </label>
+    </div>
+    <div class="form-grid">
+      <label class="field">Start time
+        <input type="time" name="start" required value="${e?e.start:'07:00'}">
+      </label>
+      <label class="field">End time
+        <input type="time" name="end" required value="${e?e.end:'08:00'}">
+      </label>
+    </div>
+    <div class="form-grid">
+      <label class="field">Room
+        <input name="room" placeholder="e.g. AECH 200" value="${e?esc(e.room||''):''}">
+      </label>
+      <label class="field">Instructor
+        <input name="instructor" placeholder="e.g. Dr. Santos" value="${e?esc(e.instructor||''):''}">
+      </label>
+    </div>
+    <input type="hidden" name="id" value="${e?e.id:''}">
+    <div class="form-actions">
+      <button type="submit" class="primary">${e?'Save changes':'Add class'}</button>
+      <button type="button" class="ghost" data-action="toggle-class-form">Cancel</button>
+    </div>
+  </form>`;
+}
+
+/* ---------- EXPENSES ---------- */
+function renderExpenses(){
+  const bp = budgetPercent();
+  const totals = {};
+  CATEGORIES.forEach(c=>totals[c.key]=0);
+  state.expenses.items.forEach(i=>{ totals[i.category] = (totals[i.category]||0) + Number(i.amount||0); });
+  const maxCat = Math.max(1, ...Object.values(totals));
+  const recent = [...state.expenses.items].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,12);
+
+  return `
+    <h2 class="section-title">Expenses</h2>
+
+    <div class="card seed-card">
+      ${seedlingSvg(bp.percent)}
+      <div class="seed-stats">
+        <div class="seed-label">Buwanang badyet</div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="font-family:var(--font-mono);font-size:12px;color:var(--bark);">₱</span>
+          <input id="budgetInput" type="number" min="0" step="1" value="${state.expenses.budget||''}" placeholder="0" style="max-width:120px;padding:5px 8px;font-family:var(--font-mono);font-weight:600;">
+          <button class="ghost" data-action="set-budget" style="padding:6px 10px;font-size:12px;">Set</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat-box"><div class="v">${peso(bp.spent)}</div><div class="l">Nagastos</div></div>
+      <div class="stat-box"><div class="v">${peso(bp.remaining)}</div><div class="l">Natitira</div></div>
+    </div>
+
+    <div class="card">
+      <strong style="font-size:13.5px;color:var(--ink);display:block;margin-bottom:10px;">Saan napunta</strong>
+      ${CATEGORIES.map(c=>`
+        <div class="cat-bar-row">
+          <span class="cat-swatch" style="background:${c.color};"></span>
+          <span class="cat-name">${c.label}</span>
+          <span class="cat-amt">${peso(totals[c.key])}</span>
+        </div>
+        <div class="bar-track" style="margin:-4px 0 8px;"><div class="bar-fill" style="width:${(totals[c.key]/maxCat)*100}%;background:${c.color};"></div></div>
+      `).join('')}
+    </div>
+
+    <div class="fab-row">
+      <button class="primary" data-action="toggle-expense-form">${iconPlus()} <span style="vertical-align:2px;">Add expense</span></button>
+    </div>
+    ${state.showExpenseForm ? expenseForm() : ''}
+
+    <div class="card">
+      <strong style="font-size:13.5px;color:var(--ink);display:block;margin-bottom:4px;">Kamakailang gastos</strong>
+      ${recent.length===0 ? `<div class="empty">Wala pang naitalang gastos.</div>` :
+        recent.map(i=>{
+          const cat = CATEGORIES.find(c=>c.key===i.category) || CATEGORIES[CATEGORIES.length-1];
+          return `<div class="expense-item">
+            <div class="expense-left">
+              <span class="expense-cat">${cat.label}</span>
+              <span class="expense-note">${esc(i.note||'')} ${i.date?'· '+i.date:''}</span>
+            </div>
+            <div class="row-actions">
+              <span class="expense-amt">${peso(i.amount)}</span>
+              <button class="icon-btn danger" data-action="delete-expense" data-id="${i.id}">${iconTrash()}</button>
+            </div>
+          </div>`;
+        }).join('')}
+    </div>
+  `;
+}
+
+function expenseForm(){
+  const today = new Date().toISOString().slice(0,10);
+  return `
+  <form class="card" data-form="expense-form" style="margin-bottom:14px;">
+    <div class="form-grid">
+      <label class="field">Amount (₱)
+        <input type="number" name="amount" min="0" step="0.01" required placeholder="0.00">
+      </label>
+      <label class="field">Category
+        <select name="category">${CATEGORIES.map(c=>`<option value="${c.key}">${c.label}</option>`).join('')}</select>
+      </label>
+    </div>
+    <div class="form-grid">
+      <label class="field">Date
+        <input type="date" name="date" value="${today}">
+      </label>
+      <label class="field">Note
+        <input name="note" placeholder="optional">
+      </label>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="primary">Add expense</button>
+      <button type="button" class="ghost" data-action="toggle-expense-form">Cancel</button>
+    </div>
+  </form>`;
+}
+
+/* ---------- DEADLINES ---------- */
+function renderDeadlines(){
+  const pending = state.deadlines.filter(d=>!d.done).map(d=>({...d,days:daysUntil(d.due)})).sort((a,b)=>a.days-b.days);
+  const done = state.deadlines.filter(d=>d.done).sort((a,b)=>b.due.localeCompare(a.due));
+
+  return `
+    <h2 class="section-title">Deadlines</h2>
+    <div class="fab-row">
+      <button class="primary" data-action="toggle-deadline-form">${iconPlus()} <span style="vertical-align:2px;">Add deadline</span></button>
+    </div>
+    ${state.showDeadlineForm ? deadlineForm() : ''}
+
+    ${pending.length===0 ? `<div class="empty">${iconFlag()}<br>Wala pang deadline na naka-log.</div>` :
+      pending.map(d=>deadlineCard(d)).join('')}
+
+    ${done.length>0 ? `<h2 class="section-title" style="margin-top:20px;font-size:15px;">Tapos na</h2>${done.map(d=>deadlineCard(d,true)).join('')}` : ''}
+  `;
+}
+
+function deadlineCard(d, isDone){
+  const days = isDone ? null : daysUntil(d.due);
+  let cls = 'ok';
+  if(!isDone){ cls = days<=3 ? 'urgent' : days<=7 ? 'soon' : 'ok'; }
+  return `
+    <div class="card deadline-card ${isDone?'done':cls}">
+      <div class="checkbox-circle ${isDone?'checked':''}" data-action="toggle-done" data-id="${d.id}">${iconCheck()}</div>
+      <div style="flex:1;">
+        <div class="dl-title ${isDone?'strike':''}">${esc(d.title)}</div>
+        <div class="dl-meta">${esc(d.course||'')}${d.course?' · ':''}${esc(d.type)} · ${d.priority} priority · ${d.due}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+        ${isDone?'':countdownBadge(days)}
+        <button class="icon-btn danger" data-action="delete-deadline" data-id="${d.id}">${iconTrash()}</button>
+      </div>
+    </div>`;
+}
+
+function deadlineForm(){
+  const today = new Date().toISOString().slice(0,10);
+  return `
+  <form class="card" data-form="deadline-form" style="margin-bottom:14px;">
+    <label class="field" style="margin-bottom:10px;">Title
+      <input name="title" required placeholder="e.g. Chem lab report 3">
+    </label>
+    <div class="form-grid">
+      <label class="field">Course
+        <input name="course" placeholder="e.g. CHEM 40">
+      </label>
+      <label class="field">Due date
+        <input type="date" name="due" required value="${today}">
+      </label>
+    </div>
+    <div class="form-grid">
+      <label class="field">Type
+        <select name="type">${DEADLINE_TYPES.map(t=>`<option value="${t}">${t}</option>`).join('')}</select>
+      </label>
+      <label class="field">Priority
+        <select name="priority">${PRIORITIES.map(p=>`<option value="${p}" ${p==='Medium'?'selected':''}>${p}</option>`).join('')}</select>
+      </label>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="primary">Add deadline</button>
+      <button type="button" class="ghost" data-action="toggle-deadline-form">Cancel</button>
+    </div>
+  </form>`;
+}
+
+/* ---------- EVENTS ---------- */
+function onClick(e){
+  const btn = e.target.closest('[data-action]');
+  if(!btn) return;
+  const action = btn.dataset.action;
+
+  if(action==='tab'){ state.tab = btn.dataset.tab; state.showClassForm=false; state.showExpenseForm=false; state.showDeadlineForm=false; state.editingClass=null; render(); }
+  else if(action==='pick-day'){ state.scheduleDay = btn.dataset.day; render(); }
+  else if(action==='toggle-class-form'){ state.showClassForm = !state.showClassForm; if(!state.showClassForm) state.editingClass=null; render(); }
+  else if(action==='toggle-expense-form'){ state.showExpenseForm = !state.showExpenseForm; render(); }
+  else if(action==='toggle-deadline-form'){ state.showDeadlineForm = !state.showDeadlineForm; render(); }
+  else if(action==='edit-class'){
+    state.editingClass = state.schedule.find(c=>c.id===btn.dataset.id);
+    state.showClassForm = true; render();
+  }
+  else if(action==='delete-class'){
+    state.schedule = state.schedule.filter(c=>c.id!==btn.dataset.id);
+    saveSchedule(); render();
+  }
+  else if(action==='delete-expense'){
+    state.expenses.items = state.expenses.items.filter(i=>i.id!==btn.dataset.id);
+    saveExpenses(); render();
+  }
+  else if(action==='delete-deadline'){
+    state.deadlines = state.deadlines.filter(d=>d.id!==btn.dataset.id);
+    saveDeadlines(); render();
+  }
+  else if(action==='toggle-done'){
+    const d = state.deadlines.find(d=>d.id===btn.dataset.id);
+    if(d){ d.done = !d.done; saveDeadlines(); render(); }
+  }
+  else if(action==='set-budget'){
+    const val = Number(document.getElementById('budgetInput').value)||0;
+    state.expenses.budget = val;
+    saveExpenses(); render();
+  }
+}
+
+function onSubmit(e){
+  const form = e.target.closest('form');
+  if(!form) return;
+  e.preventDefault();
+  const type = form.dataset.form;
+  const fd = new FormData(form);
+
+  if(type==='class-form'){
+    const id = fd.get('id');
+    const data = {
+      id: id || uid(),
+      code: fd.get('code'), section: fd.get('section'), title: fd.get('title'),
+      day: fd.get('day'), type: fd.get('type'), start: fd.get('start'), end: fd.get('end'),
+      room: fd.get('room'), instructor: fd.get('instructor')
+    };
+    if(id){ state.schedule = state.schedule.map(c=>c.id===id?data:c); }
+    else{ state.schedule.push(data); }
+    state.showClassForm=false; state.editingClass=null;
+    saveSchedule(); render();
+  }
+  else if(type==='expense-form'){
+    state.expenses.items.push({
+      id: uid(), amount: Number(fd.get('amount'))||0, category: fd.get('category'),
+      date: fd.get('date') || new Date().toISOString().slice(0,10), note: fd.get('note')
+    });
+    state.showExpenseForm=false;
+    saveExpenses(); render();
+  }
+  else if(type==='deadline-form'){
+    state.deadlines.push({
+      id: uid(), title: fd.get('title'), course: fd.get('course'), due: fd.get('due'),
+      type: fd.get('type'), priority: fd.get('priority'), done:false
+    });
+    state.showDeadlineForm=false;
+    saveDeadlines(); render();
+  }
+}
+
+loadAll();
+</script>
+</body>
+</html>
