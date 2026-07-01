@@ -20,6 +20,8 @@
     --ink:#1B2E23;
     --ink-2:#24392C;
     --paper:#FAF7ED;
+    --bg:#FAF7ED;
+    --text:#1B2E23;
     --card:#FFFFFF;
     --maroon:#7A2942;
     --maroon-bg:#F6E7EC;
@@ -35,9 +37,19 @@
     --font-body:'Inter',-apple-system,sans-serif;
     --font-mono:'IBM Plex Mono',monospace;
   }
+  html[data-theme="dark"]{
+    --bg:#141910;
+    --card:#1E2618;
+    --text:#EDE9DA;
+    --line:#33402A;
+    --bark:#A6AE96;
+    --leaf-bg:#233420;
+    --maroon-bg:#3A1F27;
+    --mango-bg:#3A2A14;
+  }
   *{box-sizing:border-box;}
   body{margin:0;background:var(--ink);font-family:var(--font-body);}
-  #root{max-width:460px;margin:0 auto;min-height:100vh;background:var(--paper);display:flex;flex-direction:column;box-shadow:0 0 40px rgba(0,0,0,0.25);}
+  #root{max-width:460px;margin:0 auto;min-height:100vh;background:var(--bg);display:flex;flex-direction:column;box-shadow:0 0 40px rgba(0,0,0,0.25);}
   .topbar{background:var(--ink);color:var(--paper);padding:18px 20px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
   .brand{display:flex;align-items:center;gap:10px;}
   .brand-name{font-family:var(--font-display);font-size:22px;font-weight:600;letter-spacing:0.3px;line-height:1;}
@@ -45,11 +57,11 @@
   .date-chip{font-family:var(--font-mono);font-size:11px;color:#B9C9BB;text-align:right;line-height:1.5;}
   #content{flex:1;padding:16px 16px 90px;overflow-y:auto;}
   .tabbar{position:sticky;bottom:0;background:var(--ink);display:flex;padding:8px 10px calc(8px + env(safe-area-inset-bottom));flex-shrink:0;max-width:460px;margin:0 auto;width:100%;}
-  .tab-btn{flex:1;background:none;border:none;color:#8FA093;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 2px;cursor:pointer;font-family:var(--font-body);font-size:10px;letter-spacing:0.2px;border-radius:10px;transition:color .15s;}
+  .tab-btn{flex:1;background:none;border:none;color:#8FA093;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 2px;cursor:pointer;font-family:var(--font-body);font-size:10px;letter-spacing:0.2px;border-radius:10px;}
   .tab-btn.active{color:var(--paper);background:var(--ink-2);}
   .tab-btn svg{width:20px;height:20px;}
 
-  h2.section-title{font-family:var(--font-display);font-size:19px;font-weight:600;color:var(--ink);margin:0 0 12px;}
+  h2.section-title{font-family:var(--font-display);font-size:19px;font-weight:600;color:var(--text);margin:0 0 12px;}
   .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:12px;}
   .muted{color:var(--bark);font-size:12.5px;}
   .empty{text-align:center;padding:30px 10px;color:var(--bark);font-size:13px;}
@@ -57,20 +69,23 @@
 
   button.primary{background:var(--ink);color:var(--paper);border:none;border-radius:10px;padding:11px 16px;font-family:var(--font-body);font-weight:600;font-size:14px;cursor:pointer;}
   button.primary:active{transform:scale(0.98);}
-  button.ghost{background:transparent;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:10px 14px;font-family:var(--font-body);font-weight:500;font-size:13px;cursor:pointer;}
+  button.ghost{background:transparent;border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px 14px;font-family:var(--font-body);font-weight:500;font-size:13px;cursor:pointer;}
+  button.ghost.small{padding:6px 10px;font-size:12px;}
   button.icon-btn{background:none;border:none;cursor:pointer;color:var(--bark);padding:4px;display:flex;}
   button.icon-btn svg{width:16px;height:16px;}
   button.icon-btn.danger:hover{color:var(--danger);}
 
-  input,select{width:100%;font-family:var(--font-body);font-size:14px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);}
+  input,select{width:100%;font-family:var(--font-body);font-size:14px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text);}
   input:focus,select:focus{outline:2px solid var(--leaf-light);outline-offset:-1px;}
-  button:focus-visible,.checkbox-circle:focus-visible,.day-pill:focus-visible{outline:2px solid var(--leaf-light);outline-offset:2px;}
+  button:focus-visible,.checkbox-circle:focus-visible,.day-pill:focus-visible,.cal-cell:focus-visible{outline:2px solid var(--leaf-light);outline-offset:2px;}
   label.field{display:flex;flex-direction:column;gap:4px;font-size:11.5px;color:var(--bark);font-weight:500;}
+  label.field.checkbox-field{flex-direction:row;align-items:center;gap:7px;}
   .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;}
   .form-actions{display:flex;gap:8px;margin-top:4px;}
+  .warn-box{background:var(--maroon-bg);color:var(--maroon);border-radius:10px;padding:9px 12px;font-size:12px;margin-bottom:10px;line-height:1.4;}
 
   .day-pills{display:flex;gap:6px;overflow-x:auto;margin-bottom:14px;padding-bottom:2px;}
-  .day-pill{flex-shrink:0;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:20px;padding:7px 14px;font-size:12.5px;font-weight:500;cursor:pointer;position:relative;}
+  .day-pill{flex-shrink:0;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:20px;padding:7px 14px;font-size:12.5px;font-weight:500;cursor:pointer;position:relative;}
   .day-pill.active{background:var(--leaf);border-color:var(--leaf);color:#fff;}
   .day-pill .dot{position:absolute;top:4px;right:6px;width:5px;height:5px;border-radius:50%;background:var(--mango);}
 
@@ -78,32 +93,42 @@
   .class-card.lab{border-left-color:var(--mango);}
   .class-row-top{display:flex;justify-content:space-between;align-items:flex-start;}
   .class-time{font-family:var(--font-mono);font-size:12px;color:var(--bark);font-weight:600;}
-  .class-title{font-family:var(--font-display);font-size:16px;font-weight:600;color:var(--ink);margin:2px 0 3px;}
+  .class-title{font-family:var(--font-display);font-size:16px;font-weight:600;color:var(--text);margin:2px 0 3px;}
   .badge{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;letter-spacing:0.3px;}
   .badge.lec{background:var(--leaf-bg);color:var(--leaf);}
   .badge.lab{background:var(--mango-bg);color:var(--mango);}
+  .linked-dl{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);}
+  .linked-dl-row{display:flex;justify-content:space-between;font-size:11.5px;color:var(--text);padding:3px 0;}
 
   .seed-card{display:flex;align-items:center;gap:14px;}
   .seed-stats{flex:1;}
-  .seed-amount{font-family:var(--font-mono);font-size:24px;font-weight:600;color:var(--ink);}
+  .seed-amount{font-family:var(--font-mono);font-size:24px;font-weight:600;color:var(--text);}
   .seed-label{font-size:11.5px;color:var(--bark);margin-bottom:2px;}
   .bar-track{height:8px;background:var(--line);border-radius:6px;overflow:hidden;margin-top:8px;}
   .bar-fill{height:100%;border-radius:6px;}
 
   .stat-row{display:flex;gap:10px;margin-bottom:12px;}
   .stat-box{flex:1;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;}
-  .stat-box .v{font-family:var(--font-mono);font-size:16px;font-weight:600;color:var(--ink);}
+  .stat-box .v{font-family:var(--font-mono);font-size:16px;font-weight:600;color:var(--text);}
   .stat-box .l{font-size:10.5px;color:var(--bark);margin-top:2px;}
+
+  .pace-card{display:flex;align-items:center;gap:10px;}
+  .pace-icon{width:34px;height:34px;border-radius:10px;background:var(--leaf-bg);color:var(--leaf);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .pace-icon.over{background:var(--maroon-bg);color:var(--maroon);}
+  .pace-icon svg{width:18px;height:18px;}
+  .pace-text{font-size:12.5px;color:var(--text);line-height:1.4;}
+  .pace-text b{font-family:var(--font-mono);}
 
   .cat-bar-row{display:flex;align-items:center;gap:8px;margin-bottom:9px;}
   .cat-swatch{width:9px;height:9px;border-radius:3px;flex-shrink:0;}
-  .cat-name{font-size:12px;color:var(--ink);flex:1;}
+  .cat-name{font-size:12px;color:var(--text);flex:1;}
   .cat-amt{font-family:var(--font-mono);font-size:12px;color:var(--bark);}
 
   .expense-item{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);}
   .expense-item:last-child{border-bottom:none;}
   .expense-left{display:flex;flex-direction:column;}
-  .expense-cat{font-size:12.5px;color:var(--ink);font-weight:500;}
+  .expense-cat{font-size:12.5px;color:var(--text);font-weight:500;display:flex;align-items:center;gap:5px;}
+  .expense-cat svg{width:11px;height:11px;color:var(--bark);}
   .expense-note{font-size:11px;color:var(--bark);}
   .expense-amt{font-family:var(--font-mono);font-size:14px;font-weight:600;color:var(--maroon);}
 
@@ -112,58 +137,76 @@
   .deadline-card.soon{border-left-color:var(--mango);}
   .deadline-card.ok{border-left-color:var(--leaf);}
   .deadline-card.done{opacity:0.5;}
-  .dl-title{font-family:var(--font-display);font-size:15.5px;font-weight:600;color:var(--ink);}
+  .dl-title{font-family:var(--font-display);font-size:15.5px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:5px;}
+  .dl-title svg{width:12px;height:12px;color:var(--bark);flex-shrink:0;}
   .dl-title.strike{text-decoration:line-through;}
   .dl-meta{font-size:11.5px;color:var(--bark);margin-top:2px;}
   .dl-count{font-family:var(--font-mono);font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;white-space:nowrap;}
   .dl-count.urgent{background:var(--maroon-bg);color:var(--maroon);}
   .dl-count.soon{background:var(--mango-bg);color:var(--mango);}
   .dl-count.ok{background:var(--leaf-bg);color:var(--leaf);}
+  .dl-stop{font-size:10px;color:var(--bark);text-decoration:underline;background:none;border:none;cursor:pointer;padding:0;}
 
   .fab-row{display:flex;justify-content:flex-end;margin-bottom:12px;}
   .toggle-form{border-top:1px dashed var(--line);margin-top:10px;padding-top:12px;}
   .row-actions{display:flex;gap:8px;align-items:center;}
-  .checkbox-circle{width:20px;height:20px;border-radius:50%;border:2px solid var(--line);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:#fff;}
+  .checkbox-circle{width:20px;height:20px;border-radius:50%;border:2px solid var(--line);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--card);}
   .checkbox-circle.checked{background:var(--leaf);border-color:var(--leaf);}
   .checkbox-circle svg{width:12px;height:12px;stroke:#fff;display:none;}
   .checkbox-circle.checked svg{display:block;}
   .loading-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;color:var(--paper);background:var(--ink);gap:10px;font-family:var(--font-body);font-size:13px;}
   .save-toast{display:none;position:fixed;left:50%;bottom:78px;transform:translateX(-50%);background:var(--danger);color:#fff;font-size:12px;font-family:var(--font-body);padding:8px 14px;border-radius:20px;box-shadow:0 4px 14px rgba(0,0,0,0.25);z-index:50;max-width:90%;text-align:center;}
 
-  /* Dark Theme */
-  body.dark { 
-    --ink: #E4E6EB; --paper: #18191A; --card: #242526; 
-    --line: #3E4042; --bark: #B0B3B8; --leaf-bg: #2D3F2D; 
-    --maroon-bg: #4B2525; --mango-bg: #4A3311;
-  }
-  body.dark .topbar { background: #242526; border-bottom: 1px solid var(--line); }
-  body.dark .tabbar { background: #242526; border-top: 1px solid var(--line); }
-  body.dark input, body.dark select { background: #3A3B3C; color: #E4E6EB; border-color: var(--line); }
+  /* Settings */
+  .settings-row{display:flex;justify-content:space-between;align-items:center;gap:12px;}
+  .settings-label{font-size:13.5px;font-weight:600;color:var(--text);}
+  .switch{width:44px;height:26px;border-radius:20px;background:var(--line);border:none;position:relative;cursor:pointer;padding:0;flex-shrink:0;}
+  .switch::after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:transform .15s ease;box-shadow:0 1px 3px rgba(0,0,0,0.3);}
+  .switch.on{background:var(--leaf);}
+  .switch.on::after{transform:translateX(18px);}
+  label.file-btn{display:inline-flex;align-items:center;justify-content:center;}
 
-  /* Grid Helpers */
-  .grid-container { overflow-x: auto; margin-top: 15px; padding-bottom: 10px; }
-  .schedule-grid { display: grid; grid-template-columns: 50px repeat(6, 120px); }
-  .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; background: var(--line); }
-  .cal-day { background: var(--paper); min-height: 80px; padding: 4px; font-size: 11px; }
+  /* Segmented toggle */
+  .seg{display:flex;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:3px;margin-bottom:14px;}
+  .seg button{flex:1;background:none;border:none;padding:7px 0;border-radius:8px;font-size:12.5px;font-weight:600;color:var(--bark);cursor:pointer;font-family:var(--font-body);}
+  .seg button.active{background:var(--ink);color:var(--paper);}
 
-  /* Animations */
-  @keyframes fadeInUp {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
+  /* Weekly timetable grid */
+  .grid-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;margin-bottom:14px;-webkit-overflow-scrolling:touch;}
+  .grid-inner{display:flex;min-width:600px;}
+  .grid-timecol{width:42px;flex-shrink:0;}
+  .grid-col-header{text-align:center;font-size:11px;font-weight:600;color:var(--text);padding:6px 0;border-bottom:1px solid var(--line);background:var(--card);}
+  .grid-timecol .grid-col-header{visibility:hidden;}
+  .grid-body{position:relative;}
+  .grid-daycol{flex:1;min-width:88px;border-left:1px solid var(--line);}
+  .grid-daycol .grid-body{background:var(--card);}
+  .grid-hourline{position:absolute;left:0;right:0;border-top:1px solid var(--line);}
+  .grid-time-label{position:absolute;right:4px;font-family:var(--font-mono);font-size:9px;color:var(--bark);transform:translateY(-50%);}
+  .grid-block{position:absolute;left:2px;right:2px;border-radius:6px;padding:3px 5px;font-size:9.5px;line-height:1.25;overflow:hidden;background:var(--leaf-bg);border-left:3px solid var(--leaf);color:var(--text);}
+  .grid-block.lab{background:var(--mango-bg);border-left-color:var(--mango);}
+  .grid-block .gb-code{font-weight:700;display:block;}
+  .grid-block .gb-time{font-family:var(--font-mono);font-size:8.5px;opacity:.85;display:block;}
 
-  #content { 
-    animation: fadeInUp 0.3s ease-out; 
-  }
+  /* Calendar month view */
+  .cal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+  .cal-title{font-family:var(--font-display);font-size:15px;font-weight:600;color:var(--text);}
+  .cal-nav{display:flex;gap:4px;}
+  .cal-nav button{background:var(--card);border:1px solid var(--line);color:var(--text);width:28px;height:28px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:14px;}
+  .cal-dow{text-align:center;font-size:9.5px;color:var(--bark);font-weight:600;padding-bottom:3px;}
+  .cal-cell{aspect-ratio:1;border-radius:8px;border:1px solid var(--line);background:var(--card);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:11px;color:var(--text);cursor:pointer;gap:2px;padding:0;font-family:var(--font-body);}
+  .cal-cell.empty{border:none;background:transparent;cursor:default;}
+  .cal-cell.today{border-color:var(--leaf);border-width:2px;}
+  .cal-cell.selected{background:var(--ink);color:var(--paper);}
+  .cal-dots{display:flex;gap:2px;}
+  .cal-dot{width:5px;height:5px;border-radius:50%;}
+  .cal-dot.urgent{background:var(--danger);}
+  .cal-dot.soon{background:var(--mango);}
+  .cal-dot.ok{background:var(--leaf);}
 
-  .card { transition: transform 0.2s ease, box-shadow 0.2s ease; }
-  .card:active { transform: scale(0.98); }
-  .tab-btn { transition: all 0.2s ease; }
-  .tab-btn svg { transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
-  .tab-btn.active svg { transform: scale(1.2); }
-  .btn { transition: opacity 0.2s ease, transform 0.1s ease; }
-  .btn:active { transform: translateY(1px); }
-
+  /* This week dashboard */
+  .week-day-group{margin-bottom:14px;}
+  .week-day-label{font-size:11.5px;font-weight:700;color:var(--bark);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px;}
 </style>
 </head>
 <body>
@@ -172,7 +215,7 @@
     <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#8FB35C" stroke-width="1.6"><path d="M12 21v-9"/><path d="M12 12c0-4 3-7 7-7 0 4-3 7-7 7z"/><path d="M12 12c0-3-2.5-5-6-5 0 3 2.5 5 6 5z"/></svg>
     <div>Loading your planner…</div>
   </div>
-  <div class="save-toast" id="saveError">Couldn't save — your device storage may be full or private-browsing is blocking it.</div>
+  <div class="save-toast" id="saveToast">Couldn't save — your device storage may be full or private-browsing is blocking it.</div>
 </div>
 
 <script>
@@ -188,54 +231,52 @@ const CATEGORIES = [
 ];
 const DEADLINE_TYPES = ['Requirement','Exam','Project','Org','Other'];
 const PRIORITIES = ['High','Medium','Low'];
+const GRID_START_HOUR = 7;   // 7:00 AM
+const GRID_END_HOUR = 21;    // 9:00 PM
+const GRID_HOUR_PX = 40;
+const RECUR_HORIZON_DAYS = 56; // 8 weeks
 
 let state = {
   tab: 'dashboard',
-  archives: [],
-  dashboardView: 'all',
-  scheduleView: 'list',
-  deadlineView: 'list',
-  darkMode: storageGet('punla_dark_mode', false),
-  scheduleDay: new Date().toLocaleDateString('en-US',{weekday:'short'}).slice(0,3),
+  theme: 'light',
   schedule: [],
-  expenses: { budget: 0, items: [] },
+  expenses: { budget: 0, items: [], rules: [] },
   deadlines: [],
+  deadlineRules: [],
+  archives: [],
   showClassForm: false,
   showExpenseForm: false,
   showDeadlineForm: false,
-  editingClass: null
+  editingClass: null,
+  classFormConflict: null,
+  scheduleDay: new Date().toLocaleDateString('en-US',{weekday:'short'}).slice(0,3),
+  scheduleView: 'list',        // 'list' | 'grid'
+  deadlineView: 'list',        // 'list' | 'calendar'
+  dashboardView: 'today',      // 'today' | 'week'
+  calendarCursor: new Date(),  // month currently shown in deadline calendar
+  calendarSelectedDate: null,
+  showArchives: false
 };
 
-/* ---------- UTILS ---------- */
+/* ---------- HELPERS ---------- */
 function uid(){ return Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
 function peso(n){ return '₱' + Number(n||0).toLocaleString('en-PH',{minimumFractionDigits:0,maximumFractionDigits:2}); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-
-function checkConflict(n){
-  const s1 = parseInt(n.start.replace(':', '')); 
-  const e1 = parseInt(n.end.replace(':', ''));
-  return state.schedule.find(c => {
-    if(c.id===n.id || c.day!==n.day) return false;
-    const s2 = parseInt(c.start.replace(':', '')); 
-    const e2 = parseInt(c.end.replace(':', ''));
-    return (s1 < e2 && e1 > s2);
-  });
+function fmtTime(t){
+  if(!t) return '';
+  const [h,m] = t.split(':').map(Number);
+  const ap = h>=12?'PM':'AM';
+  let hh = h%12; if(hh===0) hh=12;
+  return `${hh}:${String(m).padStart(2,'0')}${ap}`;
 }
-
-function processRecurring(){
-  const now = new Date().toISOString().split('T')[0];
-  state.expenses.items.filter(i => (i.weekly || i.monthly) && !i.lastGen).forEach(i => i.lastGen = now);
+function daysUntil(dateStr){
+  const today = new Date(); today.setHours(0,0,0,0);
+  const due = new Date(dateStr+'T00:00:00');
+  return Math.round((due-today)/86400000);
 }
+function todayStr(){ return new Date().toISOString().slice(0,10); }
 
-function getWeekRange(){
-  const now = new Date();
-  const first = now.getDate() - now.getDay();
-  return { start: new Date(now.setDate(first)), end: new Date(now.setDate(first+6)), dashboardView: state.dashboardView };
-}
-
-function syncDarkMode(){ document.body.classList.toggle('dark', state.darkMode); }
-
-/* ---------- STORAGE ---------- */
+/* ---------- STORAGE (localStorage-backed, works standalone & offline) ---------- */
 function storageGet(key, fallback){
   try{
     const raw = localStorage.getItem(key);
@@ -252,21 +293,33 @@ function storageSet(key, value){
     return false;
   }
 }
-function showSaveError(){
-  const el = document.getElementById('saveError');
+function showToast(msg){
+  const el = document.getElementById('saveToast');
   if(!el) return;
+  el.textContent = msg;
   el.style.display = 'block';
-  clearTimeout(showSaveError._t);
-  showSaveError._t = setTimeout(()=>{ el.style.display='none'; }, 4000);
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(()=>{ el.style.display='none'; }, 4000);
+}
+function showSaveError(){
+  showToast("Couldn't save — your device storage may be full or private-browsing is blocking it.");
 }
 
 async function loadAll(){
   state.schedule = storageGet('punla:schedule', []);
-  state.expenses = storageGet('punla:expenses', { budget: 0, items: [] });
+  const savedExpenses = storageGet('punla:expenses', { budget: 0, items: [] });
+  state.expenses = { budget: Number(savedExpenses.budget)||0, items: savedExpenses.items||[], rules: savedExpenses.rules||[] };
   state.deadlines = storageGet('punla:deadlines', []);
+  state.deadlineRules = storageGet('punla:deadlineRules', []);
+  state.archives = storageGet('punla:archives', []);
+  state.theme = storageGet('punla:theme', 'light');
+  applyTheme();
+
+  generateRecurringExpenses();
+  generateRecurringDeadlines();
+
   document.getElementById('loadingScreen').remove();
   buildShell();
-  syncDarkMode();
   render();
   registerServiceWorker();
 }
@@ -274,6 +327,10 @@ async function loadAll(){
 async function saveSchedule(){ storageSet('punla:schedule', state.schedule); }
 async function saveExpenses(){ storageSet('punla:expenses', state.expenses); }
 async function saveDeadlines(){ storageSet('punla:deadlines', state.deadlines); }
+async function saveDeadlineRules(){ storageSet('punla:deadlineRules', state.deadlineRules); }
+async function saveArchives(){ storageSet('punla:archives', state.archives); }
+async function saveTheme(){ storageSet('punla:theme', state.theme); }
+function applyTheme(){ document.documentElement.setAttribute('data-theme', state.theme); }
 
 function registerServiceWorker(){
   if('serviceWorker' in navigator){
@@ -281,6 +338,7 @@ function registerServiceWorker(){
   }
 }
 
+/* ---------- SHELL ---------- */
 function buildShell(){
   const root = document.getElementById('root');
   const today = new Date();
@@ -307,59 +365,37 @@ function buildShell(){
   root.addEventListener('click', onClick);
   root.addEventListener('submit', onSubmit);
   root.addEventListener('keydown', onKeydown);
-  
-  // File import event listener delegated to root
-  root.addEventListener('change', (e) => {
-    if(e.target.dataset.action === 'import-data') {
-      const file = e.target.files[0];
-      if(!file) return;
-      if(confirm('This will overwrite your current schedule, expenses, and deadlines. Proceed?')) {
-        const reader = new FileReader();
-        reader.onload = (re) => {
-          try {
-            const parsed = JSON.parse(re.target.result);
-            state.schedule = parsed.schedule || [];
-            state.expenses = parsed.expenses || { budget: 0, items: [] };
-            state.deadlines = parsed.deadlines || [];
-            saveSchedule(); saveExpenses(); saveDeadlines();
-            render();
-          } catch(err) { alert('Invalid backup file.'); }
-        };
-        reader.readAsText(file);
-      }
-      e.target.value = ''; // Reset input
-    }
-  });
+  root.addEventListener('change', onChange);
 }
 
 function tabBtn(id,label,icon){
   return `<button class="tab-btn ${state.tab===id?'active':''}" data-action="tab" data-tab="${id}">${icon}<span>${label}</span></button>`;
 }
-
-/* ---------- ICONS ---------- */
 function iconHome(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>`; }
 function iconCal(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>`; }
 function iconWallet(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M16 14h2"/></svg>`; }
 function iconFlag(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 21V4"/><path d="M5 4h13l-3 4 3 4H5"/></svg>`; }
-function iconSettings(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>`; }
+function iconSettings(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>`; }
 function iconPlus(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 5v14M5 12h14"/></svg>`; }
 function iconTrash(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-8 0v13a1 1 0 001 1h6a1 1 0 001-1V7"/></svg>`; }
 function iconEdit(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M16.5 3.5l4 4L8 20H4v-4L16.5 3.5z"/></svg>`; }
 function iconCheck(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M4 12l5 5L20 6"/></svg>`; }
+function iconRepeat(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>`; }
+function iconChevronLeft(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>`; }
+function iconChevronRight(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>`; }
+function iconArrowUp(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>`; }
+function iconArrowDown(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>`; }
 
 function render(){
-  const content = document.getElementById('content');
-  content.style.animation = 'none';
-  content.offsetHeight; /* trigger reflow */
-  content.style.animation = null; 
-
-  if(state.tab==='dashboard') content.innerHTML = renderDashboard();
-  else if(state.tab==='schedule') content.innerHTML = renderSchedule();
-  else if(state.tab==='expenses') content.innerHTML = renderExpenses();
-  else if(state.tab==='deadlines') content.innerHTML = renderDeadlines();
-  else if(state.tab==='settings') content.innerHTML = renderSettings();
+  const c = document.getElementById('content');
+  if(!c) return;
+  if(state.tab==='dashboard') c.innerHTML = renderDashboard();
+  else if(state.tab==='schedule') c.innerHTML = renderSchedule();
+  else if(state.tab==='expenses') c.innerHTML = renderExpenses();
+  else if(state.tab==='deadlines') c.innerHTML = renderDeadlines();
+  else if(state.tab==='settings') c.innerHTML = renderSettings();
   updateTabbar();
-  content.scrollTop = 0;
+  c.scrollTop = 0;
 }
 function updateTabbar(){
   document.querySelectorAll('.tab-btn').forEach(btn=>{
@@ -402,8 +438,113 @@ function budgetPercent(){
   return {percent:(budget-spent)/budget, spent, budget, remaining: budget-spent};
 }
 
+/* ---------- FEATURE 2: CLASS CONFLICT DETECTION ---------- */
+function checkConflict(candidate){
+  return state.schedule.find(c =>
+    c.id !== candidate.id &&
+    c.day === candidate.day &&
+    candidate.start < c.end && candidate.end > c.start
+  );
+}
+
+/* ---------- FEATURE 4: RECURRING EXPENSES ---------- */
+function addInterval(dateStr, repeat){
+  const d = new Date(dateStr+'T00:00:00');
+  if(repeat==='weekly') d.setDate(d.getDate()+7);
+  else if(repeat==='monthly') d.setMonth(d.getMonth()+1);
+  return d.toISOString().slice(0,10);
+}
+function generateRecurringExpenses(){
+  let changed = false;
+  const today = todayStr();
+  (state.expenses.rules||[]).forEach(rule=>{
+    if(!rule.repeat) return;
+    let cursor = rule.lastGenerated || rule.startDate;
+    let next = addInterval(cursor, rule.repeat);
+    let guard = 0;
+    while(next <= today && guard < 200){
+      if(!state.expenses.items.some(i=>i.ruleId===rule.id && i.date===next)){
+        state.expenses.items.push({
+          id: uid(), amount: rule.amount, category: rule.category,
+          date: next, note: rule.note, ruleId: rule.id, isRecurring: true
+        });
+        changed = true;
+      }
+      rule.lastGenerated = next;
+      cursor = next;
+      next = addInterval(cursor, rule.repeat);
+      guard++;
+    }
+  });
+  if(changed) saveExpenses();
+}
+
+/* ---------- FEATURE 6: RECURRING DEADLINES ---------- */
+function generateRecurringDeadlines(){
+  let changed = false;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const horizon = new Date(today); horizon.setDate(horizon.getDate()+RECUR_HORIZON_DAYS);
+
+  (state.deadlineRules||[]).forEach(rule=>{
+    if(!rule.repeat) return;
+    let instances = state.deadlines.filter(d=>d.ruleId===rule.id);
+    let lastDue = instances.length
+      ? new Date(Math.max(...instances.map(d=>new Date(d.due+'T00:00:00').getTime())))
+      : new Date(rule.startDate+'T00:00:00');
+    let guard = 0;
+    while(guard < 12){
+      const lastDueStr = lastDue.toISOString().slice(0,10);
+      const lastInstance = state.deadlines.find(d=>d.ruleId===rule.id && d.due===lastDueStr);
+      const shouldAdvance = !lastInstance || lastInstance.done || lastDue < today;
+      if(!shouldAdvance) break;
+      const next = new Date(lastDue); next.setDate(next.getDate()+7);
+      if(next > horizon) break;
+      const nextStr = next.toISOString().slice(0,10);
+      if(!state.deadlines.some(d=>d.ruleId===rule.id && d.due===nextStr)){
+        state.deadlines.push({
+          id: uid(), title: rule.title, course: rule.course, type: rule.type,
+          priority: rule.priority, due: nextStr, done: false, ruleId: rule.id, isRecurring: true
+        });
+        changed = true;
+      }
+      lastDue = next;
+      guard++;
+    }
+  });
+  if(changed) saveDeadlines();
+}
+
+/* ---------- FEATURE 5: SPENDING PACE ---------- */
+function getSpendingPace(){
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  const daysInMonth = new Date(y, m+1, 0).getDate();
+  const dayOfMonth = now.getDate();
+  const daysElapsed = dayOfMonth;
+  const daysLeft = Math.max(1, daysInMonth - dayOfMonth + 1);
+  const monthPrefix = `${y}-${String(m+1).padStart(2,'0')}`;
+  const spentThisMonth = state.expenses.items
+    .filter(i => (i.date||'').startsWith(monthPrefix))
+    .reduce((s,i)=>s+Number(i.amount||0), 0);
+  const avgPerDay = spentThisMonth / daysElapsed;
+  const budget = Number(state.expenses.budget||0);
+  const neededPerDay = (budget - spentThisMonth) / daysLeft;
+  return { avgPerDay, neededPerDay, spentThisMonth, isOver: neededPerDay < 0 && budget > 0 };
+}
+
 /* ---------- DASHBOARD ---------- */
 function renderDashboard(){
+  return `
+    <h2 class="section-title">Hello, Scholar!</h2>
+    <div class="seg">
+      <button data-action="set-dash-view" data-view="today" class="${state.dashboardView==='today'?'active':''}">Today</button>
+      <button data-action="set-dash-view" data-view="week" class="${state.dashboardView==='week'?'active':''}">This week</button>
+    </div>
+    ${state.dashboardView==='week' ? renderDashboardWeek() : renderDashboardToday()}
+  `;
+}
+
+function renderDashboardToday(){
   const todayShort = new Date().toLocaleDateString('en-US',{weekday:'short'}).slice(0,3);
   const todayClasses = state.schedule.filter(c=>c.day===todayShort).sort((a,b)=>a.start.localeCompare(b.start));
   const upcoming = state.deadlines.filter(d=>!d.done).map(d=>({...d, days:daysUntil(d.due)})).sort((a,b)=>a.days-b.days).slice(0,4);
@@ -411,8 +552,6 @@ function renderDashboard(){
   const statusText = bp.percent<0 ? 'Over budget — keep a close eye on spending' : bp.percent<0.25 ? 'Running low on funds' : bp.percent<0.6 ? 'Steady and on track' : 'Your budget is healthy';
 
   return `
-    <h2 class="section-title">Hello, Scholar!</h2>
-
     <div class="card seed-card">
       ${seedlingSvg(bp.percent)}
       <div class="seed-stats">
@@ -425,14 +564,14 @@ function renderDashboard(){
 
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-        <strong style="font-size:13.5px;color:var(--ink);">Today's classes</strong>
+        <strong style="font-size:13.5px;color:var(--text);">Today's classes</strong>
         <span class="muted">${DAY_FULL[todayShort]||''}</span>
       </div>
       ${todayClasses.length===0 ? `<div class="empty">No classes today. Enjoy!</div>` :
         todayClasses.map(c=>`
         <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);">
           <div>
-            <div style="font-size:13.5px;font-weight:500;color:var(--ink);">${esc(c.code)} ${esc(c.title? '· '+c.title:'')}</div>
+            <div style="font-size:13.5px;font-weight:500;color:var(--text);">${esc(c.code)}${c.title? ' · '+esc(c.title):''}</div>
             <div class="muted">${esc(c.room||'TBA')} ${c.instructor?'· '+esc(c.instructor):''}</div>
           </div>
           <div class="class-time">${fmtTime(c.start)}–${fmtTime(c.end)}</div>
@@ -441,13 +580,13 @@ function renderDashboard(){
 
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-        <strong style="font-size:13.5px;color:var(--ink);">Upcoming deadlines</strong>
+        <strong style="font-size:13.5px;color:var(--text);">Upcoming deadlines</strong>
       </div>
       ${upcoming.length===0 ? `<div class="empty">No deadlines logged yet. Stay on top of things!</div>` :
         upcoming.map(d=>`
         <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);">
           <div>
-            <div style="font-size:13.5px;font-weight:500;color:var(--ink);">${esc(d.title)}</div>
+            <div style="font-size:13.5px;font-weight:500;color:var(--text);">${esc(d.title)}</div>
             <div class="muted">${esc(d.course||d.type)}</div>
           </div>
           ${countdownBadge(d.days)}
@@ -456,18 +595,64 @@ function renderDashboard(){
   `;
 }
 
-function fmtTime(t){
-  if(!t) return '';
-  const [h,m] = t.split(':').map(Number);
-  const ap = h>=12?'PM':'AM';
-  let hh = h%12; if(hh===0) hh=12;
-  return `${hh}:${String(m).padStart(2,'0')}${ap}`;
+function renderDashboardWeek(){
+  const now = new Date(); now.setHours(0,0,0,0);
+  const days = [];
+  for(let i=0;i<7;i++){ const d = new Date(now); d.setDate(now.getDate()+i); days.push(d); }
+  const spendStart = days[0].toISOString().slice(0,10);
+  const spendEnd = days[6].toISOString().slice(0,10);
+  const weekSpend = state.expenses.items
+    .filter(i => i.date >= spendStart && i.date <= spendEnd)
+    .reduce((s,i)=>s+Number(i.amount||0),0);
+  const weekDeadlines = state.deadlines
+    .filter(d=>!d.done && d.due >= spendStart && d.due <= spendEnd)
+    .sort((a,b)=>a.due.localeCompare(b.due));
+
+  const dayGroups = days.map(d=>{
+    const shortDay = DAYS[(d.getDay()+6)%7] || null; // Sun has no entry; classes only Mon-Sat
+    const label = d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    const classes = shortDay ? state.schedule.filter(c=>c.day===shortDay).sort((a,b)=>a.start.localeCompare(b.start)) : [];
+    return {label, classes};
+  });
+
+  return `
+    <div class="stat-row">
+      <div class="stat-box"><div class="v">${peso(weekSpend)}</div><div class="l">Spent this week</div></div>
+      <div class="stat-box"><div class="v">${weekDeadlines.length}</div><div class="l">Deadlines due this week</div></div>
+    </div>
+
+    <div class="card">
+      <strong style="font-size:13.5px;color:var(--text);display:block;margin-bottom:10px;">Classes ahead</strong>
+      ${dayGroups.every(g=>g.classes.length===0) ? `<div class="empty">No classes in the next 7 days.</div>` :
+        dayGroups.map(g=> g.classes.length===0 ? '' : `
+          <div class="week-day-group">
+            <div class="week-day-label">${esc(g.label)}</div>
+            ${g.classes.map(c=>`
+              <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line);">
+                <span style="font-size:12.5px;color:var(--text);">${esc(c.code)}</span>
+                <span class="class-time">${fmtTime(c.start)}–${fmtTime(c.end)}</span>
+              </div>
+            `).join('')}
+          </div>
+        `).join('')}
+    </div>
+
+    <div class="card">
+      <strong style="font-size:13.5px;color:var(--text);display:block;margin-bottom:10px;">Deadlines this week</strong>
+      ${weekDeadlines.length===0 ? `<div class="empty">Nothing due in the next 7 days.</div>` :
+        weekDeadlines.map(d=>`
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);">
+            <div>
+              <div style="font-size:13.5px;font-weight:500;color:var(--text);">${esc(d.title)}</div>
+              <div class="muted">${esc(d.course||d.type)} · ${d.due}</div>
+            </div>
+            ${countdownBadge(daysUntil(d.due))}
+          </div>
+        `).join('')}
+    </div>
+  `;
 }
-function daysUntil(dateStr){
-  const today = new Date(); today.setHours(0,0,0,0);
-  const due = new Date(dateStr+'T00:00:00');
-  return Math.round((due-today)/86400000);
-}
+
 function countdownBadge(days){
   let cls='ok', txt='';
   if(days<0){ cls='urgent'; txt=`${Math.abs(days)}d overdue`; }
@@ -480,55 +665,22 @@ function countdownBadge(days){
 
 /* ---------- SCHEDULE ---------- */
 function renderSchedule(){
-  let headerHtml = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-      <h2 class="section-title" style="margin:0;">Class schedule</h2>
-      <button class="ghost" data-action="toggle-sched-view" style="padding:6px 10px;">
-        ${state.scheduleView === 'list' ? 'Grid view' : 'List view'}
-      </button>
+  return `
+    <h2 class="section-title">Class schedule</h2>
+    <div class="seg">
+      <button data-action="set-sched-view" data-view="list" class="${state.scheduleView==='list'?'active':''}">List</button>
+      <button data-action="set-sched-view" data-view="grid" class="${state.scheduleView==='grid'?'active':''}">Weekly grid</button>
     </div>
+    ${state.scheduleView==='grid' ? renderScheduleGrid() : renderScheduleList()}
   `;
+}
 
-  if(state.scheduleView === 'grid'){
-    let gridHtml = `<div class="grid-container" style="overflow-x:auto;padding-bottom:10px;"><div style="position:relative;height:505px;min-width:440px;background:var(--card);border:1px solid var(--line);border-radius:8px;font-family:var(--font-body);">`;
-    
-    // Grid Header (Days)
-    gridHtml += `<div style="display:flex;border-bottom:1px solid var(--line);height:25px;background:var(--paper);border-top-left-radius:8px;border-top-right-radius:8px;">`;
-    gridHtml += `<div style="width:40px;flex-shrink:0;"></div>`;
-    DAYS.forEach(d => gridHtml += `<div style="flex:1;text-align:center;font-size:11px;font-weight:600;padding-top:5px;border-left:1px solid var(--line);">${d}</div>`);
-    gridHtml += `</div>`;
-    
-    // Background Timeline Lines (7 AM to 7 PM)
-    for(let h=7; h<=19; h++) {
-      let top = (h-7)*40 + 25;
-      let label = h>12 ? (h-12)+'PM' : (h===12 ? '12PM' : h+'AM');
-      gridHtml += `<div style="position:absolute;top:${top}px;left:0;width:40px;text-align:right;padding-right:4px;font-size:9px;color:var(--bark);transform:translateY(-50%);">${label}</div>`;
-      gridHtml += `<div style="position:absolute;top:${top}px;left:40px;right:0;height:1px;background:var(--line);"></div>`;
-    }
-
-    // Schedule Blocks
-    state.schedule.forEach(c => {
-       const dayIdx = DAYS.indexOf(c.day);
-       if(dayIdx===-1) return;
-       const startM = parseInt(c.start.split(':')[0])*60 + parseInt(c.start.split(':')[1]);
-       const endM = parseInt(c.end.split(':')[0])*60 + parseInt(c.end.split(':')[1]);
-       const top = ((startM - 7*60) / 60) * 40 + 25;
-       const height = ((endM - startM) / 60) * 40;
-       
-       gridHtml += `<div style="position:absolute;top:${top}px;left:calc(40px + ${dayIdx} * ((100% - 40px) / 6));width:calc((100% - 40px) / 6);height:${height}px;background:${c.type==='lab'?'var(--mango-bg)':'var(--leaf-bg)'};border-left:3px solid ${c.type==='lab'?'var(--mango)':'var(--leaf)'};font-size:9.5px;padding:3px;overflow:hidden;color:var(--ink);box-sizing:border-box;border-bottom:1px solid rgba(0,0,0,0.05);z-index:10;line-height:1.2;"><strong>${esc(c.code)}</strong><br>${esc(c.room||'')}</div>`;
-    });
-    gridHtml += `</div></div>`;
-    
-    return headerHtml + gridHtml;
-  }
-
-  // Default List View
+function renderScheduleList(){
   const dayCounts = {};
   DAYS.forEach(d=>dayCounts[d]=state.schedule.filter(c=>c.day===d).length);
   const items = state.schedule.filter(c=>c.day===state.scheduleDay).sort((a,b)=>a.start.localeCompare(b.start));
 
   return `
-    ${headerHtml}
     <div class="day-pills">
       ${DAYS.map(d=>`<button class="day-pill ${state.scheduleDay===d?'active':''}" data-action="pick-day" data-day="${d}">${d}${dayCounts[d]>0?'<span class="dot"></span>':''}</button>`).join('')}
     </div>
@@ -537,7 +689,16 @@ function renderSchedule(){
     </div>
     ${state.showClassForm ? classForm() : ''}
     ${items.length===0 ? `<div class="empty">${iconCal()}<br>No classes scheduled for ${DAY_FULL[state.scheduleDay]}.</div>` :
-      items.map(c=>`
+      items.map(c=>classCard(c)).join('')}
+  `;
+}
+
+function classCard(c){
+  const linked = state.deadlines
+    .filter(d=>!d.done && d.course && c.code && d.course.trim().toLowerCase()===c.code.trim().toLowerCase())
+    .sort((a,b)=>a.due.localeCompare(b.due))
+    .slice(0,3);
+  return `
       <div class="card class-card ${c.type==='lab'?'lab':''}">
         <div class="class-row-top">
           <div>
@@ -552,15 +713,20 @@ function renderSchedule(){
         <div class="muted" style="margin-bottom:6px;">${esc(c.title||'')}${c.section?' · Sec '+esc(c.section):''}</div>
         <div class="muted">${esc(c.room||'Room TBA')}${c.instructor?' · '+esc(c.instructor):''}</div>
         <div style="margin-top:8px;"><span class="badge ${c.type==='lab'?'lab':'lec'}">${c.type==='lab'?'LAB':'LECTURE'}</span></div>
-      </div>`).join('')}
-  `;
+        ${linked.length ? `
+          <div class="linked-dl">
+            <div class="muted" style="margin-bottom:4px;">Linked deadlines</div>
+            ${linked.map(d=>`<div class="linked-dl-row"><span>${esc(d.title)}</span><span class="muted">${d.due}</span></div>`).join('')}
+          </div>` : ''}
+      </div>`;
 }
 
 function classForm(){
   const e = state.editingClass;
+  const conflict = state.classFormConflict;
   return `
   <form class="card" data-form="class-form" style="margin-bottom:14px;">
-    <div id="conflictError" style="display:none;color:var(--danger);font-size:12px;margin-bottom:10px;padding:8px;background:var(--maroon-bg);border-radius:6px;font-weight:500;"></div>
+    ${conflict ? `<div class="warn-box">This overlaps with <strong>${esc(conflict.code)}</strong> (${fmtTime(conflict.start)}–${fmtTime(conflict.end)}) on ${DAY_FULL[conflict.day]}. Adjust the time or day before saving.</div>` : ''}
     <div class="form-grid">
       <label class="field">Course code
         <input name="code" required placeholder="e.g. MATH 20" value="${e?esc(e.code):''}">
@@ -607,22 +773,72 @@ function classForm(){
   </form>`;
 }
 
+/* ---------- FEATURE 3: WEEKLY TIMETABLE GRID ---------- */
+function renderScheduleGrid(){
+  const totalHours = GRID_END_HOUR - GRID_START_HOUR;
+  const bodyHeight = totalHours * GRID_HOUR_PX;
+  const hourLines = [];
+  const timeLabels = [];
+  for(let h=GRID_START_HOUR; h<=GRID_END_HOUR; h++){
+    const top = (h-GRID_START_HOUR)*GRID_HOUR_PX;
+    hourLines.push(`<div class="grid-hourline" style="top:${top}px;"></div>`);
+    timeLabels.push(`<div class="grid-time-label" style="top:${top}px;">${fmtTime(String(h).padStart(2,'0')+':00')}</div>`);
+  }
+
+  function blockStyle(c){
+    const [sh,sm] = c.start.split(':').map(Number);
+    const [eh,em] = c.end.split(':').map(Number);
+    const startMin = Math.max(0, (sh*60+sm) - GRID_START_HOUR*60);
+    const endMin = Math.min(totalHours*60, (eh*60+em) - GRID_START_HOUR*60);
+    const top = (startMin/60)*GRID_HOUR_PX;
+    const height = Math.max(18, ((endMin-startMin)/60)*GRID_HOUR_PX);
+    return `top:${top}px;height:${height}px;`;
+  }
+
+  const dayCols = DAYS.map(d=>{
+    const classes = state.schedule.filter(c=>c.day===d);
+    return `
+      <div class="grid-daycol">
+        <div class="grid-col-header">${d}</div>
+        <div class="grid-body" style="height:${bodyHeight}px;">
+          ${hourLines.join('')}
+          ${classes.map(c=>`
+            <div class="grid-block ${c.type==='lab'?'lab':''}" style="${blockStyle(c)}" title="${esc(c.code)} ${fmtTime(c.start)}-${fmtTime(c.end)}">
+              <span class="gb-code">${esc(c.code)}</span>
+              <span class="gb-time">${fmtTime(c.start)}–${fmtTime(c.end)}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="fab-row">
+      <button class="primary" data-action="toggle-class-form">${iconPlus()} <span style="vertical-align:2px;">Add class</span></button>
+    </div>
+    ${state.showClassForm ? classForm() : ''}
+    <div class="grid-wrap">
+      <div class="grid-inner">
+        <div class="grid-timecol">
+          <div class="grid-col-header">&nbsp;</div>
+          <div class="grid-body" style="height:${bodyHeight}px;">${timeLabels.join('')}</div>
+        </div>
+        ${dayCols}
+      </div>
+    </div>
+  `;
+}
+
 /* ---------- EXPENSES ---------- */
 function renderExpenses(){
   const bp = budgetPercent();
+  const pace = getSpendingPace();
   const totals = {};
   CATEGORIES.forEach(c=>totals[c.key]=0);
   state.expenses.items.forEach(i=>{ totals[i.category] = (totals[i.category]||0) + Number(i.amount||0); });
   const maxCat = Math.max(1, ...Object.values(totals));
   const recent = [...state.expenses.items].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,12);
-  
-  // Calculate Pacing
-  const now = new Date();
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
-  const daysLeft = Math.max(1, daysInMonth - now.getDate() + 1);
-  const daysPassed = Math.max(1, now.getDate());
-  const currentPace = bp.spent / daysPassed;
-  const targetPace = bp.remaining / daysLeft;
 
   return `
     <h2 class="section-title">Expenses</h2>
@@ -634,7 +850,7 @@ function renderExpenses(){
         <div style="display:flex;align-items:center;gap:6px;">
           <span style="font-family:var(--font-mono);font-size:12px;color:var(--bark);">₱</span>
           <input id="budgetInput" type="number" min="0" step="1" value="${state.expenses.budget||''}" placeholder="0" style="max-width:120px;padding:5px 8px;font-family:var(--font-mono);font-weight:600;" onkeydown="if(event.key==='Enter'){event.preventDefault();this.nextElementSibling.click();}">
-          <button class="ghost" data-action="set-budget" style="padding:6px 10px;font-size:12px;">Set</button>
+          <button class="ghost small" data-action="set-budget">Set</button>
         </div>
       </div>
     </div>
@@ -643,14 +859,20 @@ function renderExpenses(){
       <div class="stat-box"><div class="v">${peso(bp.spent)}</div><div class="l">Spent</div></div>
       <div class="stat-box"><div class="v">${peso(bp.remaining)}</div><div class="l">Remaining</div></div>
     </div>
-    
-    <div class="stat-row" style="margin-top:-6px;">
-      <div class="stat-box" style="background:transparent;"><div class="v" style="font-size:13px;color:${currentPace > targetPace ? 'var(--danger)' : 'var(--ink)'}">${peso(currentPace)}/d</div><div class="l">Avg. spent pace</div></div>
-      <div class="stat-box" style="background:transparent;"><div class="v" style="font-size:13px;">${peso(targetPace)}/d</div><div class="l">Target max pace</div></div>
+
+    <div class="card pace-card">
+      <div class="pace-icon ${pace.isOver?'over':''}">${pace.isOver?iconArrowUp():iconArrowDown()}</div>
+      <div class="pace-text">
+        ${state.expenses.budget>0
+          ? (pace.isOver
+              ? `You're averaging <b>${peso(pace.avgPerDay)}</b>/day this month — that's over what's left of your budget for the rest of the month.`
+              : `<b>${peso(pace.neededPerDay)}</b>/day left to stay on budget — you're averaging <b>${peso(pace.avgPerDay)}</b>/day so far this month.`)
+          : `Set a monthly budget above to see your spending pace.`}
+      </div>
     </div>
 
     <div class="card">
-      <strong style="font-size:13.5px;color:var(--ink);display:block;margin-bottom:10px;">Spending by category</strong>
+      <strong style="font-size:13.5px;color:var(--text);display:block;margin-bottom:10px;">Spending by category</strong>
       ${CATEGORIES.map(c=>`
         <div class="cat-bar-row">
           <span class="cat-swatch" style="background:${c.color};"></span>
@@ -667,14 +889,15 @@ function renderExpenses(){
     ${state.showExpenseForm ? expenseForm() : ''}
 
     <div class="card">
-      <strong style="font-size:13.5px;color:var(--ink);display:block;margin-bottom:4px;">Recent expenses</strong>
+      <strong style="font-size:13.5px;color:var(--text);display:block;margin-bottom:4px;">Recent expenses</strong>
       ${recent.length===0 ? `<div class="empty">No expenses logged yet.</div>` :
         recent.map(i=>{
           const cat = CATEGORIES.find(c=>c.key===i.category) || CATEGORIES[CATEGORIES.length-1];
           return `<div class="expense-item">
             <div class="expense-left">
-              <span class="expense-cat">${cat.label}</span>
+              <span class="expense-cat">${i.isRecurring?iconRepeat():''} ${cat.label}</span>
               <span class="expense-note">${esc(i.note||'')} ${i.date?'· '+i.date:''}</span>
+              ${i.isRecurring ? `<button class="dl-stop" data-action="stop-expense-recurrence" data-id="${i.ruleId}">Stop repeating</button>` : ''}
             </div>
             <div class="row-actions">
               <span class="expense-amt">${peso(i.amount)}</span>
@@ -706,6 +929,13 @@ function expenseForm(){
         <input name="note" placeholder="optional">
       </label>
     </div>
+    <label class="field" style="margin-bottom:10px;">Repeats
+      <select name="repeat">
+        <option value="">Doesn't repeat</option>
+        <option value="weekly">Weekly</option>
+        <option value="monthly">Monthly</option>
+      </select>
+    </label>
     <div class="form-actions">
       <button type="submit" class="primary">Add expense</button>
       <button type="button" class="ghost" data-action="toggle-expense-form">Cancel</button>
@@ -715,16 +945,25 @@ function expenseForm(){
 
 /* ---------- DEADLINES ---------- */
 function renderDeadlines(){
-  const pending = state.deadlines.filter(d=>!d.done).map(d=>({...d,days:daysUntil(d.due)})).sort((a,b)=>a.days-b.days);
-  const done = state.deadlines.filter(d=>d.done).sort((a,b)=>b.due.localeCompare(a.due));
-
   return `
     <h2 class="section-title">Deadlines</h2>
+    <div class="seg">
+      <button data-action="set-deadline-view" data-view="list" class="${state.deadlineView==='list'?'active':''}">List</button>
+      <button data-action="set-deadline-view" data-view="calendar" class="${state.deadlineView==='calendar'?'active':''}">Calendar</button>
+    </div>
     <div class="fab-row">
       <button class="primary" data-action="toggle-deadline-form">${iconPlus()} <span style="vertical-align:2px;">Add deadline</span></button>
     </div>
     ${state.showDeadlineForm ? deadlineForm() : ''}
+    ${state.deadlineView==='calendar' ? renderDeadlinesCalendar() : renderDeadlinesList()}
+  `;
+}
 
+function renderDeadlinesList(){
+  const pending = state.deadlines.filter(d=>!d.done).map(d=>({...d,days:daysUntil(d.due)})).sort((a,b)=>a.days-b.days);
+  const done = state.deadlines.filter(d=>d.done).sort((a,b)=>b.due.localeCompare(a.due));
+
+  return `
     ${pending.length===0 ? `<div class="empty">${iconFlag()}<br>No deadlines logged yet.</div>` :
       pending.map(d=>deadlineCard(d)).join('')}
 
@@ -740,8 +979,9 @@ function deadlineCard(d, isDone){
     <div class="card deadline-card ${isDone?'done':cls}">
       <div class="checkbox-circle ${isDone?'checked':''}" data-action="toggle-done" data-id="${d.id}" role="button" aria-label="${isDone?'Mark as not done':'Mark as done'}" tabindex="0">${iconCheck()}</div>
       <div style="flex:1;">
-        <div class="dl-title ${isDone?'strike':''}">${esc(d.title)}</div>
+        <div class="dl-title ${isDone?'strike':''}">${d.isRecurring?iconRepeat():''}${esc(d.title)}</div>
         <div class="dl-meta">${esc(d.course||'')}${d.course?' · ':''}${esc(d.type)} · ${d.priority} priority · ${d.due}</div>
+        ${d.isRecurring ? `<button class="dl-stop" data-action="stop-deadline-recurrence" data-id="${d.ruleId}">Stop repeating</button>` : ''}
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
         ${isDone?'':countdownBadge(days)}
@@ -752,6 +992,7 @@ function deadlineCard(d, isDone){
 
 function deadlineForm(){
   const today = new Date().toISOString().slice(0,10);
+  const courseOptions = [...new Set(state.schedule.map(c=>c.code).filter(Boolean))];
   return `
   <form class="card" data-form="deadline-form" style="margin-bottom:14px;">
     <label class="field" style="margin-bottom:10px;">Title
@@ -759,7 +1000,12 @@ function deadlineForm(){
     </label>
     <div class="form-grid">
       <label class="field">Course
-        <input name="course" placeholder="e.g. CHEM 40">
+        ${courseOptions.length ? `
+          <select name="course">
+            <option value="">No course</option>
+            ${courseOptions.map(code=>`<option value="${esc(code)}">${esc(code)}</option>`).join('')}
+          </select>
+        ` : `<input name="course" placeholder="e.g. CHEM 40">`}
       </label>
       <label class="field">Due date
         <input type="date" name="due" required value="${today}">
@@ -773,6 +1019,10 @@ function deadlineForm(){
         <select name="priority">${PRIORITIES.map(p=>`<option value="${p}" ${p==='Medium'?'selected':''}>${p}</option>`).join('')}</select>
       </label>
     </div>
+    <label class="field checkbox-field" style="margin-bottom:10px;">
+      <input type="checkbox" name="repeatWeekly" value="1" style="width:auto;">
+      <span>Repeats weekly (e.g. weekly problem sets, quizzes)</span>
+    </label>
     <div class="form-actions">
       <button type="submit" class="primary">Add deadline</button>
       <button type="button" class="ghost" data-action="toggle-deadline-form">Cancel</button>
@@ -780,30 +1030,158 @@ function deadlineForm(){
   </form>`;
 }
 
+/* ---------- FEATURE 8: DEADLINES CALENDAR VIEW ---------- */
+function renderDeadlinesCalendar(){
+  const cursor = state.calendarCursor;
+  const year = cursor.getFullYear(), month = cursor.getMonth();
+  const monthLabel = cursor.toLocaleDateString('en-US',{month:'long',year:'numeric'});
+  const firstOfMonth = new Date(year, month, 1);
+  const startWeekday = firstOfMonth.getDay(); // 0=Sun
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const todayIso = todayStr();
+
+  const urgencyByDate = {};
+  state.deadlines.filter(d=>!d.done).forEach(d=>{
+    const days = daysUntil(d.due);
+    const cls = days<=3 ? 'urgent' : days<=7 ? 'soon' : 'ok';
+    if(!urgencyByDate[d.due]) urgencyByDate[d.due] = new Set();
+    urgencyByDate[d.due].add(cls);
+  });
+
+  const cells = [];
+  for(let i=0;i<startWeekday;i++) cells.push(`<div class="cal-cell empty"></div>`);
+  for(let day=1; day<=daysInMonth; day++){
+    const iso = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const dots = urgencyByDate[iso] ? [...urgencyByDate[iso]] : [];
+    const isToday = iso===todayIso;
+    const isSelected = state.calendarSelectedDate===iso;
+    cells.push(`
+      <button type="button" class="cal-cell ${isToday?'today':''} ${isSelected?'selected':''}" data-action="pick-cal-date" data-date="${iso}">
+        <span>${day}</span>
+        <span class="cal-dots">${dots.map(c=>`<span class="cal-dot ${c}"></span>`).join('')}</span>
+      </button>
+    `);
+  }
+
+  const dow = ['S','M','T','W','T','F','S'];
+  const selected = state.calendarSelectedDate;
+  const selectedDeadlines = selected ? state.deadlines.filter(d=>d.due===selected).sort((a,b)=>Number(b.priority==='High')-Number(a.priority==='High')) : [];
+
+  return `
+    <div class="cal-header">
+      <div class="cal-title">${monthLabel}</div>
+      <div class="cal-nav">
+        <button data-action="cal-prev-month" aria-label="Previous month">${iconChevronLeft()}</button>
+        <button data-action="cal-next-month" aria-label="Next month">${iconChevronRight()}</button>
+      </div>
+    </div>
+    <div class="cal-grid">
+      ${dow.map(d=>`<div class="cal-dow">${d}</div>`).join('')}
+      ${cells.join('')}
+    </div>
+    ${selected ? `
+      <h2 class="section-title" style="font-size:15px;">${selected}</h2>
+      ${selectedDeadlines.length===0 ? `<div class="empty">No deadlines on this day.</div>` : selectedDeadlines.map(d=>deadlineCard(d, d.done)).join('')}
+    ` : `<div class="muted" style="text-align:center;">Tap a day to see its deadlines.</div>`}
+  `;
+}
+
 /* ---------- SETTINGS ---------- */
 function renderSettings(){
   return `
     <h2 class="section-title">Settings</h2>
-    
+
     <div class="card">
-      <strong style="font-size:13.5px;color:var(--ink);display:block;margin-bottom:12px;">App Appearance</strong>
-      <button class="ghost" data-action="toggle-dark-mode" style="width:100%;">
-        ${state.darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-      </button>
+      <div class="settings-row">
+        <div>
+          <div class="settings-label">Dark mode</div>
+          <div class="muted">Switch between light and dark themes</div>
+        </div>
+        <button class="switch ${state.theme==='dark'?'on':''}" data-action="toggle-theme" role="switch" aria-checked="${state.theme==='dark'}" aria-label="Toggle dark mode"></button>
+      </div>
     </div>
 
     <div class="card">
-      <strong style="font-size:13.5px;color:var(--ink);display:block;margin-bottom:12px;">Data Management</strong>
-      <div style="display:flex;gap:10px;margin-bottom:12px;">
-        <button class="primary" data-action="export-data" style="flex:1;">Export Backup</button>
-        <label class="ghost" style="flex:1;text-align:center;padding:11px 16px;cursor:pointer;">
-          Import
-          <input type="file" accept=".json" style="display:none;" data-action="import-data">
+      <div class="settings-label" style="margin-bottom:8px;">Backup</div>
+      <div class="muted" style="margin-bottom:10px;">Your data lives only on this device's browser storage and can be wiped by clearing browser data. Export a backup regularly.</div>
+      <div class="form-actions">
+        <button class="ghost" data-action="export-data">Export data</button>
+        <label class="ghost file-btn">
+          Import data
+          <input type="file" accept="application/json" data-action="import-data" style="display:none;">
         </label>
       </div>
-      <p class="muted" style="font-size:11px;margin:0;">Export your data to save a backup to your device. Importing a file will overwrite your current planner state.</p>
     </div>
+
+    <div class="card">
+      <div class="settings-label" style="margin-bottom:8px;">Semester</div>
+      <div class="muted" style="margin-bottom:10px;">Starting a new semester archives your current schedule and deadlines, then clears them. Expenses are kept as-is.</div>
+      <div class="form-actions">
+        <button class="ghost" data-action="start-new-semester">Start new semester</button>
+        <button class="ghost" data-action="toggle-archive-view">${state.showArchives?'Hide archives':'View archives'}</button>
+      </div>
+    </div>
+
+    ${state.showArchives ? renderArchives() : ''}
   `;
+}
+
+function renderArchives(){
+  if(state.archives.length===0) return `<div class="empty">No archived semesters yet.</div>`;
+  return [...state.archives].reverse().map(a=>`
+    <div class="card">
+      <strong style="font-size:13.5px;color:var(--text);">${esc(a.label)}</strong>
+      <div class="muted" style="margin-top:4px;">${a.schedule.length} classes · ${a.deadlines.length} deadlines · archived ${new Date(a.createdAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</div>
+    </div>
+  `).join('');
+}
+
+/* ---------- FEATURE 1: DATA EXPORT / IMPORT ---------- */
+function exportData(){
+  const payload = {
+    schedule: state.schedule,
+    expenses: state.expenses,
+    deadlines: state.deadlines,
+    deadlineRules: state.deadlineRules,
+    archives: state.archives,
+    exportedAt: new Date().toISOString()
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `punla-backup-${todayStr()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function isValidBackupShape(data){
+  return data && typeof data==='object'
+    && Array.isArray(data.schedule)
+    && Array.isArray(data.deadlines)
+    && data.expenses && typeof data.expenses==='object' && Array.isArray(data.expenses.items);
+}
+
+function importData(file){
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    let data;
+    try{ data = JSON.parse(ev.target.result); }
+    catch(err){ showToast("That file isn't valid JSON."); return; }
+    if(!isValidBackupShape(data)){ showToast("That file doesn't look like a Punla backup."); return; }
+    if(!confirm('Importing will replace all current data on this device. This can\'t be undone. Continue?')) return;
+    state.schedule = data.schedule;
+    state.expenses = { budget: Number(data.expenses.budget)||0, items: data.expenses.items||[], rules: data.expenses.rules||[] };
+    state.deadlines = data.deadlines;
+    state.deadlineRules = Array.isArray(data.deadlineRules) ? data.deadlineRules : [];
+    state.archives = Array.isArray(data.archives) ? data.archives : [];
+    saveSchedule(); saveExpenses(); saveDeadlines(); saveDeadlineRules(); saveArchives();
+    render();
+    showToast('Backup imported.');
+  };
+  reader.readAsText(file);
 }
 
 /* ---------- EVENTS ---------- */
@@ -815,20 +1193,31 @@ function onKeydown(e){
   el.click();
 }
 
+function onChange(e){
+  const el = e.target;
+  if(el.dataset && el.dataset.action==='import-data'){
+    const file = el.files[0];
+    if(file) importData(file);
+    el.value = '';
+  }
+}
+
 function onClick(e){
   const btn = e.target.closest('[data-action]');
   if(!btn) return;
   const action = btn.dataset.action;
-  
-  if(action==='tab'){ state.tab = btn.dataset.tab; state.showClassForm=false; state.showExpenseForm=false; state.showDeadlineForm=false; state.editingClass=null; render(); }
+
+  if(action==='tab'){ state.tab = btn.dataset.tab; state.showClassForm=false; state.showExpenseForm=false; state.showDeadlineForm=false; state.editingClass=null; state.classFormConflict=null; render(); }
   else if(action==='pick-day'){ state.scheduleDay = btn.dataset.day; render(); }
-  else if(action==='toggle-class-form'){ state.showClassForm = !state.showClassForm; if(!state.showClassForm) state.editingClass=null; render(); }
+  else if(action==='toggle-class-form'){ state.showClassForm = !state.showClassForm; if(!state.showClassForm){ state.editingClass=null; state.classFormConflict=null; } render(); }
   else if(action==='toggle-expense-form'){ state.showExpenseForm = !state.showExpenseForm; render(); }
   else if(action==='toggle-deadline-form'){ state.showDeadlineForm = !state.showDeadlineForm; render(); }
-  else if(action==='toggle-sched-view'){ state.scheduleView = state.scheduleView === 'list' ? 'grid' : 'list'; render(); }
+  else if(action==='set-sched-view'){ state.scheduleView = btn.dataset.view; render(); }
+  else if(action==='set-deadline-view'){ state.deadlineView = btn.dataset.view; render(); }
+  else if(action==='set-dash-view'){ state.dashboardView = btn.dataset.view; render(); }
   else if(action==='edit-class'){
     state.editingClass = state.schedule.find(c=>c.id===btn.dataset.id);
-    state.showClassForm = true; render();
+    state.showClassForm = true; state.classFormConflict=null; render();
   }
   else if(action==='delete-class'){
     state.schedule = state.schedule.filter(c=>c.id!==btn.dataset.id);
@@ -838,32 +1227,54 @@ function onClick(e){
     state.expenses.items = state.expenses.items.filter(i=>i.id!==btn.dataset.id);
     saveExpenses(); render();
   }
+  else if(action==='stop-expense-recurrence'){
+    state.expenses.rules = state.expenses.rules.filter(r=>r.id!==btn.dataset.id);
+    saveExpenses(); render();
+  }
   else if(action==='delete-deadline'){
     state.deadlines = state.deadlines.filter(d=>d.id!==btn.dataset.id);
     saveDeadlines(); render();
   }
+  else if(action==='stop-deadline-recurrence'){
+    state.deadlineRules = state.deadlineRules.filter(r=>r.id!==btn.dataset.id);
+    saveDeadlineRules(); render();
+  }
   else if(action==='toggle-done'){
     const d = state.deadlines.find(d=>d.id===btn.dataset.id);
-    if(d){ d.done = !d.done; saveDeadlines(); render(); }
+    if(d){ d.done = !d.done; saveDeadlines(); generateRecurringDeadlines(); render(); }
   }
   else if(action==='set-budget'){
     const val = Number(document.getElementById('budgetInput').value)||0;
     state.expenses.budget = val;
     saveExpenses(); render();
   }
-  else if(action==='toggle-dark-mode'){
-    state.darkMode = !state.darkMode;
-    storageSet('punla_dark_mode', state.darkMode);
-    syncDarkMode(); render();
+  else if(action==='toggle-theme'){
+    state.theme = state.theme==='dark' ? 'light' : 'dark';
+    applyTheme(); saveTheme(); render();
   }
-  else if(action==='export-data'){
-    const data = { schedule: state.schedule, expenses: state.expenses, deadlines: state.deadlines };
-    const blob = new Blob([JSON.stringify(data)], {type:'application/json'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `punla-backup-${new Date().toISOString().slice(0,10)}.json`;
-    a.click();
+  else if(action==='export-data'){ exportData(); }
+  else if(action==='start-new-semester'){
+    if(confirm('Start a new semester? This will archive your current schedule and deadlines, then clear them. Expenses are kept.')){
+      const ts = Date.now();
+      state.archives.push({
+        id: uid(), createdAt: ts,
+        label: 'Archived ' + new Date(ts).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}),
+        schedule: state.schedule, deadlines: state.deadlines
+      });
+      state.schedule = [];
+      state.deadlines = [];
+      state.deadlineRules = [];
+      saveArchives(); saveSchedule(); saveDeadlines(); saveDeadlineRules();
+      render();
+    }
+  }
+  else if(action==='toggle-archive-view'){ state.showArchives = !state.showArchives; render(); }
+  else if(action==='pick-cal-date'){ state.calendarSelectedDate = btn.dataset.date; render(); }
+  else if(action==='cal-prev-month'){
+    const c = state.calendarCursor; state.calendarCursor = new Date(c.getFullYear(), c.getMonth()-1, 1); render();
+  }
+  else if(action==='cal-next-month'){
+    const c = state.calendarCursor; state.calendarCursor = new Date(c.getFullYear(), c.getMonth()+1, 1); render();
   }
 }
 
@@ -882,36 +1293,52 @@ function onSubmit(e){
       day: fd.get('day'), type: fd.get('type'), start: fd.get('start'), end: fd.get('end'),
       room: fd.get('room'), instructor: fd.get('instructor')
     };
-
-    // Feature 2: Check for Class Conflicts
     const conflict = checkConflict(data);
-    if (conflict) {
-      const err = form.querySelector('#conflictError');
-      err.innerText = `Conflict: Overlaps with ${conflict.code} (${fmtTime(conflict.start)} - ${fmtTime(conflict.end)})`;
-      err.style.display = 'block';
-      return; 
+    if(conflict){
+      state.classFormConflict = conflict;
+      state.editingClass = data.id ? {...data} : data;
+      render();
+      return;
     }
-
     if(id){ state.schedule = state.schedule.map(c=>c.id===id?data:c); }
     else{ state.schedule.push(data); }
-    state.showClassForm=false; state.editingClass=null;
+    state.showClassForm=false; state.editingClass=null; state.classFormConflict=null;
     saveSchedule(); render();
   }
   else if(type==='expense-form'){
-    state.expenses.items.push({
-      id: uid(), amount: Number(fd.get('amount'))||0, category: fd.get('category'),
-      date: fd.get('date') || new Date().toISOString().slice(0,10), note: fd.get('note')
-    });
+    const amount = Number(fd.get('amount'))||0;
+    const category = fd.get('category');
+    const date = fd.get('date') || todayStr();
+    const note = fd.get('note');
+    const repeat = fd.get('repeat');
+
+    if(repeat){
+      const ruleId = uid();
+      state.expenses.rules.push({ id: ruleId, amount, category, note, startDate: date, repeat, lastGenerated: date });
+      state.expenses.items.push({ id: uid(), amount, category, date, note, ruleId, isRecurring:true });
+    } else {
+      state.expenses.items.push({ id: uid(), amount, category, date, note, ruleId:null, isRecurring:false });
+    }
     state.showExpenseForm=false;
     saveExpenses(); render();
   }
   else if(type==='deadline-form'){
-    state.deadlines.push({
-      id: uid(), title: fd.get('title'), course: fd.get('course'), due: fd.get('due'),
-      type: fd.get('type'), priority: fd.get('priority'), done:false
-    });
+    const title = fd.get('title');
+    const course = fd.get('course');
+    const due = fd.get('due');
+    const dtype = fd.get('type');
+    const priority = fd.get('priority');
+    const repeatWeekly = fd.get('repeatWeekly');
+
+    if(repeatWeekly){
+      const ruleId = uid();
+      state.deadlineRules.push({ id: ruleId, title, course, type: dtype, priority, startDate: due, repeat: 'weekly' });
+      state.deadlines.push({ id: uid(), title, course, due, type: dtype, priority, done:false, ruleId, isRecurring:true });
+    } else {
+      state.deadlines.push({ id: uid(), title, course, due, type: dtype, priority, done:false, ruleId:null, isRecurring:false });
+    }
     state.showDeadlineForm=false;
-    saveDeadlines(); render();
+    saveDeadlines(); saveDeadlineRules(); render();
   }
 }
 
