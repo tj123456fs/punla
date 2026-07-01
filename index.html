@@ -144,17 +144,134 @@
   .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; background: var(--line); }
   .cal-day { background: var(--paper); min-height: 80px; padding: 4px; font-size: 11px; }
 
+
+  /* Animations */
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  #content { 
+    animation: fadeInUp 0.3s ease-out; 
+  }
+
+  .card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .card:active {
+    transform: scale(0.98);
+  }
+
+  .tab-btn {
+    transition: all 0.2s ease;
+  }
+
+  .tab-btn svg {
+    transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+
+  .tab-btn.active svg {
+    transform: scale(1.2);
+  }
+
+  .btn {
+    transition: opacity 0.2s ease, transform 0.1s ease;
+  }
+
+  .btn:active {
+    transform: translateY(1px);
+  }
+
 </style>
 <style>
   .grid-container { overflow-x: auto; margin-top: 15px; }
   .schedule-grid { display: grid; grid-template-columns: 50px repeat(6, 120px); }
   .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
   .cal-day { min-height: 80px; }
+
+  /* Animations */
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  #content { 
+    animation: fadeInUp 0.3s ease-out; 
+  }
+
+  .card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .card:active {
+    transform: scale(0.98);
+  }
+
+  .tab-btn {
+    transition: all 0.2s ease;
+  }
+
+  .tab-btn svg {
+    transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+
+  .tab-btn.active svg {
+    transform: scale(1.2);
+  }
+
+  .btn {
+    transition: opacity 0.2s ease, transform 0.1s ease;
+  }
+
+  .btn:active {
+    transform: translateY(1px);
+  }
+
 </style><style>
   .grid-container { overflow-x: auto; margin-top:15px; }
   .schedule-grid { display: grid; grid-template-columns: 50px repeat(6, 120px); }
   .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
   .cal-day { min-height: 80px; }
+
+  /* Animations */
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  #content { 
+    animation: fadeInUp 0.3s ease-out; 
+  }
+
+  .card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .card:active {
+    transform: scale(0.98);
+  }
+
+  .tab-btn {
+    transition: all 0.2s ease;
+  }
+
+  .tab-btn svg {
+    transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+
+  .tab-btn.active svg {
+    transform: scale(1.2);
+  }
+
+  .btn {
+    transition: opacity 0.2s ease, transform 0.1s ease;
+  }
+
+  .btn:active {
+    transform: translateY(1px);
+  }
+
 </style></head>
 <body>
 <div id="root">
@@ -326,6 +443,7 @@ function buildShell(){
       ${tabBtn('schedule','Schedule', iconCal())}
       ${tabBtn('expenses','Expenses', iconWallet())}
       ${tabBtn('deadlines','Deadlines', iconFlag())}
+      ${tabBtn('settings','Settings', iconSettings())}
     </nav>
   `;
   root.addEventListener('click', onClick);
@@ -356,6 +474,11 @@ function checkConflict(n){ return state.schedule.find(c => c.id!==n.id && c.day=
 function getSpendingPace(){ const now=new Date(); const daysLeft=Math.max(1, new Date(now.getFullYear(), now.getMonth()+1, 0).getDate() - now.getDate()); const spent=state.expenses.items.reduce((s,i)=>s+Number(i.amount),0); return { dailyLeft: (state.expenses.budget-spent)/daysLeft }; }
 
 function render(){
+  const content = document.getElementById('content');
+  content.style.animation = 'none';
+  content.offsetHeight; /* trigger reflow */
+  content.style.animation = null; 
+
   const c = document.getElementById('content');
   if(!c) return;
   if(state.tab==='dashboard') c.innerHTML = renderDashboard();
@@ -736,8 +859,8 @@ function onKeydown(e){
   el.click();
 }
 function onClick(e){
-    const act = e.target.dataset.action;
-    if(act === 'toggle-dark-mode'){ state.darkMode = !state.darkMode; syncDarkMode(); render(); }
+  const act = e.target.dataset.action || e.target.closest('[data-action]')?.dataset.action;
+      if(act === 'toggle-dark-mode'){ state.darkMode = !state.darkMode; syncDarkMode(); render(); }
     if(act === 'toggle-sched-view'){ state.scheduleView = state.scheduleView === 'list' ? 'grid' : 'list'; render(); }
     if(act === 'toggle-deadline-view'){ state.deadlineView = state.deadlineView === 'calendar' ? 'list' : 'calendar'; render(); }
     if(act === 'toggle-dash-view'){ state.dashboardView = state.dashboardView === 'all' ? 'weekly' : 'all'; render(); }
@@ -745,13 +868,9 @@ function onClick(e){
     if(act === 'restore-archive'){ const arch=state.archives.find(a=>a.id===e.target.dataset.id); if(arch){ state.schedule=[...arch.schedule]; state.deadlines=[...arch.deadlines]; render(); } }
     if(act === 'export-data'){ const b=new Blob([JSON.stringify(state)],{type:'application/json'}); const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download='punla_backup.json'; a.click(); }
     if(act === 'import-data'){ const f=e.target.files[0]; if(f){ const r=new FileReader(); r.onload=(re)=>{state=JSON.parse(re.target.result);saveAll();render();}; r.readAsText(f); } }
-
-  
-    const act = e.target.dataset.action;
     if(act === 'export-data'){ const blob = new Blob([JSON.stringify(state)], {type:'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download='punla_backup.json'; a.click(); }
     if(act === 'import-data'){ const file = e.target.files[0]; const reader = new FileReader(); reader.onload=(re)=>{ state=JSON.parse(re.target.result); saveAll(); render(); }; reader.readAsText(file); }
     if(act === 'archive-semester'){ if(confirm('Archive this semester and reset?')){ state.archives.push({id:uid(), name:'Archive '+new Date().toLocaleDateString(), schedule:[...state.schedule], deadlines:[...state.deadlines]}); state.schedule=[]; state.deadlines=[]; saveAll(); render(); } }
-
     if(act === 'export-data'){ const blob = new Blob([JSON.stringify(state)], {type:'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download='punla_backup.json'; a.click(); }
     if(act === 'import-data'){ const file = e.target.files[0]; const reader = new FileReader(); reader.onload=(re)=>{ state=JSON.parse(re.target.result); saveAll(); render(); }; reader.readAsText(file); }
   if(act === 'toggle-dark-mode'){
@@ -763,7 +882,6 @@ function onClick(e){
   const btn = e.target.closest('[data-action]');
   if(!btn) return;
   const action = btn.dataset.action;
-
   if(action==='tab'){ state.tab = btn.dataset.tab; state.showClassForm=false; state.showExpenseForm=false; state.showDeadlineForm=false; state.editingClass=null; render(); }
   else if(action==='pick-day'){ state.scheduleDay = btn.dataset.day; render(); }
   else if(action==='toggle-class-form'){ state.showClassForm = !state.showClassForm; if(!state.showClassForm) state.editingClass=null; render(); }
@@ -793,8 +911,7 @@ function onClick(e){
     const val = Number(document.getElementById('budgetInput').value)||0;
     state.expenses.budget = val;
     saveExpenses(); render();
-  }
-}
+  }}
 
 function onSubmit(e){
   const form = e.target.closest('form');
