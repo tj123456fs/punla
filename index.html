@@ -365,9 +365,9 @@ const GRADE_OPTIONS = ['1.00','1.25','1.50','1.75','2.00','2.25','2.50','2.75','
 // Fill these in after deploying the Worker (see DEPLOY.md). Leave the
 // placeholders as-is to keep using local-only, tab-open reminders.
 const CONFIG = {
-  WORKER_URL: ' https://punla-reminders.punla.workers.dev',
-  VAPID_PUBLIC_KEY: 'BPn_At8AN9k3096F3DWuHMquz2nO3MMAI1L2gthcJT3GFrNGpSgPf_pHoH8sbKORq75TK20gR8DYfjlZGrSwJRU',
-  SYNC_TOKEN: 'node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"'
+  WORKER_URL: 'https://YOUR_WORKER_SUBDOMAIN.workers.dev',
+  VAPID_PUBLIC_KEY: 'YOUR_VAPID_PUBLIC_KEY',
+  SYNC_TOKEN: 'YOUR_SYNC_TOKEN'
 };
 function backendConfigured(){
   return !CONFIG.WORKER_URL.includes('YOUR_WORKER')
