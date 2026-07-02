@@ -15,6 +15,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
   :root{
     --ink:#1B2E23;
@@ -64,8 +66,39 @@
   .tab-btn:active{transform:scale(0.92);}
   .tab-btn svg{width:20px;height:20px;transition:transform .2s ease;}
 
+  /* Arc FAB navigation */
+  .nav-backdrop{position:fixed;inset:0;background:rgba(15,20,14,0.32);opacity:0;pointer-events:none;transition:opacity .25s ease;z-index:40;}
+  .nav-backdrop.open{opacity:1;pointer-events:auto;}
+  .nav-fab-wrap{position:fixed;right:max(20px, calc((100vw - 460px)/2 + 20px));bottom:calc(20px + env(safe-area-inset-bottom));z-index:45;width:58px;height:58px;}
+  .nav-arc{position:absolute;inset:0;pointer-events:none;}
+  .nav-arc.open{pointer-events:auto;}
+  .arc-btn{position:absolute;top:6px;left:6px;width:46px;height:46px;border-radius:50%;background:var(--card);border:1px solid var(--line);color:var(--text);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,0.22);transform:translate(0,0) scale(.25);opacity:0;transition:transform .32s cubic-bezier(.34,1.56,.64,1), opacity .22s ease, background-color .2s ease, color .2s ease;transition-delay:0s;cursor:pointer;padding:0;}
+  .nav-arc.open .arc-btn{transform:translate(var(--tx),var(--ty)) scale(1);opacity:1;transition-delay:var(--delay);}
+  .arc-btn svg{width:19px;height:19px;}
+  .arc-btn.active{background:var(--ink-2);color:var(--paper);border-color:var(--ink-2);}
+  .arc-btn:active{transform:translate(var(--tx),var(--ty)) scale(0.9);}
+  .arc-tooltip{position:absolute;right:54px;top:50%;transform:translateY(-50%);background:var(--ink);color:var(--paper);font-size:11px;font-family:var(--font-body);padding:4px 9px;border-radius:6px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s ease;}
+  .arc-btn:hover .arc-tooltip,.arc-btn:focus-visible .arc-tooltip{opacity:1;}
+  .nav-fab{position:absolute;top:0;left:0;width:58px;height:58px;border-radius:50%;background:var(--ink);color:var(--paper);border:none;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(0,0,0,0.32);cursor:pointer;transition:background-color .25s ease, transform .25s ease;z-index:2;}
+  .nav-fab svg{width:21px;height:21px;transition:transform .3s ease;}
+  .nav-fab.open{background:var(--leaf);transform:scale(1.05);}
+  .nav-fab.open svg{transform:rotate(45deg);}
+  .nav-fab:active{transform:scale(0.92);}
+
+  /* Splash screen */
+  .splash-screen{position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:linear-gradient(160deg,var(--ink),var(--ink-2) 140%);color:var(--paper);text-align:center;padding:24px;animation:splashIn .5s ease;}
+  .splash-screen.closing{animation:splashOut .42s ease forwards;}
+  .splash-screen svg{animation:pulseSoft 1.8s ease-in-out infinite;margin-bottom:8px;}
+  .splash-greeting{font-family:var(--font-body);font-size:14px;color:#B9C9BB;letter-spacing:0.3px;}
+  .splash-name{font-family:var(--font-display);font-size:30px;font-weight:600;line-height:1.18;margin:4px 0 12px;}
+  .splash-sub{font-family:var(--font-mono);font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#8FB35C;}
+  .splash-tap{position:absolute;bottom:calc(28px + env(safe-area-inset-bottom));font-size:11px;color:#8FA093;font-family:var(--font-body);animation:pulseSoft 1.8s ease-in-out infinite;}
+  @keyframes splashIn{from{opacity:0;}to{opacity:1;}}
+  @keyframes splashOut{from{opacity:1;transform:scale(1);}to{opacity:0;transform:scale(0.97);}}
+
   h2.section-title{font-family:var(--font-display);font-size:19px;font-weight:600;color:var(--text);margin:0 0 12px;}
   .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(27,46,35,0.05);transition:background-color .3s ease,border-color .3s ease,box-shadow .2s ease,transform .2s ease;animation:fadeInUp .38s cubic-bezier(.16,1,.3,1) both;}
+  form.card[data-form]{animation:formPopIn .3s cubic-bezier(.34,1.56,.64,1) both;transform-origin:top center;border-color:var(--leaf-light);}
   .card:hover{box-shadow:0 4px 14px rgba(27,46,35,0.09);transform:translateY(-1px);}
   .card:nth-of-type(1){animation-delay:.01s;}
   .card:nth-of-type(2){animation-delay:.05s;}
@@ -80,6 +113,9 @@
   button.primary{background:var(--ink);color:var(--paper);border:none;border-radius:10px;padding:11px 16px;font-family:var(--font-body);font-weight:600;font-size:14px;cursor:pointer;box-shadow:0 2px 8px rgba(27,46,35,0.18);transition:transform .15s cubic-bezier(.34,1.56,.64,1),box-shadow .2s ease,background-color .3s ease;}
   button.primary svg{width:16px;height:16px;flex-shrink:0;}
   .fab-row .primary{padding:8px 14px;font-size:13px;display:inline-flex;align-items:center;gap:6px;}
+  .fab-row .primary svg{transition:transform .28s cubic-bezier(.34,1.56,.64,1);}
+  .fab-row .primary.open{background:var(--maroon);}
+  .fab-row .primary.open svg{transform:rotate(45deg);}
   button.primary:active{transform:scale(0.96);box-shadow:0 1px 3px rgba(27,46,35,0.18);}
   button.primary:hover{box-shadow:0 4px 12px rgba(27,46,35,0.24);}
   button.ghost,a.ghost{background:transparent;border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px 14px;font-family:var(--font-body);font-weight:500;font-size:13px;cursor:pointer;transition:background-color .18s ease,border-color .3s ease,transform .15s ease;}
@@ -87,6 +123,18 @@
   button.ghost:hover,a.ghost:hover{background:var(--leaf-bg);}
   button.ghost.small,a.ghost.small{padding:6px 10px;font-size:12px;}
   a.ghost svg{width:13px;height:13px;}
+  .mini-icon{display:inline-flex;flex-shrink:0;}
+  .mini-icon svg{width:100%;height:100%;display:block;}
+  .map-modal-backdrop{position:fixed;inset:0;background:rgba(27,46,35,0.55);z-index:200;display:flex;align-items:flex-end;justify-content:center;animation:fadeIn .18s ease;}
+  @keyframes fadeIn{from{opacity:0;}to{opacity:1;}}
+  .map-modal-panel{background:var(--paper);border-radius:18px 18px 0 0;width:100%;max-width:460px;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 -4px 24px rgba(0,0,0,0.25);animation:slideUp .22s cubic-bezier(.22,1,.36,1);}
+  @keyframes slideUp{from{transform:translateY(24px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+  .map-modal-header{display:flex;justify-content:space-between;align-items:flex-start;padding:16px 16px 10px;gap:10px;}
+  .map-modal-title{font-family:var(--font-display);font-weight:600;font-size:16px;color:var(--text);line-height:1.3;}
+  .map-modal-close{background:var(--leaf-bg);border:none;border-radius:50%;width:30px;height:30px;flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text);}
+  .map-modal-close svg{width:15px;height:15px;}
+  #leafletMapContainer{width:100%;height:280px;background:var(--leaf-bg);}
+  .map-modal-directions{padding:12px 16px 18px;color:var(--bark);font-size:13px;line-height:1.5;overflow-y:auto;}
   button.icon-btn{background:none;border:none;cursor:pointer;color:var(--bark);padding:4px;display:flex;border-radius:8px;transition:color .18s ease,background-color .18s ease,transform .15s ease;}
   button.icon-btn svg{width:16px;height:16px;}
   button.icon-btn:active{transform:scale(0.85);}
@@ -265,6 +313,10 @@
   @keyframes barGrow{
     from{--bf:0%;}
   }
+  @keyframes formPopIn{
+    from{opacity:0;transform:translateY(-6px) scale(.97);}
+    to{opacity:1;transform:translateY(0) scale(1);}
+  }
   @keyframes pulseSoft{
     0%,100%{opacity:1;}
     50%{opacity:.55;}
@@ -305,6 +357,24 @@ const GRID_END_HOUR = 21;    // 9:00 PM
 const GRID_HOUR_PX = 40;
 const RECUR_HORIZON_DAYS = 56; // 8 weeks
 
+// UP grading system: 1.00 is the highest mark, 5.00 is failing. INC/DRP are
+// excluded from GWA math since they carry no completed grade point.
+const GRADE_OPTIONS = ['1.00','1.25','1.50','1.75','2.00','2.25','2.50','2.75','3.00','4.00','5.00','INC','DRP'];
+
+// Optional backend for reminders that still fire when the app tab is closed.
+// Fill these in after deploying the Worker (see DEPLOY.md). Leave the
+// placeholders as-is to keep using local-only, tab-open reminders.
+const CONFIG = {
+  WORKER_URL: ' https://punla-reminders.punla.workers.dev',
+  VAPID_PUBLIC_KEY: 'BPn_At8AN9k3096F3DWuHMquz2nO3MMAI1L2gthcJT3GFrNGpSgPf_pHoH8sbKORq75TK20gR8DYfjlZGrSwJRU',
+  SYNC_TOKEN: 'node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"'
+};
+function backendConfigured(){
+  return !CONFIG.WORKER_URL.includes('YOUR_WORKER')
+      && !CONFIG.VAPID_PUBLIC_KEY.includes('YOUR_VAPID')
+      && !CONFIG.SYNC_TOKEN.includes('YOUR_SYNC_TOKEN');
+}
+
 // Short original motivational lines, shown one at a time on the dashboard.
 // Kept local (no network) to preserve offline-first behavior.
 const QUOTES = [
@@ -329,45 +399,45 @@ const QUOTES = [
 // Campus building directory — building names, coordinates & directions.
 // Sourced from uplbtools/room-tba (MIT License): https://github.com/uplbtools/room-tba
 const BUILDINGS = [
-  { name: "Agricultural and Biological Chemistry Building", aka: null, lat: 14.160037897818123, lon: 121.24452978338535, directions: "Near the CAFS cluster, behind the Soils Building. Look for the ABC signage." },
-  { name: "AFBED Building", aka: null, lat: 14.1625, lon: 121.248, directions: "Part of the CEAT complex. Located near the Agricultural and Bio-Resource Engineering area." },
-  { name: "Agricultural Systems Institute Building", aka: null, lat: 14.15908083331246, lon: 121.24371439189271, directions: "In the CAFS area, past the crop science buildings. Look for the animal husbandry facilities nearby." },
-  { name: "Biological Sciences Building", aka: null, lat: 14.16573858977826, lon: 121.24045282592225, directions: "In front of CAS Annex 1, to the left of SEARCA. Has multiple wings (BS A, B, C, D, E) housing the Institute of Biological Sciences." },
-  { name: "CAFS Building", aka: "College of Agriculture and Food Science", lat: 14.160329177519289, lon: 121.24508768282763, directions: "College of Agriculture and Food Science cluster. In the upper campus area near the agriculture facilities." },
-  { name: "CAS Main Building", aka: "CAS Main", lat: 14.164912488568103, lon: 121.24116485649184, directions: "The main CAS building is BEHIND the Oblation statue. CAS Bxx rooms are in the basement (stairs in front of OCS kiosks). CAS 1xx rooms are on the first floor. CAS LITE rooms are on the 2nd floor." },
-  { name: "CAS Annex 1", aka: "CAS A1", lat: 14.165447317040943, lon: 121.24109655582862, directions: "The tall 4-floor building to the LEFT of Oble, beside OUR (Office of the University Registrar). Has galleries (GAL) on lower floors and lecture rooms on floors 3-4." },
-  { name: "CAS Annex 2", aka: "CAS A2", lat: 14.165488927458338, lon: 121.24174028595435, directions: "The 2-storey building beside CAS Annex 1, to the left of Oble." },
-  { name: "CDC Building", aka: "College of Development Communication", lat: 14.167, lon: 121.2426, directions: "College of Development Communication building. Located at Carabao Park, in front of the Administration Building." },
-  { name: "Civil Engineering Building", aka: null, lat: 14.1618, lon: 121.246, directions: "Part of the CEAT cluster. Near the main engineering buildings." },
-  { name: "CEAT Building", aka: "College of Engineering and Agro-Industrial Technology", lat: 14.1613, lon: 121.2454, directions: "College of Engineering and Agro-Industrial Technology complex. The CEAT shops and labs are here." },
-  { name: "CEM Building", aka: "College of Economics and Management", lat: 14.166660123648663, lon: 121.24090736444153, directions: "College of Economics and Management. The first cluster of buildings if you follow the Kanan road from the main gate. A large building complex with many lecture rooms (CEM 101-118, 201-205)." },
-  { name: "CFNR Building", aka: "College of Forestry and Natural Resources", lat: 14.1543, lon: 121.2353, directions: "College of Forestry and Natural Resources. Located in the upper campus. Has multiple buildings and facilities." },
-  { name: "CHE Building", aka: "College of Human Ecology", lat: 14.164995709591306, lon: 121.241894417301, directions: "College of Human Ecology (Gil F. Saguiguit Hall). Located beside Physical Sciences, on the left side of OPark when facing the Oblation." },
-  { name: "Chemical Engineering Building", aka: null, lat: 14.1608, lon: 121.245, directions: "In the CEAT complex, has specialized labs including Unit Operations. Near the other engineering buildings." },
-  { name: "CVM Building", aka: "College of Veterinary Medicine", lat: 14.15892049473242, lon: 121.24313896221082, directions: "College of Veterinary Medicine. Located behind the Carillon Tower. Has multiple facilities including Fronda Hall." },
-  { name: "DAAE Building", aka: null, lat: 14.167117835374897, lon: 121.24073570307466, directions: "Department of Agricultural and Applied Economics. Part of the CEM cluster." },
-  { name: "Electrical Engineering Building", aka: "Dante De Padua Hall (CEAT Administrative Building)", lat: 14.161580616694565, lon: 121.24783967751902, directions: "White, three-storey building beside ICrops in Pili Drive. Part of CEAT complex. Houses EE lecture rooms and the EE Auditorium." },
-  { name: "Forestry Biological Sciences Building", aka: null, lat: 14.1548, lon: 121.2358, directions: "In the CFNR area in the upper campus. Contains FBS labs and lecture rooms." },
-  { name: "Graduate School Building", aka: null, lat: 14.1638, lon: 121.239, directions: "Behind the International House dormitory, at the foot of the ascent going to UHS and Forestry." },
-  { name: "Hydrology Building", aka: "HL Building", lat: 14.162790342169593, lon: 121.24949043285048, directions: "The Hydrology Laboratory. Located in the CEAT area, near the irrigation and water resources facilities." },
-  { name: "IABE Building", aka: null, lat: 14.162, lon: 121.2475, directions: "Institute of Agricultural and Biosystems Engineering. In the CEAT area." },
-  { name: "ICOPED Building", aka: null, lat: 14.167409105993643, lon: 121.24232357078375, directions: "Institute of Cooperatives and Bio-Enterprise Development. Part of the CEM area." },
-  { name: "ICropS Building", aka: null, lat: 14.160418508015592, lon: 121.24579971346282, directions: "Institute of Crop Science building. In the CAFS cluster." },
-  { name: "Industrial Engineering Building", aka: null, lat: 14.162249399713152, lon: 121.24760215793597, directions: "Part of CEAT. Contains IE lecture rooms and labs." },
-  { name: "IFST Building", aka: null, lat: 14.160501730685995, lon: 121.24442642252787, directions: "Institute of Food Science and Technology. In the CAFS cluster, has main building and several annexes (A, B, C, D) including pilot plant facilities." },
-  { name: "IHNF Building", aka: null, lat: 14.164995709592109, lon: 121.2427098088592, directions: "Institute of Human Nutrition and Food. Part of the CHE building complex." },
-  { name: "IRNR Building", aka: null, lat: 14.1538, lon: 121.2348, directions: "Institute of Renewable Natural Resources. Part of the CFNR complex in the upper campus." },
-  { name: "IWEP Building", aka: null, lat: 14.165827918146277, lon: 121.2406498724568, directions: "Institute of Weed Science, Entomology and Plant Pathology. In the CAFS area, includes the WPD Hall." },
-  { name: "LHKCB Building", aka: null, lat: 14.160501730680284, lon: 121.24438350730719, directions: "Near the CAFS area. Has lecture halls and classroom facilities." },
-  { name: "Math Building", aka: null, lat: 14.165411814244841, lon: 121.24361103115628, directions: "The old-looking building on the left before the bridge to CEAT, just across the Diocesan Shrine of St. Therese. Houses IMSP lecture rooms (MB 100-104 on ground floor, MB 301-309 on 3rd floor)." },
-  { name: "Copeland Gymnasium", aka: "Copeland Gym", lat: 14.157297635860596, lon: 121.2427098088592, directions: "The main gym facility. From the main gate, it's on the right side before reaching the academic buildings. Has 3 floors - Wing B is towards the parking at the back. Contains various sports facilities including courts and training areas." },
-  { name: "Baker Hall Pool", aka: "Swimming Pool Area", lat: 14.162253497902821, lon: 121.24266929817223, directions: "The swimming pool area, located behind Baker Hall, which is at Freedom Park. Managed by the Department of Human Kinetics (CAS)." },
-  { name: "PHTRC Building", aka: null, lat: 14.161542011486866, lon: 121.24429767662376, directions: "Post-Harvest Training and Research Center. In the CAFS area." },
-  { name: "Physical Sciences Building", aka: "Francisco O. Santos Hall", lat: 14.16449638298952, lon: 121.24167984077903, directions: "Francisco O. Santos Hall. A wide building to the RIGHT of Oble. Has PSLH (Physical Science Lecture Halls) A and B, plus many PS rooms (B-100 to B-205, C-101 to C-320)." },
-  { name: "PTCF Building", aka: null, lat: 14.156, lon: 121.241, directions: "Post-harvest Training and Research Center Facility. In the CAFS area." },
-  { name: "TCC Building", aka: null, lat: 14.16574893221993, lon: 121.24288733602698, directions: "Temporary Common Classroom at the Old Maquiling School. Located beside the CHE building, behind the Administration Building. Has multiple rooms (TCC 1, 2, 4, 5, 11, 22)." },
-  { name: "Main Library", aka: "Dean Edelwina C. Legaspi Hall", lat: 14.165370203813325, lon: 121.23919075095945, directions: "The main library building. Located behind the Pegaraw statue (winged tamaraw)." },
-  { name: "UPRHS Building", aka: null, lat: 14.15151290659347, lon: 121.27134891640044, directions: "UP Rural High School. Located in Bay, Laguna, OUTSIDE the main UPLB campus." }
+  { name: "Agricultural and Biological Chemistry Building", aka: null, lat: 14.160037897818123, lon: 121.24452978338535, directions: "Near the CAFS cluster, behind the Soils Building. Look for the ABC signage.", rooms: ["ABC","ABC 161","ABC 162a","ABC 162b","ABC 163","ABC 164","ABC 165","ABC 167","ABC 261","ABC162a","ABCR"] },
+  { name: "AFBED Building", aka: null, lat: 14.1625, lon: 121.248, directions: "Part of the CEAT complex. Located near the Agricultural and Bio-Resource Engineering area.", rooms: ["AFBED LR1","AFBED LR2","AFBED LR3","AFBED PHYSLAB","AFBED Physlab","AFBED_Conference Room","AFBED_LR1","AFBED_LR2","AFBED_LR3"] },
+  { name: "Agricultural Systems Institute Building", aka: null, lat: 14.15908083331246, lon: 121.24371439189271, directions: "In the CAFS area, past the crop science buildings. Look for the animal husbandry facilities nearby.", rooms: ["ASI 231","ASI 233","ASI 235","ASI 237","ASI 238A","ASI 238B","ASI 240","ASI 333","ASI 336","ASI A-104","ASI A-119","ASI B-126","ASI B-126 / ASI 333","ASI B-127","ASI B-138","ASI Training Room","ASR 1","ASR 3","ASILH B125"] },
+  { name: "Biological Sciences Building", aka: null, lat: 14.16573858977826, lon: 121.24045282592225, directions: "In front of CAS Annex 1, to the left of SEARCA. Has multiple wings (BS A, B, C, D, E) housing the Institute of Biological Sciences.", rooms: ["BS A-109","BS A-115","BS A-121","BS A-137","BS A-215","BS A-309","BS A-315","BS B-100","BS B-101","BS B-105","BS B-109","BS B-307","BS C-105","BS C-107","BS C-112","BS C-113","BS C-116","BS C-117","BS C-125","BS C-127","BS C-205","BS C-227","BS C-313","BS C-321","BS D-229","BS E-103","BS E-213","IBSLH 3","IBSLH MAIN","IBSLH Main","IBSLH2","IBSLH3","MBBLH","MSLR 1","MSLR 2","IBS Bioinformatics Laboratory","IBS Bioinformatics Room","IBS MBB Teaching Laboratory","IBS Symbiosis-Bioinformatics Laboratory","Malacology Lab (Snail Room)","Malacology Laboratory (BS Snail Room)"] },
+  { name: "CAFS Building", aka: "College of Agriculture and Food Science", lat: 14.160329177519289, lon: 121.24508768282763, directions: "College of Agriculture and Food Science cluster. In the upper campus area near the agriculture facilities.", rooms: ["212B","237","A-102","A-115","AAVLH","ANSC LH2","ASLH 1","ASLH 2","ASLH1","ASLH2","ASLH 3","B-100","B-201","B101a","B200","BAL LAB 1","BAL LAB 2","BALH 1","BALH 2","BALH1","BALH2","Bal lab 2","Balh1","D407","FCN","FPPS ANNEX","IAF","Nursery (FCN)","SOILS LAB","Soils Lab","PSLH A","PSLH B","Poultry Lab B"] },
+  { name: "CAS Main Building", aka: "CAS Main", lat: 14.164912488568103, lon: 121.24116485649184, directions: "The main CAS building is BEHIND the Oblation statue. CAS Bxx rooms are in the basement (stairs in front of OCS kiosks). CAS 1xx rooms are on the first floor. CAS LITE rooms are on the 2nd floor.", rooms: ["CAS 101","CAS 102","CAS 103","CAS 104","CAS 106","CAS 107","CAS 108","CAS 109","CAS 110","CAS B01","CAS B02","CAS B03","CAS B04","CAS B05","CAS B06","CAS B07","CAS B08","CAS B09","CAS B10","CAS LITE 4","CAS LITE 5"] },
+  { name: "CAS Annex 1", aka: "CAS A1", lat: 14.165447317040943, lon: 121.24109655582862, directions: "The tall 4-floor building to the LEFT of Oble, beside OUR (Office of the University Registrar). Has galleries (GAL) on lower floors and lecture rooms on floors 3-4.", rooms: ["CAS A1 - GAL 2","CAS A1 301","CAS A1 302","CAS A1 303","CAS A1 304","CAS A1 305","CAS A1 306","CAS A1 402","CAS A1 403","CAS A1 404","CAS A1 405","CAS A1 406","CAS A1 407","CAS A1 408","CAS A1 409","CAS A1 410","CAS A1 GAL 1","CAS A1 GAL 2","CATL"] },
+  { name: "CAS Annex 2", aka: "CAS A2", lat: 14.165488927458338, lon: 121.24174028595435, directions: "The 2-storey building beside CAS Annex 1, to the left of Oble.", rooms: ["CAS A2 101","CAS A2 102","CAS A2 103","CAS A2 200","CAS A2 201","CAS A2 202","CAS A2 203","CAS A2 MPH1","CAS A2- 201","CAS A2-201","CAS A200","CAS A2MPH2","INSTAT RA2"] },
+  { name: "CDC Building", aka: "College of Development Communication", lat: 14.167, lon: 121.2426, directions: "College of Development Communication building. Located at Carabao Park, in front of the Administration Building.", rooms: ["CDC 209A","CDC 212B","CDC ANNEX 04","CDC ANNEX 2","CDC ANNEX 3","CDC ANNEX1","CDC ANNEX2","CDC ANNEX3","CDC ANNEX4","CDC Annex 01","CDC Annex4","CDC Conference Rm","CDC DECIMU","CDC GRAD","CDC GRAD ROOM","CDC IMU","CDC LR1","CDC LR2","CDC RM 201B","CDC RM 209A","CDC RM201B","CDC RM212B","CDC Rm209A","CDC Room 200A","CDC Room 201B","RM 209A","Room 200A","Room 212B","DEC-IMU","IMU","LR1"] },
+  { name: "Civil Engineering Building", aka: null, lat: 14.1618, lon: 121.246, directions: "Part of the CEAT cluster. Near the main engineering buildings.", rooms: ["CE 101","CE 101A","CE 101B","CE 102","CE 103","CE CONF RM","CE LAB"] },
+  { name: "CEAT Building", aka: "College of Engineering and Agro-Industrial Technology", lat: 14.1613, lon: 121.2454, directions: "College of Engineering and Agro-Industrial Technology complex. The CEAT shops and labs are here.", rooms: ["CEAT B-100","CEAT B-100a","CEAT B-101a","CEAT B-101b","CEAT B-103","CEAT B-105","CEAT B-108","CEAT B-200a","CEAT B-200b","CEAT B-201","CEAT B-202","CEAT B-203","CEAT B-205","CEAT B100","CEAT B100b","CEAT SHOP","CEAT SHOP RM"] },
+  { name: "CEM Building", aka: "College of Economics and Management", lat: 14.166660123648663, lon: 121.24090736444153, directions: "College of Economics and Management. The first cluster of buildings if you follow the Kanan road from the main gate. A large building complex with many lecture rooms (CEM 101-118, 201-205).", rooms: ["CEM  202","CEM 101","CEM 102","CEM 104","CEM 105","CEM 106","CEM 107","CEM 108","CEM 109","CEM 110","CEM 111","CEM 112","CEM 113","CEM 114","CEM 115","CEM 116","CEM 117","CEM 118","CEM 118/ONLINE","CEM 201","CEM 202","CEM 203","CEM 204","CEM 205","CEM FH","CEM Function Hall","CEM102","CEMFH"] },
+  { name: "CFNR Building", aka: "College of Forestry and Natural Resources", lat: 14.1543, lon: 121.2353, directions: "College of Forestry and Natural Resources. Located in the upper campus. Has multiple buildings and facilities.", rooms: ["CFNR Lansigan, Audi","CFNR Varrons Room","CFNR, Manza","ERSG LAB","Follosco","GEOMATICS","GEOMATICS ROOM","GTOCHLOA","Human Dimensions Lab","SFFG 14","SFFG 16","SFFG 7","SFFG 9","SHOREA","SWIETENIA","VITEX","Varrons Room","WOOD ANATOMY","WOOD CHEM","Field"] },
+  { name: "CHE Building", aka: "College of Human Ecology", lat: 14.164995709591306, lon: 121.241894417301, directions: "College of Human Ecology (Gil F. Saguiguit Hall). Located beside Physical Sciences, on the left side of OPark when facing the Oblation.", rooms: ["CHE  MPH","CHE 1","CHE 2","CHE 4","CHE 5","CHE Conference Room","CHE MPH","CHE REC","CHE Rec","CHE SR","CHE conference room","CHE-MPH","Dean's Office Conference Room DECL Hall","Dean's Office Conference Room, DECL Hall","CLH","DHFDS","DHFDS GRAD","ALH","ACL","CTL","CERP Conf Room","CERP Conference Room","DCERP  AVR","DCERP AVR"] },
+  { name: "Chemical Engineering Building", aka: null, lat: 14.1608, lon: 121.245, directions: "In the CEAT complex, has specialized labs including Unit Operations. Near the other engineering buildings.", rooms: ["ChE 1","ChE 2","ChE 3","ChE 4","ChE 5","ChE SR","Unit Ops"] },
+  { name: "CVM Building", aka: "College of Veterinary Medicine", lat: 14.15892049473242, lon: 121.24313896221082, directions: "College of Veterinary Medicine. Located behind the Carillon Tower. Has multiple facilities including Fronda Hall.", rooms: ["ADSC LH3 (IAS-CVM Building)","Animal Health Lab","Animal Health Laboratory","Animal Nutrition Lecture Room","Animal Physiology Lecture Room","CVM LR1","CVM LR2","DSDS MLH","DSDS MLH (Main Lecture Hall)","DSDS Main Lecture Hall","DSDS Main Lecture Hall (MLH)","DSDS SDS Lab","EM/HIS LAB","Food Hygiene Laboratory Room","Fronda GSR","Fronda Hall -  Graduate Student Room (GSR)","Fronda Hall -  Poultry Lab B","Fronda Hall - Graduate Student Room (GSR)","Fronda Hall RM. 24","Fronda RM. 24","FRONDA HALL - ROOM 26","General Physio Lab (Rm. 100)","General Physiology Lab (Rm. 100)","Gross Anat Lab","IAS Graduate Room (AND)","IAS RM. 1","IAS RM. 2","IAS Room 1","IAS-LGIL","MLH","PHYSIO LAB","PhysLab","Pharma Lab","SDS Lab","SDS lab","THERIOGENOLOGY LABORATORY ROOM","ZOTCLAB BC","ZOTCLAB-CL","DBVS Graduate Student Lecture Room","DBVS LR","DBVS Lecture Room","DVCS L.A. SURGERY RM","DVCS LR1","DVCS S.A. SURGERY RM","DVCS SURGERY THEATRE","DVCS Small Animal Surgery Room","DVCS THERIO LAB","DVCS ZOTC Rm - Gregorio San Agustin Hall"] },
+  { name: "DAAE Building", aka: null, lat: 14.167117835374897, lon: 121.24073570307466, directions: "Department of Agricultural and Applied Economics. Part of the CEM cluster.", rooms: ["DAAE Conference Room 1","DAAE Conference Room 2"] },
+  { name: "Electrical Engineering Building", aka: "Dante De Padua Hall (CEAT Administrative Building)", lat: 14.161580616694565, lon: 121.24783967751902, directions: "White, three-storey building beside ICrops in Pili Drive. Part of CEAT complex. Houses EE lecture rooms and the EE Auditorium.", rooms: ["EE 100","EE 103","EE 104","EE 202","EE 203","EE 302","EE 303","EE 304","EE AUDI"] },
+  { name: "Forestry Biological Sciences Building", aka: null, lat: 14.1548, lon: 121.2358, directions: "In the CFNR area in the upper campus. Contains FBS labs and lecture rooms.", rooms: ["FBS 051","FBS 055","FBS 060","FBS 151","FBS 155","FBS 155/ FBS 051","FBS 155/FBS 051","FBS 157","FBS 161","FBS 169","FBS 171","FBS 175"] },
+  { name: "Graduate School Building", aka: null, lat: 14.1638, lon: 121.239, directions: "Behind the International House dormitory, at the foot of the ascent going to UHS and Forestry.", rooms: ["GRAD ROOM","GS 201","GS Room 202","Graduate Room","Graduate Room 120","Graduate School","NEW GS RM 2","Old GS Conference Room"] },
+  { name: "Hydrology Building", aka: "HL Building", lat: 14.162790342169593, lon: 121.24949043285048, directions: "The Hydrology Laboratory. Located in the CEAT area, near the irrigation and water resources facilities.", rooms: ["HL CONRM 2","HL ConfRm2","HL-100","HL-201"] },
+  { name: "IABE Building", aka: null, lat: 14.162, lon: 121.2475, directions: "Institute of Agricultural and Biosystems Engineering. In the CEAT area.", rooms: ["IABE CONFR","IABE DO Meeting Room","IABE LH","IABE Meeting Room"] },
+  { name: "ICOPED Building", aka: null, lat: 14.167409105993643, lon: 121.24232357078375, directions: "Institute of Cooperatives and Bio-Enterprise Development. Part of the CEM area.", rooms: ["ICOPED 26","ICOPED 28","ICOPED 30"] },
+  { name: "ICropS Building", aka: null, lat: 14.160418508015592, lon: 121.24579971346282, directions: "Institute of Crop Science building. In the CAFS cluster.", rooms: ["ICROPS 100","ICROPS 101","ICROPS 104","ICROPS 106","ICROPS 134","ICROPS 137","ICROPS 138","ICROPS 200","ICROPS 201","ICROPS 202","ICROPS 302","ICROPS 302 MORPH LAB"] },
+  { name: "Industrial Engineering Building", aka: null, lat: 14.162249399713152, lon: 121.24760215793597, directions: "Part of CEAT. Contains IE lecture rooms and labs.", rooms: ["IE 100","IE 101","IE 102","IE 103","IE 104"] },
+  { name: "IFST Building", aka: null, lat: 14.160501730685995, lon: 121.24442642252787, directions: "Institute of Food Science and Technology. In the CAFS cluster, has main building and several annexes (A, B, C, D) including pilot plant facilities.", rooms: ["IFST 201","IFST 202","IFST ANNEX A","IFST ANNEX B","IFST ANNEX C","IFST ANNEX D","IFST L2/L3","IFST Pilot Plant","IFST STL"] },
+  { name: "IHNF Building", aka: null, lat: 14.164995709592109, lon: 121.2427098088592, directions: "Institute of Human Nutrition and Food. Part of the CHE building complex.", rooms: ["IHNF Conference Room","RGQ","NL","FL"] },
+  { name: "IRNR Building", aka: null, lat: 14.1538, lon: 121.2348, directions: "Institute of Renewable Natural Resources. Part of the CFNR complex in the upper campus.", rooms: ["IRNR 252","IRNR 253","IRNR 254","IRNR 271A","IRNR 273A","IRNR 273B","IRNR 290","IRNR 291","IRNR 292","IRNR Conference Room"] },
+  { name: "IWEP Building", aka: null, lat: 14.165827918146277, lon: 121.2406498724568, directions: "Institute of Weed Science, Entomology and Plant Pathology. In the CAFS area, includes the WPD Hall.", rooms: ["IWEP AUDI","IWEPLH","WPD Hall LR108"] },
+  { name: "LHKCB Building", aka: null, lat: 14.160501730680284, lon: 121.24438350730719, directions: "Near the CAFS area. Has lecture halls and classroom facilities.", rooms: ["LHKCB 101B","LHKCB 204"] },
+  { name: "Math Building", aka: null, lat: 14.165411814244841, lon: 121.24361103115628, directions: "The old-looking building on the left before the bridge to CEAT, just across the Diocesan Shrine of St. Therese. Houses IMSP lecture rooms (MB 100-104 on ground floor, MB 301-309 on 3rd floor).", rooms: ["MB 100","MB 101A","MB 101B","MB 102","MB 103A","MB 104","MB 301","MB 302","MB 303","MB 304","MB 305","MB 307","MB 308","MB 309"] },
+  { name: "Copeland Gymnasium", aka: "Copeland Gym", lat: 14.157297635860596, lon: 121.2427098088592, directions: "The main gym facility. From the main gate, it's on the right side before reaching the academic buildings. Has 3 floors - Wing B is towards the parking at the back. Contains various sports facilities including courts and training areas.", rooms: ["BADMINTON COURT","BALLET AREA","BASKETBALL COURT","BEACH VOLLEYBALL COURT","BRIDGE ROOM","DANCE AREA 1","DANCE AREA 2","MARTIAL ARTS AREA","TABLE TENNIS AREA","UPPERFIELD","VOLLEYBALL AREA","WEIGHT TRAINING AREA","YOGA ROOM","LR2A","LR2B","LR3B"] },
+  { name: "Baker Hall Pool", aka: "Swimming Pool Area", lat: 14.162253497902821, lon: 121.24266929817223, directions: "The swimming pool area, located behind Baker Hall, which is at Freedom Park. Managed by the Department of Human Kinetics (CAS).", rooms: ["SWIMMING POOL"] },
+  { name: "PHTRC Building", aka: null, lat: 14.161542011486866, lon: 121.24429767662376, directions: "Post-Harvest Training and Research Center. In the CAFS area.", rooms: ["PHTRC","PHTRC 106","PHTRC ANNEX"] },
+  { name: "Physical Sciences Building", aka: "Francisco O. Santos Hall", lat: 14.16449638298952, lon: 121.24167984077903, directions: "Francisco O. Santos Hall. A wide building to the RIGHT of Oble. Has PSLH (Physical Science Lecture Halls) A and B, plus many PS rooms (B-100 to B-205, C-101 to C-320).", rooms: ["PS ANX-300","PS ANX-306","PS B-100","PS B-101","PS B-103","PS B-105","PS B-200","PS B-201","PS B-203","PS B-205","PS C-101","PS C-200c","PS C-203","PS C-204","PS C-206","PS C-214","PS C-304","PS C-305","PS C-306","PS C-307","PS C-309","PS C-312","PS C-320","PS C100","AVR-ANNEX","EAA LH","ICS PC1","ICS PC2","ICS PC3","ICS PC4","ICS PC5","ICS PC6","ICS PC7","ICS PC8","ICS PC9","INSTATLH","MMM LH","SMA LH"] },
+  { name: "PTCF Building", aka: null, lat: 14.156, lon: 121.241, directions: "Post-harvest Training and Research Center Facility. In the CAFS area.", rooms: ["PTCF Conf. Rm","PTCF LAB","PTCF Lec 1"] },
+  { name: "TCC Building", aka: null, lat: 14.16574893221993, lon: 121.24288733602698, directions: "Temporary Common Classroom at the Old Maquiling School. Located beside the CHE building, behind the Administration Building. Has multiple rooms (TCC 1, 2, 4, 5, 11, 22).", rooms: ["TCC 1","TCC 11","TCC 2","TCC 22","TCC 4","TCC 5"] },
+  { name: "Main Library", aka: "Dean Edelwina C. Legaspi Hall", lat: 14.165370203813325, lon: 121.23919075095945, directions: "The main library building. Located behind the Pegaraw statue (winged tamaraw).", rooms: ["Main Library"] },
+  { name: "UPRHS Building", aka: null, lat: 14.15151290659347, lon: 121.27134891640044, directions: "UP Rural High School. Located in Bay, Laguna, OUTSIDE the main UPLB campus.", rooms: ["UPRHS"] }
 ];
 
 let state = {
@@ -397,14 +467,71 @@ let state = {
   userName: '',                    // for the personalized dashboard greeting
   notificationsEnabled: false,     // opt-in reminders toggle in Settings
   notificationsPermissionDenied: false,
-  quoteIndex: null          // null = deterministic "quote of the day"; set once shuffled
+  quoteIndex: null,          // null = deterministic "quote of the day"; set once shuffled
+  mapModalBuilding: null,     // building name currently shown in the embedded map modal, or null
+  gradesSemesters: [],      // [{id, label, courses:[{id,code,title,units,grade}]}]
+  activeSemesterId: null,
+  showSemesterForm: false,
+  showGradeCourseForm: false,
+  editingGradeCourse: null,
+  chedTarget: null,         // retention GWA ceiling, e.g. 2.00 — lower is better in UP grading
+  navArcOpen: false
 };
 
 /* ---------- HELPERS ---------- */
 function uid(){ return Math.random().toString(36).slice(2,10) + Date.now().toString(36); }
 function peso(n){ return '₱' + Number(n||0).toLocaleString('en-PH',{minimumFractionDigits:0,maximumFractionDigits:2}); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-// Great-circle distance between two lat/lon points, in meters (haversine formula).
+// Normalize a room/building string for loose matching: uppercase, strip
+// everything except letters and digits (drops spaces, dashes, slashes, dots, parens).
+function normRoom(s){
+  return (s||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+}
+// Leading letter-prefix of a room code, e.g. "CAS101" -> "CAS", "PSB100" -> "PS".
+function roomPrefix(s){
+  const m = normRoom(s).match(/^[A-Z]+/);
+  return m ? m[0] : '';
+}
+// Tokens too generic to be treated as a building-specific code prefix
+// (they show up as one-off descriptive room labels in the source data,
+// e.g. CDC Building has rooms literally called "Room 200A" alongside its
+// real "CDC 200" codes — without this blacklist, any made-up room starting
+// with "Room" would falsely match CDC via prefix fallback).
+const GENERIC_ROOM_PREFIXES = new Set([
+  'ROOM','RM','LAB','LR','CONF','CONFERENCE','HALL','MPH','GRAD','AUDI',
+  'MAIN','ANNEX','BUILDING','CENTER','FH','SR','REC','AREA','COURT','FIELD',
+  'OFFICE','CLASSROOM'
+]);
+// Build a lookup once: normalized exact room code -> building, and prefix -> Set(buildings).
+const ROOM_EXACT = new Map();
+const ROOM_PREFIX = new Map();
+BUILDINGS.forEach(b=>{
+  (b.rooms||[]).forEach(r=>{
+    const norm = normRoom(r);
+    if(norm && !ROOM_EXACT.has(norm)) ROOM_EXACT.set(norm, b);
+    const pfx = roomPrefix(r);
+    if(pfx && !GENERIC_ROOM_PREFIXES.has(pfx)){
+      if(!ROOM_PREFIX.has(pfx)) ROOM_PREFIX.set(pfx, new Set());
+      ROOM_PREFIX.get(pfx).add(b);
+    }
+  });
+});
+// Find the building a class's room string belongs to, or null if no confident match.
+// Tries an exact normalized room-code match first, then falls back to a
+// letter-prefix match (only if that prefix maps to exactly one building,
+// to avoid guessing wrong when a prefix is ambiguous).
+function findBuildingForRoom(roomStr){
+  if(!roomStr) return null;
+  const norm = normRoom(roomStr);
+  if(!norm) return null;
+  if(ROOM_EXACT.has(norm)) return ROOM_EXACT.get(norm);
+  const pfx = roomPrefix(roomStr);
+  if(pfx && ROOM_PREFIX.has(pfx)){
+    const candidates = ROOM_PREFIX.get(pfx);
+    if(candidates.size===1) return [...candidates][0];
+  }
+  return null;
+}
 function haversineMeters(lat1, lon1, lat2, lon2){
   const R = 6371000; // mean Earth radius, meters
   const toRad = d => d * Math.PI / 180;
@@ -417,6 +544,86 @@ function fmtDistance(m){
   if(m < 1000) return `${Math.round(m)} m`;
   return `${(m/1000).toFixed(1)} km`;
 }
+function osmLinkFor(b){
+  return `https://www.openstreetmap.org/?mlat=${b.lat}&mlon=${b.lon}#map=18/${b.lat}/${b.lon}`;
+}
+function gmapsLinkFor(b){
+  return `https://www.google.com/maps/search/?api=1&query=${b.lat},${b.lon}`;
+}
+
+/* ---------- MAP MODAL (embedded Leaflet) ---------- */
+let _leafletMap = null; // tracks the live Leaflet instance so we can tear it down between opens
+
+function findBuildingByName(name){
+  return BUILDINGS.find(b=>b.name===name) || null;
+}
+
+function openMapModal(buildingName){
+  state.mapModalBuilding = buildingName;
+  renderMapModal();
+}
+
+function closeMapModal(){
+  state.mapModalBuilding = null;
+  if(_leafletMap){ _leafletMap.remove(); _leafletMap = null; }
+  const modalRoot = document.getElementById('mapModalRoot');
+  if(modalRoot) modalRoot.innerHTML = '';
+}
+
+function renderMapModal(){
+  const modalRoot = document.getElementById('mapModalRoot');
+  if(!modalRoot) return;
+  const name = state.mapModalBuilding;
+  if(!name){ modalRoot.innerHTML=''; return; }
+  const b = findBuildingByName(name);
+  if(!b){ modalRoot.innerHTML=''; return; }
+
+  modalRoot.innerHTML = `
+    <div class="map-modal-backdrop" data-action="close-map-modal">
+      <div class="map-modal-panel" data-stop-close="1">
+        <div class="map-modal-header">
+          <div>
+            <div class="map-modal-title">${esc(b.name)}</div>
+            ${b.aka ? `<div class="muted" style="margin-top:2px;">${esc(b.aka)}</div>` : ''}
+          </div>
+          <button type="button" class="map-modal-close" data-action="close-map-modal" aria-label="Close map">${iconClose()}</button>
+        </div>
+        <div id="leafletMapContainer"></div>
+        <div class="map-modal-directions">
+          ${esc(b.directions)}
+          <div class="form-actions" style="margin-top:10px;">
+            <a href="${gmapsLinkFor(b)}" target="_blank" rel="noopener" class="ghost small" style="display:inline-flex;align-items:center;gap:5px;text-decoration:none;">
+              ${iconExternal()} Directions in Google Maps
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Init Leaflet after the container is in the DOM. If a previous map instance
+  // exists (from a prior open), tear it down first — Leaflet throws if you
+  // re-init on a container it already bound to.
+  if(_leafletMap){ _leafletMap.remove(); _leafletMap = null; }
+  if(typeof L === 'undefined'){
+    const mc = document.getElementById('leafletMapContainer');
+    if(mc) mc.innerHTML = `<div class="muted" style="padding:16px;text-align:center;">Map couldn't load (no internet connection?). Directions are below.</div>`;
+    return;
+  }
+  requestAnimationFrame(()=>{
+    const mapEl = document.getElementById('leafletMapContainer');
+    if(!mapEl) return;
+    _leafletMap = L.map(mapEl, { attributionControl: true }).setView([b.lat, b.lon], 18);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(_leafletMap);
+    L.marker([b.lat, b.lon]).addTo(_leafletMap).bindPopup(esc(b.name)).openPopup();
+    // Force a size recalculation once the slide-up animation/layout settles.
+    setTimeout(()=>{ if(_leafletMap) _leafletMap.invalidateSize(); }, 200);
+  });
+}
+function iconClose(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>`; }
 function fmtTime(t){
   if(!t) return '';
   const [h,m] = t.split(':').map(Number);
@@ -469,9 +676,14 @@ async function loadAll(){
   state.archives = storageGet('punla:archives', []);
   state.theme = storageGet('punla:theme', 'light');
   applyTheme();
-  state.userName = storageGet('punla:userName', '');
+  state.userName = storageGet('punla:userName', 'Mertchelson');
   state.notificationsEnabled = storageGet('punla:notificationsEnabled', false)
     && ('Notification' in window) && Notification.permission === 'granted';
+  state.gradesSemesters = storageGet('punla:gradesSemesters', []);
+  state.chedTarget = storageGet('punla:chedTarget', null);
+  if(state.gradesSemesters.length){
+    state.activeSemesterId = state.gradesSemesters[state.gradesSemesters.length-1].id;
+  }
 
   generateRecurringExpenses();
   generateRecurringDeadlines();
@@ -479,10 +691,12 @@ async function loadAll(){
   document.getElementById('loadingScreen').remove();
   buildShell();
   render();
+  showSplash();
   registerServiceWorker();
 
   if(state.notificationsEnabled){
     checkReminders();
+    syncToWorker();
   }
   // Poll periodically rather than on a precise schedule — this only fires
   // notifications while the app tab is open (no push server), so it's a
@@ -490,14 +704,61 @@ async function loadAll(){
   setInterval(()=>{ if(state.notificationsEnabled) checkReminders(); }, 5 * 60 * 1000);
 }
 
-async function saveSchedule(){ storageSet('punla:schedule', state.schedule); }
+async function saveSchedule(){ storageSet('punla:schedule', state.schedule); syncToWorker(); }
 async function saveExpenses(){ storageSet('punla:expenses', state.expenses); }
-async function saveDeadlines(){ storageSet('punla:deadlines', state.deadlines); }
+async function saveDeadlines(){ storageSet('punla:deadlines', state.deadlines); syncToWorker(); }
 async function saveDeadlineRules(){ storageSet('punla:deadlineRules', state.deadlineRules); }
 async function saveArchives(){ storageSet('punla:archives', state.archives); }
 async function saveTheme(){ storageSet('punla:theme', state.theme); }
 function applyTheme(){ document.documentElement.setAttribute('data-theme', state.theme); }
 async function saveUserName(){ storageSet('punla:userName', state.userName); }
+async function saveGrades(){ storageSet('punla:gradesSemesters', state.gradesSemesters); }
+async function saveChedTarget(){ storageSet('punla:chedTarget', state.chedTarget); }
+
+// --- Optional backend sync (only sends the fields reminders need to compute
+// timing: title/due/course for deadlines, code/day/start/room for classes —
+// never budget, expenses, or campus data). No-op until CONFIG is filled in. ---
+let _syncTimer = null;
+function syncToWorker(){
+  if(!backendConfigured()) return;
+  clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(async () => {
+    try{
+      const payload = {
+        deadlines: state.deadlines.map(d => ({ id:d.id, title:d.title, due:d.due, done:!!d.done, course:d.course||'', type:d.type||'' })),
+        schedule: state.schedule.map(c => ({ id:c.id, code:c.code, day:c.day, start:c.start, room:c.room||'' }))
+      };
+      await fetch(CONFIG.WORKER_URL + '/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Punla-Token': CONFIG.SYNC_TOKEN },
+        body: JSON.stringify(payload)
+      });
+    }catch(e){ console.warn('Reminder sync failed, will retry on next change', e); }
+  }, 800); // debounce rapid edits
+}
+function urlBase64ToUint8Array(base64String){
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  const arr = new Uint8Array(rawData.length);
+  for(let i=0; i<rawData.length; i++) arr[i] = rawData.charCodeAt(i);
+  return arr;
+}
+async function subscribeForPush(){
+  if(!backendConfigured()) return; // local-only reminders still work while the tab is open
+  try{
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(CONFIG.VAPID_PUBLIC_KEY)
+    });
+    await fetch(CONFIG.WORKER_URL + '/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Punla-Token': CONFIG.SYNC_TOKEN },
+      body: JSON.stringify(sub)
+    });
+  }catch(e){ console.warn('Push subscription failed', e); }
+}
 
 // Checks for classes starting soon and deadlines coming up, and fires a
 // browser Notification for each one not already notified today. Only works
@@ -551,29 +812,65 @@ function registerServiceWorker(){
 }
 
 /* ---------- SHELL ---------- */
+function showSplash(){
+  const root = document.getElementById('root');
+  const hour = new Date().getHours();
+  const timeGreeting = hour < 5 ? 'Working late,' : hour < 12 ? 'Good morning,' : hour < 18 ? 'Good afternoon,' : 'Good evening,';
+  const el = document.createElement('div');
+  el.className = 'splash-screen';
+  el.id = 'splashScreen';
+  el.innerHTML = `
+    <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="#8FB35C" stroke-width="1.4"><path d="M12 21v-9"/><path d="M12 12c0-4 3-7 7-7 0 4-3 7-7 7z"/><path d="M12 12c0-3-2.5-5-6-5 0 3 2.5 5 6 5z"/></svg>
+    <div class="splash-greeting">${timeGreeting}</div>
+    <div class="splash-name">Mertchelson<br>Montefalcon</div>
+    <div class="splash-sub">BSABE · CEAT · UPLB</div>
+    <div class="splash-tap">tap anywhere to continue</div>
+  `;
+  root.appendChild(el);
+  el.addEventListener('click', dismissSplash);
+  setTimeout(dismissSplash, 2200);
+}
+function dismissSplash(){
+  const el = document.getElementById('splashScreen');
+  if(!el || el.classList.contains('closing')) return;
+  el.classList.add('closing');
+  setTimeout(()=>el.remove(), 420);
+}
+
 function buildShell(){
   const root = document.getElementById('root');
   const today = new Date();
+  const arcOrder = [
+    ['dashboard','Home', iconHome()],
+    ['schedule','Schedule', iconCal()],
+    ['expenses','Expenses', iconWallet()],
+    ['deadlines','Deadlines', iconFlag()],
+    ['grades','Grades', iconGrad()],
+    ['campus','Campus', iconMapPin()],
+    ['settings','Settings', iconSettings()]
+  ];
   root.innerHTML = `
     <div class="topbar">
       <div class="brand">
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#8FB35C" stroke-width="1.6"><path d="M12 21v-9"/><path d="M12 12c0-4 3-7 7-7 0 4-3 7-7 7z"/><path d="M12 12c0-3-2.5-5-6-5 0 3 2.5 5 6 5z"/></svg>
         <div>
           <div class="brand-name">Punla</div>
-          <div class="brand-sub">UPLB freshman planner</div>
+          <div class="brand-sub" id="topbarSection">UPLB freshman planner</div>
         </div>
       </div>
       <div class="date-chip">${today.toLocaleDateString('en-US',{weekday:'short'})}<br>${today.toLocaleDateString('en-US',{month:'short',day:'numeric'})}</div>
     </div>
     <div id="content"></div>
-    <nav class="tabbar">
-      ${tabBtn('dashboard','Home', iconHome())}
-      ${tabBtn('schedule','Schedule', iconCal())}
-      ${tabBtn('expenses','Expenses', iconWallet())}
-      ${tabBtn('deadlines','Deadlines', iconFlag())}
-      ${tabBtn('campus','Campus', iconMapPin())}
-      ${tabBtn('settings','Settings', iconSettings())}
-    </nav>
+    <div id="mapModalRoot"></div>
+    <div class="nav-backdrop" id="navBackdrop" data-action="close-nav-arc"></div>
+    <div class="nav-fab-wrap">
+      <div class="nav-arc" id="navArc">
+        ${arcOrder.map((t,i)=>arcBtn(t[0],t[1],t[2],i,arcOrder.length)).join('')}
+      </div>
+      <button class="nav-fab" id="navFab" data-action="toggle-nav-arc" aria-label="Open navigation menu">
+        ${iconGrid()}
+      </button>
+    </div>
   `;
   root.addEventListener('click', onClick);
   root.addEventListener('submit', onSubmit);
@@ -582,8 +879,30 @@ function buildShell(){
   root.addEventListener('input', onInput);
 }
 
-function tabBtn(id,label,icon){
-  return `<button class="tab-btn ${state.tab===id?'active':''}" data-action="tab" data-tab="${id}">${icon}<span>${label}</span></button>`;
+// Lays out the 7 destinations along a quarter-circle arc fanning up and to
+// the left of the FAB (which sits bottom-right), so every bubble stays on
+// screen and reachable by thumb on a one-handed hold.
+function arcBtn(id,label,icon,index,total){
+  const startAngle = 95, endAngle = 185; // degrees, standard math convention (0=right, 90=up, 180=left)
+  const angle = total>1 ? startAngle + (endAngle-startAngle)*(index/(total-1)) : (startAngle+endAngle)/2;
+  const rad = angle*Math.PI/180;
+  const radius = 122;
+  const x = (Math.cos(rad)*radius).toFixed(1);
+  const y = (-Math.sin(rad)*radius).toFixed(1);
+  const delay = (index*0.028).toFixed(3);
+  return `<button class="arc-btn ${state.tab===id?'active':''}" data-action="tab" data-tab="${id}"
+    style="--tx:${x}px;--ty:${y}px;--delay:${delay}s" aria-label="${label}">${icon}<span class="arc-tooltip">${label}</span></button>`;
+}
+
+function setNavArcOpen(){
+  const arc = document.getElementById('navArc');
+  const fab = document.getElementById('navFab');
+  const backdrop = document.getElementById('navBackdrop');
+  if(!arc || !fab || !backdrop) return;
+  arc.classList.toggle('open', state.navArcOpen);
+  fab.classList.toggle('open', state.navArcOpen);
+  backdrop.classList.toggle('open', state.navArcOpen);
+  fab.setAttribute('aria-expanded', state.navArcOpen ? 'true' : 'false');
 }
 function iconHome(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>`; }
 function iconCal(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>`; }
@@ -592,6 +911,8 @@ function iconFlag(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="curren
 function iconSettings(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>`; }
 function iconPlus(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 5v14M5 12h14"/></svg>`; }
 function iconMapPin(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 10c0 6-9 13-9 13s-9-7-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>`; }
+function iconGrad(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2 9l10-5 10 5-10 5-10-5z"/><path d="M6 11v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5"/><path d="M22 9v6"/></svg>`; }
+function iconGrid(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="6" cy="6" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="6" r="1.6" fill="currentColor" stroke="none"/><circle cx="18" cy="6" r="1.6" fill="currentColor" stroke="none"/><circle cx="6" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="18" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="6" cy="18" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="18" r="1.6" fill="currentColor" stroke="none"/><circle cx="18" cy="18" r="1.6" fill="currentColor" stroke="none"/></svg>`; }
 function iconSearch(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>`; }
 function iconExternal(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><path d="M15 3h6v6"/><path d="M10 14L21 3"/></svg>`; }
 function iconTrash(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-8 0v13a1 1 0 001 1h6a1 1 0 001-1V7"/></svg>`; }
@@ -610,15 +931,55 @@ function render(){
   else if(state.tab==='schedule') c.innerHTML = renderSchedule();
   else if(state.tab==='expenses') c.innerHTML = renderExpenses();
   else if(state.tab==='deadlines') c.innerHTML = renderDeadlines();
+  else if(state.tab==='grades') c.innerHTML = renderGrades();
   else if(state.tab==='campus') c.innerHTML = renderCampus();
   else if(state.tab==='settings') c.innerHTML = renderSettings();
   updateTabbar();
   c.scrollTop = 0;
 }
 function updateTabbar(){
-  document.querySelectorAll('.tab-btn').forEach(btn=>{
+  document.querySelectorAll('.arc-btn').forEach(btn=>{
     btn.classList.toggle('active', btn.dataset.tab===state.tab);
   });
+  const labels = {
+    dashboard:'UPLB freshman planner', schedule:'Schedule', expenses:'Expenses',
+    deadlines:'Deadlines', grades:'Grades', campus:'Campus', settings:'Settings'
+  };
+  const label = document.getElementById('topbarSection');
+  if(label) label.textContent = labels[state.tab] || 'UPLB freshman planner';
+}
+
+/* ---------- GRADES / GWA ---------- */
+// Computes a units-weighted GWA from a list of {units, grade} courses.
+// INC/DRP and blank grades are excluded from both the numerator and the
+// units denominator, since they carry no completed grade point yet.
+function computeGwa(courses){
+  let totalUnits = 0, totalPoints = 0;
+  (courses||[]).forEach(c=>{
+    const g = c.grade;
+    if(!g || g==='INC' || g==='DRP') return;
+    const gn = Number(g);
+    const u = Number(c.units)||0;
+    if(isNaN(gn) || u<=0) return;
+    totalUnits += u;
+    totalPoints += gn*u;
+  });
+  return { gwa: totalUnits>0 ? totalPoints/totalUnits : null, totalUnits };
+}
+// Maps a GWA onto the same 0..1 "plant health" scale the budget seedling
+// uses, so the visual language stays consistent: 1.00 (best) is full health,
+// 3.00 is bare, anything worse wilts.
+function gwaPercent(gwa){
+  if(gwa==null) return 0.5;
+  return Math.max(-0.3, Math.min(1, (3.0-gwa)/2));
+}
+// urgent/soon/ok classes reused from the deadline badges — here "urgent"
+// means at or past the retention ceiling, "soon" means within .25 of it.
+function gwaStatusClass(gwa, target){
+  if(gwa==null || target==null) return 'ok';
+  if(gwa > target) return 'urgent';
+  if(gwa > target-0.25) return 'soon';
+  return 'ok';
 }
 
 /* ---------- SEEDLING VISUAL ---------- */
@@ -809,14 +1170,19 @@ function renderDashboardToday(){
         <span class="muted">${DAY_FULL[todayShort]||''}</span>
       </div>
       ${todayClasses.length===0 ? `<div class="empty">No classes today. Enjoy!</div>` :
-        todayClasses.map(c=>`
+        todayClasses.map(c=>{
+          const bldg = findBuildingForRoom(c.room);
+          return `
         <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);">
           <div>
             <div style="font-size:13.5px;font-weight:500;color:var(--text);">${esc(c.code)}${c.title? ' · '+esc(c.title):''}</div>
-            <div class="muted">${esc(c.room||'TBA')} ${c.instructor?'· '+esc(c.instructor):''}</div>
+            <div class="muted" style="display:flex;align-items:center;gap:5px;">
+              <span>${esc(c.room||'TBA')} ${c.instructor?'· '+esc(c.instructor):''}</span>
+              ${bldg ? `<button type="button" data-action="view-map" data-building="${esc(bldg.name)}" title="View ${esc(bldg.name)} on map" style="background:none;border:none;padding:0;display:inline-flex;align-items:center;color:var(--leaf);flex-shrink:0;cursor:pointer;"><span class="mini-icon" style="width:12px;height:12px;">${iconMapPin()}</span></button>` : ''}
+            </div>
           </div>
           <div class="class-time">${fmtTime(c.start)}–${fmtTime(c.end)}</div>
-        </div>`).join('')}
+        </div>`;}).join('')}
     </div>
 
     <div class="card">
@@ -939,6 +1305,7 @@ function classCard(c){
     .filter(d=>!d.done && d.course && c.code && d.course.trim().toLowerCase()===c.code.trim().toLowerCase())
     .sort((a,b)=>a.due.localeCompare(b.due))
     .slice(0,3);
+  const bldg = findBuildingForRoom(c.room);
   return `
       <div class="card class-card ${c.type==='lab'?'lab':''}">
         <div class="class-row-top">
@@ -952,7 +1319,10 @@ function classCard(c){
           </div>
         </div>
         <div class="muted" style="margin-bottom:6px;">${esc(c.title||'')}${c.section?' · Sec '+esc(c.section):''}</div>
-        <div class="muted">${esc(c.room||'Room TBA')}${c.instructor?' · '+esc(c.instructor):''}</div>
+        <div class="muted" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+          <span>${esc(c.room||'Room TBA')}${c.instructor?' · '+esc(c.instructor):''}</span>
+          ${bldg ? `<button type="button" data-action="view-map" data-building="${esc(bldg.name)}" title="View ${esc(bldg.name)} on map" style="background:none;border:none;padding:0;display:inline-flex;align-items:center;color:var(--leaf);flex-shrink:0;cursor:pointer;"><span class="mini-icon" style="width:13px;height:13px;">${iconMapPin()}</span></button>` : ''}
+        </div>
         <div style="margin-top:8px;"><span class="badge ${c.type==='lab'?'lab':'lec'}">${c.type==='lab'?'LAB':'LECTURE'}</span></div>
         ${linked.length ? `
           <div class="linked-dl">
@@ -1327,6 +1697,134 @@ function renderDeadlinesCalendar(){
   `;
 }
 
+/* ---------- GRADES / GWA ---------- */
+function renderGrades(){
+  const sem = state.gradesSemesters.find(s=>s.id===state.activeSemesterId) || null;
+  const semGwa = sem ? computeGwa(sem.courses) : { gwa:null, totalUnits:0 };
+  const cumulative = computeGwa(state.gradesSemesters.flatMap(s=>s.courses));
+
+  return `
+    <h2 class="section-title">Grades</h2>
+    <div class="muted" style="margin:-6px 0 12px;">Track your GWA per semester — in the UP system, lower is better.</div>
+
+    ${state.gradesSemesters.length>0 ? `
+      <div class="day-pills">
+        ${state.gradesSemesters.map(s=>`
+          <button class="day-pill ${s.id===state.activeSemesterId?'active':''}" data-action="select-semester" data-id="${s.id}">${esc(s.label)}</button>
+        `).join('')}
+        <button class="day-pill" data-action="toggle-semester-form">+ New</button>
+      </div>
+    ` : ''}
+
+    ${state.showSemesterForm ? semesterForm() : ''}
+
+    ${!sem ? `
+      <div class="empty">
+        ${iconGrad()}
+        <div>${state.gradesSemesters.length ? 'Pick a semester above.' : 'No semester yet — add one to start tracking grades.'}</div>
+      </div>
+      ${!state.gradesSemesters.length && !state.showSemesterForm ? `
+        <div class="fab-row"><button class="primary ${state.showSemesterForm?'open':''}" data-action="toggle-semester-form">${iconPlus()} <span style="vertical-align:2px;">${state.showSemesterForm?'Close':'Add semester'}</span></button></div>
+      ` : ''}
+    ` : `
+      <div class="card seed-card">
+        ${seedlingSvg(gwaPercent(semGwa.gwa))}
+        <div class="seed-stats">
+          <div class="seed-label">${esc(sem.label)} GWA</div>
+          <div style="font-family:var(--font-mono);font-size:24px;font-weight:600;color:var(--text);">${semGwa.gwa!=null ? semGwa.gwa.toFixed(2) : '—'}</div>
+          <div class="muted">${semGwa.totalUnits} unit${semGwa.totalUnits===1?'':'s'} counted</div>
+        </div>
+      </div>
+
+      ${chedBanner(semGwa.gwa)}
+
+      <div class="stat-row">
+        <div class="stat-box"><div class="v">${cumulative.gwa!=null?cumulative.gwa.toFixed(2):'—'}</div><div class="l">Cumulative GWA</div></div>
+        <div class="stat-box"><div class="v">${sem.courses.length}</div><div class="l">Courses this sem</div></div>
+      </div>
+
+      <div class="fab-row">
+        <button class="primary ${state.showGradeCourseForm?'open':''}" data-action="toggle-grade-course-form">${iconPlus()} <span style="vertical-align:2px;">${state.showGradeCourseForm?'Close':'Add course'}</span></button>
+      </div>
+      ${state.showGradeCourseForm ? gradeCourseForm() : ''}
+
+      <div class="card">
+        <strong style="font-size:13.5px;color:var(--text);display:block;margin-bottom:4px;">Courses</strong>
+        ${sem.courses.length===0 ? `<div class="empty">No courses added yet.</div>` : sem.courses.map(c=>gradeCourseRow(c)).join('')}
+      </div>
+
+      <button class="ghost small" data-action="delete-semester" data-id="${sem.id}" style="margin-top:2px;">Delete "${esc(sem.label)}"</button>
+    `}
+  `;
+}
+
+function chedBanner(gwa){
+  if(state.chedTarget==null) return '';
+  const cls = gwaStatusClass(gwa, state.chedTarget);
+  if(cls==='ok') return `<div class="warn-box" style="background:var(--leaf-bg);color:var(--leaf);">On track — your scholarship needs ${Number(state.chedTarget).toFixed(2)} or better, and you're there.</div>`;
+  if(cls==='soon') return `<div class="warn-box" style="background:var(--mango-bg);color:var(--mango);">Close to the line — your scholarship needs ${Number(state.chedTarget).toFixed(2)} or better. Set in Settings.</div>`;
+  return `<div class="warn-box">Below your ${Number(state.chedTarget).toFixed(2)} scholarship retention target. Worth checking in with your remaining requirements.</div>`;
+}
+
+function semesterForm(){
+  return `
+  <form class="card" data-form="semester-form" style="margin-bottom:14px;">
+    <label class="field" style="margin-bottom:10px;">Semester label
+      <input name="label" placeholder="e.g. AY 2026-2027, 1st Sem" required autocomplete="off">
+    </label>
+    <div class="form-actions">
+      <button type="submit" class="primary">Add semester</button>
+      <button type="button" class="ghost" data-action="toggle-semester-form">Cancel</button>
+    </div>
+  </form>`;
+}
+
+function gradeCourseForm(){
+  const editing = state.editingGradeCourse;
+  return `
+  <form class="card" data-form="grade-course-form" style="margin-bottom:14px;">
+    ${editing ? `<input type="hidden" name="id" value="${editing.id}">` : ''}
+    <div class="form-grid">
+      <label class="field">Course code
+        <input name="code" required placeholder="e.g. MATH 17" value="${editing?esc(editing.code):''}">
+      </label>
+      <label class="field">Units
+        <input name="units" type="number" min="0" step="0.5" required placeholder="3" value="${editing?editing.units:''}">
+      </label>
+    </div>
+    <div class="form-grid">
+      <label class="field">Title <span class="muted">(optional)</span>
+        <input name="title" placeholder="e.g. Calculus 1" value="${editing?esc(editing.title||''):''}">
+      </label>
+      <label class="field">Grade
+        <select name="grade">
+          <option value="">Not yet graded</option>
+          ${GRADE_OPTIONS.map(g=>`<option value="${g}" ${editing&&editing.grade===g?'selected':''}>${g}</option>`).join('')}
+        </select>
+      </label>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="primary">${editing?'Save changes':'Add course'}</button>
+      <button type="button" class="ghost" data-action="toggle-grade-course-form">Cancel</button>
+    </div>
+  </form>`;
+}
+
+function gradeCourseRow(c){
+  return `
+    <div class="expense-item">
+      <div class="expense-left">
+        <span class="expense-cat">${esc(c.code)} <span class="muted">· ${c.units} unit${Number(c.units)===1?'':'s'}</span></span>
+        <span class="expense-note">${esc(c.title||'')}</span>
+      </div>
+      <div class="row-actions">
+        <span class="expense-amt" style="color:var(--text);">${c.grade||'—'}</span>
+        <button class="icon-btn" data-action="edit-grade-course" data-id="${c.id}" aria-label="Edit course" title="Edit course">${iconEdit()}</button>
+        <button class="icon-btn danger" data-action="delete-grade-course" data-id="${c.id}" aria-label="Delete course" title="Delete course">${iconTrash()}</button>
+      </div>
+    </div>`;
+}
+
 /* ---------- CAMPUS ---------- */
 // Shared filter (+ optional distance-sort) logic. Used by both renderCampus()
 // (full render) and onInput() (live search, DOM patch only) so there's a
@@ -1382,21 +1880,16 @@ function renderCampus(){
   `;
 }
 function campusCard(b){
-  const osmUrl = `https://www.openstreetmap.org/?mlat=${b.lat}&mlon=${b.lon}#map=18/${b.lat}/${b.lon}`;
-  const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${b.lat},${b.lon}`;
   return `
     <div class="card campus-card">
       <div class="class-title" style="margin-bottom:0;">${esc(b.name)}</div>
       ${b.aka ? `<div class="muted" style="margin-bottom:6px;">${esc(b.aka)}</div>` : ''}
       ${b._distance != null ? `<div class="muted" style="margin-bottom:6px;">${fmtDistance(b._distance)} away</div>` : ''}
       <div class="muted" style="line-height:1.5;margin-top:${(b.aka || b._distance != null) ? '0' : '4px'};">${esc(b.directions)}</div>
-      <div class="form-actions" style="margin-top:10px;flex-wrap:wrap;">
-        <a href="${osmUrl}" target="_blank" rel="noopener" class="ghost small" style="display:inline-flex;align-items:center;gap:5px;text-decoration:none;">
+      <div class="form-actions" style="margin-top:10px;">
+        <button type="button" data-action="view-map" data-building="${esc(b.name)}" class="ghost small" style="display:inline-flex;align-items:center;gap:5px;">
           ${iconMapPin()} View on map
-        </a>
-        <a href="${gmapsUrl}" target="_blank" rel="noopener" class="ghost small" style="display:inline-flex;align-items:center;gap:5px;text-decoration:none;">
-          ${iconExternal()} Google Maps
-        </a>
+        </button>
       </div>
     </div>
   `;
@@ -1432,6 +1925,20 @@ function renderSettings(){
         <button class="switch ${state.notificationsEnabled?'on':''}" data-action="toggle-notifications" role="switch" aria-checked="${state.notificationsEnabled}" aria-label="Toggle reminders"></button>
       </div>
       ${state.notificationsPermissionDenied ? `<div class="muted" style="margin-top:8px;color:var(--danger);">Notifications are blocked. Enable them in your browser's site settings, then try again.</div>` : ''}
+      <div class="muted" style="margin-top:8px;">
+        ${backendConfigured()
+          ? 'Backend configured — reminders will also arrive when this tab is closed.'
+          : 'Backend not configured yet — reminders only fire while this tab is open. See DEPLOY.md to enable background reminders.'}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="settings-label" style="margin-bottom:8px;">Scholarship retention GWA</div>
+      <div class="muted" style="margin-bottom:10px;">If your CHED (or other) scholarship requires a minimum GWA to keep, set the ceiling here — the Grades tab will flag you if you're above it.</div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <input type="number" id="chedTargetInput" min="1" max="5" step="0.25" placeholder="e.g. 2.00" value="${state.chedTarget!=null?state.chedTarget:''}" style="max-width:120px;font-family:var(--font-mono);" onkeydown="if(event.key==='Enter'){event.preventDefault();this.nextElementSibling.click();}">
+        <button class="ghost small" data-action="set-ched-target">Set</button>
+      </div>
     </div>
 
     <div class="card">
@@ -1477,6 +1984,8 @@ function exportData(){
     deadlines: state.deadlines,
     deadlineRules: state.deadlineRules,
     archives: state.archives,
+    gradesSemesters: state.gradesSemesters,
+    chedTarget: state.chedTarget,
     exportedAt: new Date().toISOString()
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
@@ -1510,7 +2019,10 @@ function importData(file){
     state.deadlines = data.deadlines;
     state.deadlineRules = Array.isArray(data.deadlineRules) ? data.deadlineRules : [];
     state.archives = Array.isArray(data.archives) ? data.archives : [];
-    saveSchedule(); saveExpenses(); saveDeadlines(); saveDeadlineRules(); saveArchives();
+    state.gradesSemesters = Array.isArray(data.gradesSemesters) ? data.gradesSemesters : [];
+    state.chedTarget = data.chedTarget!=null ? Number(data.chedTarget) : null;
+    state.activeSemesterId = state.gradesSemesters.length ? state.gradesSemesters[state.gradesSemesters.length-1].id : null;
+    saveSchedule(); saveExpenses(); saveDeadlines(); saveDeadlineRules(); saveArchives(); saveGrades(); saveChedTarget();
     render();
     showToast('Backup imported.');
   };
@@ -1557,7 +2069,17 @@ function onClick(e){
   if(!btn) return;
   const action = btn.dataset.action;
 
-  if(action==='tab'){ state.tab = btn.dataset.tab; state.showClassForm=false; state.showExpenseForm=false; state.showDeadlineForm=false; state.editingClass=null; state.classFormConflict=null; render(); }
+  if(action==='tab'){ state.tab = btn.dataset.tab; state.showClassForm=false; state.showExpenseForm=false; state.showDeadlineForm=false; state.editingClass=null; state.classFormConflict=null; state.navArcOpen=false; setNavArcOpen(); closeMapModal(); render(); }
+  else if(action==='toggle-nav-arc'){ state.navArcOpen = !state.navArcOpen; setNavArcOpen(); }
+  else if(action==='close-nav-arc'){ state.navArcOpen = false; setNavArcOpen(); }
+  else if(action==='view-map'){ openMapModal(btn.dataset.building); }
+  else if(action==='close-map-modal'){
+    // Only close on a direct hit on the backdrop/close-button itself, not on
+    // clicks inside the panel that bubbled up (the panel has no data-action
+    // of its own, so closest() would otherwise match the backdrop for any
+    // click on non-interactive panel content like the directions text).
+    if(e.target===btn) closeMapModal();
+  }
   else if(action==='locate-campus'){
     if(!navigator.geolocation){
       state.campusLocateError = 'Geolocation is not supported on this device.';
@@ -1600,12 +2122,14 @@ function onClick(e){
       state.notificationsPermissionDenied = true;
       render();
     } else {
-      Notification.requestPermission().then(perm=>{
+      Notification.requestPermission().then(async perm=>{
         if(perm === 'granted'){
           state.notificationsEnabled = true;
           state.notificationsPermissionDenied = false;
           storageSet('punla:notificationsEnabled', true);
-          checkReminders();
+          checkReminders(); // immediate local check, works while this tab is open
+          await subscribeForPush(); // backend push — works even after the tab is closed, once CONFIG is set
+          syncToWorker();
         } else {
           state.notificationsPermissionDenied = true;
         }
@@ -1652,6 +2176,34 @@ function onClick(e){
     const val = Number(document.getElementById('budgetInput').value)||0;
     state.expenses.budget = val;
     saveExpenses(); render();
+  }
+  else if(action==='toggle-semester-form'){ state.showSemesterForm = !state.showSemesterForm; render(); }
+  else if(action==='select-semester'){ state.activeSemesterId = btn.dataset.id; render(); }
+  else if(action==='delete-semester'){
+    if(confirm('Delete this semester and all its courses? This can\'t be undone.')){
+      state.gradesSemesters = state.gradesSemesters.filter(s=>s.id!==btn.dataset.id);
+      state.activeSemesterId = state.gradesSemesters.length ? state.gradesSemesters[state.gradesSemesters.length-1].id : null;
+      saveGrades(); render();
+    }
+  }
+  else if(action==='toggle-grade-course-form'){
+    state.showGradeCourseForm = !state.showGradeCourseForm;
+    if(!state.showGradeCourseForm) state.editingGradeCourse = null;
+    render();
+  }
+  else if(action==='edit-grade-course'){
+    const sem = state.gradesSemesters.find(s=>s.id===state.activeSemesterId);
+    state.editingGradeCourse = sem ? sem.courses.find(c=>c.id===btn.dataset.id) : null;
+    state.showGradeCourseForm = true; render();
+  }
+  else if(action==='delete-grade-course'){
+    const sem = state.gradesSemesters.find(s=>s.id===state.activeSemesterId);
+    if(sem){ sem.courses = sem.courses.filter(c=>c.id!==btn.dataset.id); saveGrades(); render(); }
+  }
+  else if(action==='set-ched-target'){
+    const raw = document.getElementById('chedTargetInput').value;
+    state.chedTarget = raw ? Number(raw) : null;
+    saveChedTarget(); render();
   }
   else if(action==='toggle-theme'){
     state.theme = state.theme==='dark' ? 'light' : 'dark';
@@ -1744,6 +2296,30 @@ function onSubmit(e){
     }
     state.showDeadlineForm=false;
     saveDeadlines(); saveDeadlineRules(); render();
+  }
+  else if(type==='semester-form'){
+    const label = fd.get('label');
+    const newSem = { id: uid(), label, courses: [] };
+    state.gradesSemesters.push(newSem);
+    state.activeSemesterId = newSem.id;
+    state.showSemesterForm = false;
+    saveGrades(); render();
+  }
+  else if(type==='grade-course-form'){
+    const sem = state.gradesSemesters.find(s=>s.id===state.activeSemesterId);
+    if(!sem) return;
+    const id = fd.get('id');
+    const data = {
+      id: id || uid(),
+      code: fd.get('code'),
+      title: fd.get('title'),
+      units: Number(fd.get('units'))||0,
+      grade: fd.get('grade') || ''
+    };
+    if(id){ sem.courses = sem.courses.map(c=>c.id===id?data:c); }
+    else{ sem.courses.push(data); }
+    state.showGradeCourseForm = false; state.editingGradeCourse = null;
+    saveGrades(); render();
   }
 }
 
