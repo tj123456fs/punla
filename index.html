@@ -51,9 +51,10 @@
   }
   *{box-sizing:border-box;}
   body{margin:0;background:var(--ink);font-family:var(--font-body);}
-  #root{max-width:460px;margin:0 auto;min-height:100vh;background:var(--bg);display:flex;flex-direction:column;box-shadow:0 0 40px rgba(0,0,0,0.25);transition:background-color .3s ease;}
-  .topbar{background:linear-gradient(155deg,var(--ink),var(--ink-2) 130%);color:var(--paper);padding:18px 20px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;transition:background-color .3s ease;}
-  .brand{display:flex;align-items:center;gap:10px;}
+  #root{position:relative;max-width:460px;margin:0 auto;min-height:100vh;background:var(--bg);display:flex;flex-direction:column;box-shadow:0 0 40px rgba(0,0,0,0.25);transition:background-color .3s ease;overflow-x:hidden;}
+  .topbar{background:linear-gradient(155deg,var(--ink),var(--ink-2) 130%);color:var(--paper);padding:18px 20px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0;transition:background-color .3s ease;}
+  .brand{display:flex;align-items:center;gap:10px;flex:1;min-width:0;}
+  .date-chip{margin-left:auto;}
   .brand svg{animation:leafSway 4.5s ease-in-out infinite;transform-origin:20px 55px;}
   .brand-name{font-family:var(--font-display);font-size:22px;font-weight:600;letter-spacing:0.3px;line-height:1;}
   .brand-sub{font-size:11px;color:#B9C9BB;margin-top:3px;letter-spacing:0.2px;}
@@ -66,24 +67,39 @@
   .tab-btn:active{transform:scale(0.92);}
   .tab-btn svg{width:20px;height:20px;transition:transform .2s ease;}
 
-  /* Arc FAB navigation */
-  .nav-backdrop{position:fixed;inset:0;background:rgba(15,20,14,0.32);opacity:0;pointer-events:none;transition:opacity .25s ease;z-index:40;}
+  /* Quick-add FAB arc */
+  .nav-backdrop{position:absolute;inset:0;background:rgba(15,20,14,0.32);opacity:0;pointer-events:none;transition:opacity .25s ease;z-index:40;}
   .nav-backdrop.open{opacity:1;pointer-events:auto;}
-  .nav-fab-wrap{position:fixed;right:max(20px, calc((100vw - 460px)/2 + 20px));bottom:calc(20px + env(safe-area-inset-bottom));z-index:45;width:58px;height:58px;}
-  .nav-arc{position:absolute;inset:0;pointer-events:none;}
-  .nav-arc.open{pointer-events:auto;}
-  .arc-btn{position:absolute;top:6px;left:6px;width:46px;height:46px;border-radius:50%;background:var(--card);border:1px solid var(--line);color:var(--text);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,0.22);transform:translate(0,0) scale(.25);opacity:0;transition:transform .32s cubic-bezier(.34,1.56,.64,1), opacity .22s ease, background-color .2s ease, color .2s ease;transition-delay:0s;cursor:pointer;padding:0;}
-  .nav-arc.open .arc-btn{transform:translate(var(--tx),var(--ty)) scale(1);opacity:1;transition-delay:var(--delay);}
-  .arc-btn svg{width:19px;height:19px;}
-  .arc-btn.active{background:var(--ink-2);color:var(--paper);border-color:var(--ink-2);}
-  .arc-btn:active{transform:translate(var(--tx),var(--ty)) scale(0.9);}
-  .arc-tooltip{position:absolute;right:54px;top:50%;transform:translateY(-50%);background:var(--ink);color:var(--paper);font-size:11px;font-family:var(--font-body);padding:4px 9px;border-radius:6px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s ease;}
-  .arc-btn:hover .arc-tooltip,.arc-btn:focus-visible .arc-tooltip{opacity:1;}
+  .nav-fab-wrap{position:absolute;right:20px;bottom:calc(20px + env(safe-area-inset-bottom));z-index:45;width:58px;height:58px;}
+  .qa-arc{position:absolute;inset:0;pointer-events:none;}
+  .qa-arc.open{pointer-events:auto;}
+  .qa-btn{position:absolute;top:6px;left:6px;width:46px;height:46px;border-radius:50%;background:var(--card);border:1px solid var(--line);color:var(--text);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,0.22);transform:translate(0,0) scale(.25);opacity:0;transition:transform .32s cubic-bezier(.34,1.56,.64,1), opacity .22s ease, background-color .2s ease, color .2s ease;transition-delay:0s;cursor:pointer;padding:0;}
+  .qa-arc.open .qa-btn{transform:translate(var(--tx),var(--ty)) scale(1);opacity:1;transition-delay:var(--delay);}
+  .qa-btn svg{width:19px;height:19px;}
+  .qa-btn:active{transform:translate(var(--tx),var(--ty)) scale(0.9);}
+  .qa-tooltip{position:absolute;right:54px;top:50%;transform:translateY(-50%);background:var(--ink);color:var(--paper);font-size:11px;font-family:var(--font-body);padding:4px 9px;border-radius:6px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s ease;}
+  .qa-btn:hover .qa-tooltip,.qa-btn:focus-visible .qa-tooltip{opacity:1;}
   .nav-fab{position:absolute;top:0;left:0;width:58px;height:58px;border-radius:50%;background:var(--ink);color:var(--paper);border:none;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(0,0,0,0.32);cursor:pointer;transition:background-color .25s ease, transform .25s ease;z-index:2;}
   .nav-fab svg{width:21px;height:21px;transition:transform .3s ease;}
   .nav-fab.open{background:var(--leaf);transform:scale(1.05);}
   .nav-fab.open svg{transform:rotate(45deg);}
   .nav-fab:active{transform:scale(0.92);}
+
+  /* Side drawer navigation */
+  .hamburger-btn{background:none;border:none;color:var(--paper);display:flex;align-items:center;justify-content:center;width:32px;height:32px;cursor:pointer;border-radius:8px;flex-shrink:0;}
+  .hamburger-btn svg{width:22px;height:22px;}
+  .hamburger-btn:active{transform:scale(0.92);}
+  .drawer-backdrop{position:absolute;inset:0;background:rgba(15,20,14,0.32);opacity:0;pointer-events:none;transition:opacity .25s ease;z-index:55;}
+  .drawer-backdrop.open{opacity:1;pointer-events:auto;}
+  .drawer{position:absolute;top:0;left:0;bottom:0;width:min(78vw,300px);background:var(--card);border-right:1px solid var(--line);transform:translateX(-100%);transition:transform .28s cubic-bezier(.32,.72,0,1);z-index:60;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top);box-shadow:4px 0 24px rgba(0,0,0,0.18);}
+  .drawer.open{transform:translateX(0);}
+  .drawer-header{padding:20px 18px 14px;flex-shrink:0;}
+  .drawer-header .brand svg{animation:leafSway 4.5s ease-in-out infinite;transform-origin:20px 55px;}
+  .drawer-header .brand-name{color:var(--text);}
+  .drawer-list{flex:1;overflow-y:auto;padding:6px 0;}
+  .drawer-item{display:flex;align-items:center;gap:12px;padding:13px 18px;background:none;border:none;width:100%;text-align:left;font-family:var(--font-body);font-size:14px;color:var(--text);cursor:pointer;border-radius:0;}
+  .drawer-item.active{background:var(--leaf-bg);color:var(--leaf);font-weight:600;}
+  .drawer-item svg{width:19px;height:19px;flex-shrink:0;}
 
   /* Splash screen */
   .splash-screen{position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:linear-gradient(160deg,var(--ink),var(--ink-2) 140%);color:var(--paper);text-align:center;padding:24px;animation:splashIn .5s ease;}
@@ -475,7 +491,8 @@ let state = {
   showGradeCourseForm: false,
   editingGradeCourse: null,
   chedTarget: null,         // retention GWA ceiling, e.g. 2.00 — lower is better in UP grading
-  navArcOpen: false
+  fabArcOpen: false,
+  drawerOpen: false
 };
 
 /* ---------- HELPERS ---------- */
@@ -837,20 +854,29 @@ function dismissSplash(){
   setTimeout(()=>el.remove(), 420);
 }
 
+const drawerItems = [
+  ['dashboard','Home', iconHome()],
+  ['schedule','Schedule', iconCal()],
+  ['expenses','Expenses', iconWallet()],
+  ['deadlines','Deadlines', iconFlag()],
+  ['grades','Grades', iconGrad()],
+  ['campus','Campus', iconMapPin()],
+  ['settings','Settings', iconSettings()]
+];
+
+const quickAddActions = [
+  ['class',    'Add class',    iconCal()],
+  ['expense',  'Add expense',  iconWallet()],
+  ['deadline', 'Add deadline', iconFlag()],
+  ['course',   'Add grade',    iconGrad()]
+];
+
 function buildShell(){
   const root = document.getElementById('root');
   const today = new Date();
-  const arcOrder = [
-    ['dashboard','Home', iconHome()],
-    ['schedule','Schedule', iconCal()],
-    ['expenses','Expenses', iconWallet()],
-    ['deadlines','Deadlines', iconFlag()],
-    ['grades','Grades', iconGrad()],
-    ['campus','Campus', iconMapPin()],
-    ['settings','Settings', iconSettings()]
-  ];
   root.innerHTML = `
     <div class="topbar">
+      <button class="hamburger-btn" data-action="open-drawer" aria-label="Open navigation menu">${iconMenu()}</button>
       <div class="brand">
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#8FB35C" stroke-width="1.6"><path d="M12 21v-9"/><path d="M12 12c0-4 3-7 7-7 0 4-3 7-7 7z"/><path d="M12 12c0-3-2.5-5-6-5 0 3 2.5 5 6 5z"/></svg>
         <div>
@@ -862,13 +888,25 @@ function buildShell(){
     </div>
     <div id="content"></div>
     <div id="mapModalRoot"></div>
-    <div class="nav-backdrop" id="navBackdrop" data-action="close-nav-arc"></div>
-    <div class="nav-fab-wrap">
-      <div class="nav-arc" id="navArc">
-        ${arcOrder.map((t,i)=>arcBtn(t[0],t[1],t[2],i,arcOrder.length)).join('')}
+    <div class="drawer-backdrop" id="drawerBackdrop" data-action="close-drawer"></div>
+    <nav class="drawer" id="drawer" aria-label="Main navigation" aria-hidden="true">
+      <div class="drawer-header">
+        <div class="brand">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#8FB35C" stroke-width="1.6"><path d="M12 21v-9"/><path d="M12 12c0-4 3-7 7-7 0 4-3 7-7 7z"/><path d="M12 12c0-3-2.5-5-6-5 0 3 2.5 5 6 5z"/></svg>
+          <div class="brand-name">Punla</div>
+        </div>
       </div>
-      <button class="nav-fab" id="navFab" data-action="toggle-nav-arc" aria-label="Open navigation menu">
-        ${iconGrid()}
+      <div class="drawer-list">
+        ${drawerItems.map(t=>drawerItemBtn(t[0],t[1],t[2])).join('')}
+      </div>
+    </nav>
+    <div class="nav-backdrop" id="navBackdrop" data-action="close-fab-arc"></div>
+    <div class="nav-fab-wrap">
+      <div class="qa-arc" id="navArc">
+        ${quickAddActions.map((t,i)=>qaBtn(t[0],t[1],t[2],i,quickAddActions.length)).join('')}
+      </div>
+      <button class="nav-fab" id="navFab" data-action="toggle-fab-arc" aria-label="Quick add">
+        ${iconPlus()}
       </button>
     </div>
   `;
@@ -877,32 +915,88 @@ function buildShell(){
   root.addEventListener('keydown', onKeydown);
   root.addEventListener('change', onChange);
   root.addEventListener('input', onInput);
+  setupDrawerSwipe(root);
 }
 
-// Lays out the 7 destinations along a quarter-circle arc fanning up and to
+function drawerItemBtn(id,label,icon){
+  return `<button class="drawer-item ${state.tab===id?'active':''}" data-action="tab" data-tab="${id}">
+    <span class="drawer-item-icon">${icon}</span><span class="drawer-item-label">${label}</span></button>`;
+}
+
+// Lays out the 4 quick-add destinations along an arc fanning up and to
 // the left of the FAB (which sits bottom-right), so every bubble stays on
 // screen and reachable by thumb on a one-handed hold.
-function arcBtn(id,label,icon,index,total){
-  const startAngle = 95, endAngle = 185; // degrees, standard math convention (0=right, 90=up, 180=left)
+function qaBtn(kind,label,icon,index,total){
+  const startAngle = 100, endAngle = 170; // degrees, standard math convention (0=right, 90=up, 180=left)
   const angle = total>1 ? startAngle + (endAngle-startAngle)*(index/(total-1)) : (startAngle+endAngle)/2;
   const rad = angle*Math.PI/180;
-  const radius = 122;
+  const radius = 116;
   const x = (Math.cos(rad)*radius).toFixed(1);
   const y = (-Math.sin(rad)*radius).toFixed(1);
   const delay = (index*0.028).toFixed(3);
-  return `<button class="arc-btn ${state.tab===id?'active':''}" data-action="tab" data-tab="${id}"
-    style="--tx:${x}px;--ty:${y}px;--delay:${delay}s" aria-label="${label}">${icon}<span class="arc-tooltip">${label}</span></button>`;
+  return `<button class="qa-btn" data-action="quick-add" data-kind="${kind}"
+    style="--tx:${x}px;--ty:${y}px;--delay:${delay}s" aria-label="${label}">${icon}<span class="qa-tooltip">${label}</span></button>`;
 }
 
-function setNavArcOpen(){
+function setFabArcOpen(){
   const arc = document.getElementById('navArc');
   const fab = document.getElementById('navFab');
   const backdrop = document.getElementById('navBackdrop');
   if(!arc || !fab || !backdrop) return;
-  arc.classList.toggle('open', state.navArcOpen);
-  fab.classList.toggle('open', state.navArcOpen);
-  backdrop.classList.toggle('open', state.navArcOpen);
-  fab.setAttribute('aria-expanded', state.navArcOpen ? 'true' : 'false');
+  arc.classList.toggle('open', state.fabArcOpen);
+  fab.classList.toggle('open', state.fabArcOpen);
+  backdrop.classList.toggle('open', state.fabArcOpen);
+  fab.setAttribute('aria-expanded', state.fabArcOpen ? 'true' : 'false');
+}
+
+function openDrawer(){ state.drawerOpen = true; state.fabArcOpen = false; setFabArcOpen(); syncDrawerDom(); }
+function closeDrawer(){ state.drawerOpen = false; syncDrawerDom(); }
+function syncDrawerDom(){
+  const drawer = document.getElementById('drawer');
+  const backdrop = document.getElementById('drawerBackdrop');
+  if(!drawer || !backdrop) return;
+  drawer.classList.toggle('open', state.drawerOpen);
+  backdrop.classList.toggle('open', state.drawerOpen);
+  drawer.setAttribute('aria-hidden', state.drawerOpen ? 'false' : 'true');
+}
+
+// Edge-swipe-right-to-open / swipe-left-to-close gesture for the drawer.
+function setupDrawerSwipe(root){
+  let touchStartX = null, touchStartY = null, tracking = false;
+  const EDGE_ZONE_PX = 24;      // how close to the left edge a touch must start to open
+  const OPEN_THRESHOLD_PX = 60; // how far right it must drag to trigger open
+  const CLOSE_THRESHOLD_PX = 60; // how far left to trigger close, when already open
+
+  function rootRect(){ return root.getBoundingClientRect(); }
+
+  root.addEventListener('touchstart', e => {
+    const t = e.touches[0];
+    const rect = rootRect();
+    const xInRoot = t.clientX - rect.left;
+    if(!state.drawerOpen && xInRoot <= EDGE_ZONE_PX){
+      tracking = true; touchStartX = t.clientX; touchStartY = t.clientY;
+    } else if(state.drawerOpen){
+      tracking = true; touchStartX = t.clientX; touchStartY = t.clientY;
+    }
+  }, { passive:true });
+
+  root.addEventListener('touchmove', e => {
+    if(!tracking) return;
+    const t = e.touches[0];
+    const dx = t.clientX - touchStartX;
+    const dy = t.clientY - touchStartY;
+    // bail if the gesture is more vertical than horizontal — let normal scroll happen
+    if(Math.abs(dy) > Math.abs(dx) + 10){ tracking = false; }
+  }, { passive:true });
+
+  root.addEventListener('touchend', e => {
+    if(!tracking) return;
+    tracking = false;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touchStartX;
+    if(!state.drawerOpen && dx > OPEN_THRESHOLD_PX) openDrawer();
+    else if(state.drawerOpen && dx < -CLOSE_THRESHOLD_PX) closeDrawer();
+  });
 }
 function iconHome(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>`; }
 function iconCal(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>`; }
@@ -913,6 +1007,7 @@ function iconPlus(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="curren
 function iconMapPin(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M21 10c0 6-9 13-9 13s-9-7-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>`; }
 function iconGrad(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2 9l10-5 10 5-10 5-10-5z"/><path d="M6 11v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5"/><path d="M22 9v6"/></svg>`; }
 function iconGrid(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="6" cy="6" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="6" r="1.6" fill="currentColor" stroke="none"/><circle cx="18" cy="6" r="1.6" fill="currentColor" stroke="none"/><circle cx="6" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="18" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="6" cy="18" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="18" r="1.6" fill="currentColor" stroke="none"/><circle cx="18" cy="18" r="1.6" fill="currentColor" stroke="none"/></svg>`; }
+function iconMenu(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>`; }
 function iconSearch(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>`; }
 function iconExternal(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><path d="M15 3h6v6"/><path d="M10 14L21 3"/></svg>`; }
 function iconTrash(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-8 0v13a1 1 0 001 1h6a1 1 0 001-1V7"/></svg>`; }
@@ -938,7 +1033,7 @@ function render(){
   c.scrollTop = 0;
 }
 function updateTabbar(){
-  document.querySelectorAll('.arc-btn').forEach(btn=>{
+  document.querySelectorAll('.drawer-item').forEach(btn=>{
     btn.classList.toggle('active', btn.dataset.tab===state.tab);
   });
   const labels = {
@@ -2031,6 +2126,7 @@ function importData(file){
 
 /* ---------- EVENTS ---------- */
 function onKeydown(e){
+  if(e.key==='Escape' && state.drawerOpen){ closeDrawer(); return; }
   if(e.key!=='Enter' && e.key!==' ') return;
   const el = e.target.closest('[role="button"][data-action]');
   if(!el) return;
@@ -2069,9 +2165,26 @@ function onClick(e){
   if(!btn) return;
   const action = btn.dataset.action;
 
-  if(action==='tab'){ state.tab = btn.dataset.tab; state.showClassForm=false; state.showExpenseForm=false; state.showDeadlineForm=false; state.editingClass=null; state.classFormConflict=null; state.navArcOpen=false; setNavArcOpen(); closeMapModal(); render(); }
-  else if(action==='toggle-nav-arc'){ state.navArcOpen = !state.navArcOpen; setNavArcOpen(); }
-  else if(action==='close-nav-arc'){ state.navArcOpen = false; setNavArcOpen(); }
+  if(action==='tab'){ state.tab = btn.dataset.tab; state.showClassForm=false; state.showExpenseForm=false; state.showDeadlineForm=false; state.editingClass=null; state.classFormConflict=null; closeDrawer(); closeMapModal(); render(); }
+  else if(action==='open-drawer'){ openDrawer(); }
+  else if(action==='close-drawer'){ closeDrawer(); }
+  else if(action==='toggle-fab-arc'){ state.fabArcOpen = !state.fabArcOpen; if(state.fabArcOpen) closeDrawer(); setFabArcOpen(); }
+  else if(action==='close-fab-arc'){ state.fabArcOpen = false; setFabArcOpen(); }
+  else if(action==='quick-add'){
+    const kind = btn.dataset.kind;
+    state.fabArcOpen = false;
+    setFabArcOpen();
+    if(kind==='class'){ state.tab='schedule'; state.showClassForm=true; state.editingClass=null; state.classFormConflict=null; }
+    else if(kind==='expense'){ state.tab='expenses'; state.showExpenseForm=true; }
+    else if(kind==='deadline'){ state.tab='deadlines'; state.showDeadlineForm=true; }
+    else if(kind==='course'){
+      state.tab='grades';
+      if(!state.activeSemesterId && state.gradesSemesters.length) state.activeSemesterId = state.gradesSemesters[state.gradesSemesters.length-1].id;
+      if(!state.gradesSemesters.length){ state.showSemesterForm = true; }
+      else { state.showGradeCourseForm = true; state.editingGradeCourse = null; }
+    }
+    render();
+  }
   else if(action==='view-map'){ openMapModal(btn.dataset.building); }
   else if(action==='close-map-modal'){
     // Only close on a direct hit on the backdrop/close-button itself, not on
