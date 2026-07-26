@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "348895875060",
+    "project_id": "punla-9c211",
+    "storage_bucket": "punla-9c211.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:348895875060:android:b2b9b1f2e65b3fcfbab3a1",
+        "android_client_info": {
+          "package_name": "com.uplb.punla"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA3orYXhZb1NIu_oxZzc9EYNJsu_B01FZ4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

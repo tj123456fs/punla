@@ -1,0 +1,348 @@
+package com.uplb.punla.data
+
+import android.content.Context
+import android.net.Uri
+import androidx.room.withTransaction
+import com.uplb.punla.data.entity.Archive
+import com.uplb.punla.data.entity.ClassSession
+import com.uplb.punla.data.entity.Deadline
+import com.uplb.punla.data.entity.DeadlineRule
+import com.uplb.punla.data.entity.Expense
+import com.uplb.punla.data.entity.ExpenseRule
+import com.uplb.punla.data.entity.GradeCourse
+import com.uplb.punla.data.entity.Semester
+import com.uplb.punla.data.entity.StudySession
+import org.json.JSONArray
+import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+/**
+ * Mirrors the web app's exportData()/importData() (index.html ~line 2075):
+ * serializes every piece of local state into one JSON document and can
+ * restore it later, in one transaction, on this or another device.
+ *
+ * Kept as plain org.json (no kotlinx.serialization dependency) to match the
+ * style already used in PunlaViewModel.startNewSemester.
+ */
+object BackupManager {
+
+    const val CURRENT_VERSION = 1
+
+    /** Suggested filename, mirrors the web app's punla-backup-YYYY-MM-DD.json. */
+    fun suggestedFileName(): String {
+        val date = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        return "punla-backup-$date.json"
+    }
+
+    class InvalidBackupException(message: String) : Exception(message)
+
+    // ---- Export ----
+
+    suspend fun buildBackupJson(context: Context): String {
+        val db = PunlaDatabase.get(context)
+        val repo = PunlaRepository(context)
+
+        val schedule = db.classSessionDao().getAll()
+        val expenses = db.expenseDao().getAll()
+        val expenseRules = db.expenseDao().getAllRules()
+        val deadlines = db.deadlineDao().getAll()
+        val deadlineRules = db.deadlineDao().getAllRules()
+        val semesters = db.gradesDao().getAllSemesters()
+        val allCourses = db.gradesDao().getAllCourses()
+        val archives = db.gradesDao().getAllArchives()
+        val studySessions = db.studySessionDao().getAll()
+
+        val root = JSONObject().apply {
+            put("version", CURRENT_VERSION)
+            put("exportedAt", java.time.Instant.now().toString())
+            put("schedule", JSONArray(schedule.map(::classSessionToJson)))
+            put("expenses", JSONArray(expenses.map(::expenseToJson)))
+            put("expenseRules", JSONArray(expenseRules.map(::expenseRuleToJson)))
+            put("deadlines", JSONArray(deadlines.map(::deadlineToJson)))
+            put("deadlineRules", JSONArray(deadlineRules.map(::deadlineRuleToJson)))
+            put("gradesSemesters", JSONArray(semesters.map { sem ->
+                val courses = allCourses.filter { it.semesterId == sem.id }
+                JSONObject().apply {
+                    put("semester", semesterToJson(sem))
+                    put("courses", JSONArray(courses.map(::gradeCourseToJson)))
+                }
+            }))
+            put("archives", JSONArray(archives.map(::archiveToJson)))
+            put("studySessions", JSONArray(studySessions.map(::studySessionToJson)))
+            put("budget", repo.monthlyBudget)
+            put("userName", repo.userName)
+            put("chedTarget", repo.chedTarget)
+            put("theme", repo.themeMode.name.lowercase())
+            put("notificationsEnabled", repo.notificationsEnabled)
+            put("dailyStudyGoalMinutes", repo.dailyStudyGoalMinutes)
+            put("weeklyStudyGoalMinutes", repo.weeklyStudyGoalMinutes)
+            put("budgetPeriod", repo.budgetPeriod.name.lowercase())
+            put("weekStartDay", repo.weekStartDay.name)
+            put("weeklyBudgetOverride", repo.weeklyBudgetOverride)
+            put("weeklyRolloverEnabled", repo.weeklyRolloverEnabled)
+        }
+        return root.toString(2)
+    }
+
+    suspend fun exportTo(context: Context, uri: Uri) {
+        val json = buildBackupJson(context)
+        context.contentResolver.openOutputStream(uri)?.use { out ->
+            out.write(json.toByteArray(Charsets.UTF_8))
+        } ?: throw InvalidBackupException("Couldn't open the selected file for writing.")
+    }
+
+    // ---- Validation ----
+
+    /** Port of the web app's isValidBackupShape(): checks the top-level
+     * shape is sane before anything touches the database. */
+    private fun isValidBackupShape(root: JSONObject): Boolean {
+        if (!root.has("version") || root.optInt("version", -1) < 1) return false
+        val requiredArrays = listOf("schedule", "expenses", "deadlines", "gradesSemesters")
+        for (key in requiredArrays) {
+            if (root.opt(key) !is JSONArray) return false
+        }
+        return true
+    }
+
+    // ---- Import ----
+
+    suspend fun importFrom(context: Context, uri: Uri) {
+        val text = context.contentResolver.openInputStream(uri)?.use { input ->
+            input.readBytes().toString(Charsets.UTF_8)
+        } ?: throw InvalidBackupException("Couldn't read the selected file.")
+
+        val root = runCatching { JSONObject(text) }.getOrElse {
+            throw InvalidBackupException("That file isn't valid JSON.")
+        }
+
+        if (!isValidBackupShape(root)) {
+            throw InvalidBackupException("That file doesn't look like a Punla backup.")
+        }
+
+        val db = PunlaDatabase.get(context)
+        val repo = PunlaRepository(context)
+
+        val schedule = root.getJSONArray("schedule").mapObjects(::classSessionFromJson)
+        val expenses = root.getJSONArray("expenses").mapObjects(::expenseFromJson)
+        val expenseRules = root.optJSONArray("expenseRules")?.mapObjects(::expenseRuleFromJson) ?: emptyList()
+        val deadlines = root.getJSONArray("deadlines").mapObjects(::deadlineFromJson)
+        val deadlineRules = root.optJSONArray("deadlineRules")?.mapObjects(::deadlineRuleFromJson) ?: emptyList()
+
+        val gradesSemesters = root.getJSONArray("gradesSemesters")
+        val semesters = mutableListOf<Semester>()
+        val courses = mutableListOf<GradeCourse>()
+        for (i in 0 until gradesSemesters.length()) {
+            val entry = gradesSemesters.getJSONObject(i)
+            val sem = semesterFromJson(entry.getJSONObject("semester"))
+            semesters += sem
+            entry.optJSONArray("courses")?.let { arr ->
+                courses += arr.mapObjects(::gradeCourseFromJson)
+            }
+        }
+
+        val archives = root.optJSONArray("archives")?.mapObjects(::archiveFromJson) ?: emptyList()
+        val studySessions = root.optJSONArray("studySessions")?.mapObjects(::studySessionFromJson) ?: emptyList()
+
+        db.withTransaction {
+            db.classSessionDao().clearAll()
+            schedule.forEach { db.classSessionDao().upsert(it) }
+
+            db.expenseDao().clearAllRules()
+            db.expenseDao().clearAll()
+            expenseRules.forEach { db.expenseDao().upsertRule(it) }
+            expenses.forEach { db.expenseDao().upsert(it) }
+
+            db.deadlineDao().clearAllRules()
+            db.deadlineDao().clearAll()
+            deadlineRules.forEach { db.deadlineDao().upsertRule(it) }
+            deadlines.forEach { db.deadlineDao().upsert(it) }
+
+            db.gradesDao().clearCourses()
+            db.gradesDao().clearSemesters()
+            semesters.forEach { db.gradesDao().upsertSemester(it) }
+            courses.forEach { db.gradesDao().upsertCourse(it) }
+
+            db.gradesDao().clearArchives()
+            archives.forEach { db.gradesDao().insertArchive(it) }
+
+            db.studySessionDao().clearAll()
+            studySessions.forEach { db.studySessionDao().upsert(it) }
+        }
+
+        // Prefs live outside Room, so they're written after the DB transaction commits.
+        repo.monthlyBudget = root.optDouble("budget", 0.0)
+        repo.userName = root.optString("userName", "")
+        repo.chedTarget = if (!root.has("chedTarget") || root.isNull("chedTarget")) null else root.optDouble("chedTarget")
+        repo.themeMode = when (root.optString("theme", "system")) {
+            "light" -> ThemeMode.LIGHT
+            "dark" -> ThemeMode.DARK
+            else -> ThemeMode.SYSTEM
+        }
+        repo.notificationsEnabled = root.optBoolean("notificationsEnabled", true)
+        repo.dailyStudyGoalMinutes = root.optInt("dailyStudyGoalMinutes", repo.dailyStudyGoalMinutes)
+        repo.weeklyStudyGoalMinutes = root.optInt("weeklyStudyGoalMinutes", repo.weeklyStudyGoalMinutes)
+        repo.budgetPeriod = when (root.optString("budgetPeriod", "monthly")) {
+            "weekly" -> BudgetPeriod.WEEKLY
+            "both" -> BudgetPeriod.BOTH
+            else -> BudgetPeriod.MONTHLY
+        }
+        repo.weekStartDay = runCatching {
+            java.time.DayOfWeek.valueOf(root.optString("weekStartDay", "MONDAY"))
+        }.getOrDefault(java.time.DayOfWeek.MONDAY)
+        repo.weeklyBudgetOverride = if (!root.has("weeklyBudgetOverride") || root.isNull("weeklyBudgetOverride")) null else root.optDouble("weeklyBudgetOverride")
+        repo.weeklyRolloverEnabled = root.optBoolean("weeklyRolloverEnabled", false)
+    }
+}
+
+// ---- Small JSON helpers ----
+
+private inline fun <T> JSONArray.mapObjects(transform: (JSONObject) -> T): List<T> {
+    val out = ArrayList<T>(length())
+    for (i in 0 until length()) out.add(transform(getJSONObject(i)))
+    return out
+}
+
+private fun JSONObject.optStringOrNull(key: String): String? =
+    if (has(key) && !isNull(key)) getString(key) else null
+
+// ---- Per-entity (de)serializers ----
+
+private fun classSessionToJson(c: ClassSession) = JSONObject().apply {
+    put("id", c.id); put("code", c.code); put("section", c.section)
+    put("title", c.title); put("day", c.day); put("type", c.type)
+    put("start", c.start); put("end", c.end); put("room", c.room); put("instructor", c.instructor)
+    put("absences", c.absences)
+}
+
+private fun classSessionFromJson(o: JSONObject) = ClassSession(
+    id = o.getString("id"),
+    code = o.getString("code"),
+    section = o.optStringOrNull("section"),
+    title = o.optStringOrNull("title"),
+    day = o.getString("day"),
+    type = o.getString("type"),
+    start = o.getString("start"),
+    end = o.getString("end"),
+    room = o.optStringOrNull("room"),
+    instructor = o.optStringOrNull("instructor"),
+    // Older backups (pre-roadmap #4) won't have this key — default to 0.
+    absences = o.optInt("absences", 0)
+)
+
+private fun expenseToJson(e: Expense) = JSONObject().apply {
+    put("id", e.id); put("amount", e.amount); put("category", e.category)
+    put("date", e.date); put("note", e.note); put("ruleId", e.ruleId); put("isRecurring", e.isRecurring)
+    put("isFixed", e.isFixed)
+}
+
+private fun expenseFromJson(o: JSONObject) = Expense(
+    id = o.getString("id"),
+    amount = o.getDouble("amount"),
+    category = o.getString("category"),
+    date = o.getString("date"),
+    note = o.optStringOrNull("note"),
+    ruleId = o.optStringOrNull("ruleId"),
+    isRecurring = o.optBoolean("isRecurring", false),
+    isFixed = o.optBoolean("isFixed", false)
+)
+
+private fun expenseRuleToJson(r: ExpenseRule) = JSONObject().apply {
+    put("id", r.id); put("amount", r.amount); put("category", r.category)
+    put("note", r.note); put("startDate", r.startDate); put("repeat", r.repeat); put("lastGenerated", r.lastGenerated)
+    put("isFixed", r.isFixed)
+}
+
+private fun expenseRuleFromJson(o: JSONObject) = ExpenseRule(
+    id = o.getString("id"),
+    amount = o.getDouble("amount"),
+    category = o.getString("category"),
+    note = o.optStringOrNull("note"),
+    startDate = o.getString("startDate"),
+    repeat = o.getString("repeat"),
+    lastGenerated = o.getString("lastGenerated"),
+    isFixed = o.optBoolean("isFixed", false)
+)
+
+private fun deadlineToJson(d: Deadline) = JSONObject().apply {
+    put("id", d.id); put("title", d.title); put("course", d.course); put("due", d.due)
+    put("type", d.type); put("priority", d.priority); put("done", d.done)
+    put("ruleId", d.ruleId); put("isRecurring", d.isRecurring)
+}
+
+private fun deadlineFromJson(o: JSONObject) = Deadline(
+    id = o.getString("id"),
+    title = o.getString("title"),
+    course = o.optStringOrNull("course"),
+    due = o.getString("due"),
+    type = o.getString("type"),
+    priority = o.getString("priority"),
+    done = o.optBoolean("done", false),
+    ruleId = o.optStringOrNull("ruleId"),
+    isRecurring = o.optBoolean("isRecurring", false)
+)
+
+private fun deadlineRuleToJson(r: DeadlineRule) = JSONObject().apply {
+    put("id", r.id); put("title", r.title); put("course", r.course); put("type", r.type)
+    put("priority", r.priority); put("startDate", r.startDate); put("repeat", r.repeat)
+}
+
+private fun deadlineRuleFromJson(o: JSONObject) = DeadlineRule(
+    id = o.getString("id"),
+    title = o.getString("title"),
+    course = o.optStringOrNull("course"),
+    type = o.getString("type"),
+    priority = o.getString("priority"),
+    startDate = o.getString("startDate"),
+    repeat = o.optString("repeat", "weekly")
+)
+
+private fun semesterToJson(s: Semester) = JSONObject().apply { put("id", s.id); put("label", s.label) }
+
+private fun semesterFromJson(o: JSONObject) = Semester(id = o.getString("id"), label = o.getString("label"))
+
+private fun gradeCourseToJson(c: GradeCourse) = JSONObject().apply {
+    put("id", c.id); put("semesterId", c.semesterId); put("code", c.code)
+    put("title", c.title); put("units", c.units); put("grade", c.grade)
+}
+
+private fun gradeCourseFromJson(o: JSONObject) = GradeCourse(
+    id = o.getString("id"),
+    semesterId = o.getString("semesterId"),
+    code = o.getString("code"),
+    title = o.optStringOrNull("title"),
+    units = o.optDouble("units", 0.0),
+    grade = o.optString("grade", "")
+)
+
+private fun archiveToJson(a: Archive) = JSONObject().apply {
+    put("id", a.id); put("createdAt", a.createdAt); put("label", a.label)
+    put("scheduleJson", a.scheduleJson); put("deadlinesJson", a.deadlinesJson)
+}
+
+private fun archiveFromJson(o: JSONObject) = Archive(
+    id = o.getString("id"),
+    createdAt = o.getLong("createdAt"),
+    label = o.getString("label"),
+    scheduleJson = o.optString("scheduleJson", "[]"),
+    deadlinesJson = o.optString("deadlinesJson", "[]")
+)
+
+private fun studySessionToJson(s: StudySession) = JSONObject().apply {
+    put("id", s.id); put("courseCode", s.courseCode)
+    put("startedAt", s.startedAt); put("endedAt", s.endedAt)
+    put("plannedMinutes", s.plannedMinutes); put("actualSeconds", s.actualSeconds)
+    put("completed", s.completed); put("cyclesInSession", s.cyclesInSession)
+}
+
+private fun studySessionFromJson(o: JSONObject) = StudySession(
+    id = o.getString("id"),
+    courseCode = o.optStringOrNull("courseCode"),
+    startedAt = o.getLong("startedAt"),
+    endedAt = o.getLong("endedAt"),
+    plannedMinutes = o.getInt("plannedMinutes"),
+    actualSeconds = o.getInt("actualSeconds"),
+    completed = o.optBoolean("completed", false),
+    cyclesInSession = o.optInt("cyclesInSession", 1)
+)

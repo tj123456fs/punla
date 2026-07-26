@@ -1,0 +1,14 @@
+<resources>
+    <style name="Theme.Punla" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- Used by QuickAddExpenseActivity: a transparent, no-chrome window so
+         the activity launched from the Budget widget reads as a floating
+         quick-add card over the home screen rather than a full app launch. -->
+    <style name="Theme.Punla.QuickAdd" parent="Theme.Punla">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowAnimationStyle">@android:style/Animation.Dialog</item>
+        <item name="android:backgroundDimEnabled">true</item>
+    </style>
+</resources>

@@ -1,0 +1,118 @@
+# Punla — Native Android Rewrite
+
+> **UI pass (this update):** theme, typography, and every screen were reworked to
+> match the web app's field-notebook look (cream paper, crop green, UP maroon,
+> mango accents). See "UI design system" below for details.
+
+A from-scratch Android Studio project (Kotlin + Jetpack Compose + Room + Glance)
+recreating the core of the original Punla web app, with **three real home-screen
+widgets**: Next Class, Budget Remaining, and Next Deadline.
+
+## Opening the project
+
+1. Open Android Studio (Hedgehog/2023.1+ recommended, matching AGP 8.5 / Kotlin 1.9.24).
+2. `File > Open` → select this `Punla/` folder.
+3. Let Gradle sync. If it complains about the wrapper jar, click
+   "Use Gradle from: 'gradle-wrapper.properties' file" or regenerate it via
+   `Terminal: gradle wrapper` inside the project — the jar binary itself
+   isn't included since it can't be produced outside Android Studio/Gradle.
+4. Run on a device or emulator (API 26+).
+5. Long-press the home screen → Widgets → "Punla" → drag out any of the
+   three widgets (Next Class / Budget Remaining / Next Deadline).
+
+## What's implemented
+
+- **Room database** (`data/entity`, `data/dao`, `PunlaDatabase.kt`) mirroring your
+  original state shape: class sessions, expenses + recurring rules, deadlines +
+  recurring rules, semesters/grade courses, and archives.
+- **PunlaRepository** — the "next class", "budget remaining", and "next deadline"
+  logic, shared by both the app UI and the widgets (no duplication, no bridge —
+  since this is fully native, widgets query Room directly in-process).
+- **Compose screens**: Schedule (weekly list + add/delete), Budget (set monthly
+  budget, log/delete expenses, running remaining balance), Deadlines (list,
+  mark done, add/delete). Bottom navigation ties them together.
+- **Three Glance widgets** (`widget/`): `NextClassWidget`, `BudgetWidget`,
+  `NextDeadlineWidget`, each with its own `AppWidgetProvider` XML and receiver,
+  refreshed immediately after any relevant data change via `WidgetRefresher`.
+- **Recurring expense/deadline generation** (`data/RecurrenceEngine.kt`) — ports
+  the web app's `generateRecurringExpenses()` / `generateRecurringDeadlines()`
+  "catch up on load" logic to Room. The expense form's "Repeats" dropdown
+  (Doesn't repeat / Weekly / Monthly) and the deadline form's "Repeats weekly"
+  checkbox create an `ExpenseRule`/`DeadlineRule` alongside the first instance;
+  `PunlaViewModel.init` re-runs the engine on every app launch so any
+  occurrences that should exist by now (e.g. you skipped opening the app for a
+  week) get backfilled, the same way the web app catches up on load. Marking a
+  recurring deadline done immediately generates its next occurrence instead of
+  waiting for the next launch. Each recurring item shows a small repeat icon
+  and a "stop repeating" action that detaches existing instances and deletes
+  the rule.
+- **Theme toggle** (`data/PunlaRepository.kt` `ThemeMode`, top app bar icon) —
+  a three-way System/Light/Dark preference, persisted and cycled by tapping
+  the sun/moon/auto icon in the top bar. Previously the app silently forced
+  light mode regardless of the device setting (`MainActivity` passed a
+  `Boolean` that defaulted to `false` rather than following the system), so
+  this also fixes that.
+- **Class edit + schedule conflict check** — tapping a class card (or its edit
+  icon) reopens the same dialog used for adding, pre-filled and re-using the
+  original `id` on save. The dialog also gained the Day/Type dropdowns it was
+  missing before (previously every class silently saved as Monday/Lecture
+  regardless of what you picked, since there was nothing to pick from). Saving
+  now runs the same overlap check as the web app's `checkConflict()` — same
+  day, overlapping time range — and blocks the save with an inline warning
+  instead of silently creating a double-booking.
+
+## What's simplified / left as a next step
+
+Given the size of the original app, a few things are scaffolded but not fully
+built out — the Room entities and DAOs for these already exist, so it's UI work
+from here:
+
+- **Grades / GWA screen** — implemented: semester tabs (add/delete), an editable
+  course table (code, title, units, UPLB grade dropdown 1.00–5.00/INC/DRP/W),
+  and a live weighted-GWA summary card. Since Tj holds a CHED scholarship with
+  a GWA retention requirement, the summary also takes a target GWA and flags
+  whether the current semester is on track (remember UPLB's scale runs the
+  opposite direction from most schools — 1.00 is the best grade, so "on track"
+  means GWA ≤ target).
+- **Deadlines calendar view** — only the list view is implemented.
+- **Building/room map lookup** — not ported.
+
+## UI design system
+
+- `ui/theme/Color.kt` — the full field-notebook palette (paper/ink, leaf green,
+  UP maroon, mango) in both light and dark variants, ported 1:1 from the web
+  app's CSS variables.
+- `ui/theme/Type.kt` — a `Typography` set using serif for headlines (stands in
+  for Fraunces) and monospace for numerals (stands in for IBM Plex Mono). Drop
+  real `Fraunces-*.ttf` / `IBMPlexMono-*.ttf` files under `res/font` and swap
+  the `FontFamily.Serif` / `FontFamily.Monospace` references here for pixel
+  parity with the web app.
+- `ui/theme/Shape.kt` — consistent rounded-corner radii used by cards, chips,
+  and dialogs.
+- `ui/screens/PunlaWidgets.kt` — small shared composables (`Tag`, `AccentBar`,
+  `SectionLabel`, `EmptyState`, `PesoText`) reused across all four screens so
+  peso amounts, priority/type pills, and empty states look identical
+  everywhere instead of each screen rolling its own.
+- Screens now use a top app bar, colored left-edge accent bars per card
+  (leaf = lecture/low priority, mango = lab/medium priority, maroon = high
+  priority), a `LinearProgressIndicator` on the Budget screen showing
+  spent-vs-budget at a glance, and friendly icon-based empty states instead of
+  a lone line of gray text.
+- The bottom `NavigationBar` and FAB now pull their colors from the theme
+  (leaf green) instead of Material's stock purple defaults.
+
+## Editing the widget UI
+
+Each widget's visuals live entirely in its own file
+(`widget/NextClassWidget.kt`, `BudgetWidget.kt`, `NextDeadlineWidget.kt`) using
+Glance's Compose-like API. Widget sizing/behavior (min size, update interval,
+resize mode) is controlled by the matching XML in `res/xml/*_widget_info.xml`.
+
+## A note on testing
+
+This project was written in a sandbox without an Android SDK, so it hasn't been
+compiled here — I've been careful with imports and Glance/Room APIs, but treat
+the first Gradle sync/build in Android Studio as the real correctness check,
+and expect to fix a small error or two (missing import, a Glance API surface
+that shifted slightly between versions, etc.) rather than a guaranteed
+zero-error first build.

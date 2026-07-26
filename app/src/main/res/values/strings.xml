@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">Punla</string>
+    <string name="widget_next_class_label">Next Class</string>
+    <string name="widget_next_class_description">Shows your next scheduled class, time, and room.</string>
+    <string name="widget_budget_label">Budget Remaining</string>
+    <string name="widget_budget_description">Shows how much of your monthly budget is left.</string>
+    <string name="widget_next_deadline_label">Next Deadline</string>
+    <string name="widget_next_deadline_description">Shows your closest upcoming deadline.</string>
+</resources>
