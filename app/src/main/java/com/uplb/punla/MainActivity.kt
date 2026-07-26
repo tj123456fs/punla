@@ -16,7 +16,9 @@ import androidx.work.WorkManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -29,6 +31,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -48,6 +51,11 @@ import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.outlined.AttachMoney
+import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Flag
+import androidx.compose.material.icons.outlined.Grade
+import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -228,7 +236,17 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private data class Tab(val route: String, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
+// `icon` doubles as "the filled/selected icon" for bottom tabs and as
+// "the only icon" for drawer items (default keeps drawer construction
+// unchanged). `unselectedIcon` is only meaningfully different for
+// BOTTOM_TABS, which pass an outlined variant explicitly below — nav bar
+// UX plan §2 (outline -> filled swap on selection).
+private data class Tab(
+    val route: String,
+    val label: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val unselectedIcon: androidx.compose.ui.graphics.vector.ImageVector = icon
+)
 
 // UX polish plan (nav section) — hybrid drawer/bottom-bar switch. Bottom
 // bar caps at 5 items before losing label space, so the 6 former "TABS"
@@ -238,11 +256,11 @@ private data class Tab(val route: String, val label: String, val icon: androidx.
 // "next class on map" shortcut card, so it isn't losing quick access, just
 // losing bottom-bar-level prominence.
 private val BOTTOM_TABS = listOf(
-    Tab("dashboard", "Home", Icons.Default.Home),
-    Tab("schedule", "Schedule", Icons.Default.CalendarMonth),
-    Tab("deadlines", "Deadlines", Icons.Default.Flag),
-    Tab("budget", "Budget", Icons.Default.AttachMoney),
-    Tab("grades", "Grades", Icons.Default.Grade)
+    Tab("dashboard", "Home", Icons.Filled.Home, Icons.Outlined.Home),
+    Tab("schedule", "Schedule", Icons.Filled.CalendarMonth, Icons.Outlined.CalendarMonth),
+    Tab("deadlines", "Deadlines", Icons.Filled.Flag, Icons.Outlined.Flag),
+    Tab("budget", "Budget", Icons.Filled.AttachMoney, Icons.Outlined.AttachMoney),
+    Tab("grades", "Grades", Icons.Filled.Grade, Icons.Outlined.Grade)
 )
 
 // Drawer now holds only lower-frequency destinations: Campus (moved out of
@@ -491,11 +509,61 @@ fun PunlaApp(vm: PunlaViewModel, startRoute: String? = null, darkTheme: Boolean 
                             tonalElevation = 0.dp,
                             windowInsets = WindowInsets(0, 0, 0, 0)
                         ) {
+                            val haptics = LocalHapticFeedback.current
                             BOTTOM_TABS.forEach { tab ->
+                                val selected = currentRoute == tab.route
+                                // Nav bar UX plan §3 — press feedback lives on
+                                // each item's own interactionSource so a press
+                                // on one tab never animates a sibling. Two
+                                // curves on purpose: press-in is a quick, stiff
+                                // tween (feels immediate under the finger),
+                                // release is a springy overshoot past 1.0
+                                // (feels organic) — the same asymmetry
+                                // Material's own ripple uses.
+                                val interactionSource = remember { MutableInteractionSource() }
+                                val pressed by interactionSource.collectIsPressedAsState()
+                                val iconScale by animateFloatAsState(
+                                    targetValue = if (pressed) 0.85f else 1f,
+                                    animationSpec = if (pressed) {
+                                        tween(durationMillis = 80, easing = FastOutSlowInEasing)
+                                    } else {
+                                        spring(
+                                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                                            stiffness = Spring.StiffnessMedium
+                                        )
+                                    },
+                                    label = "navIconPress"
+                                )
                                 NavigationBarItem(
-                                    selected = currentRoute == tab.route,
-                                    onClick = { navigateTo(tab.route) },
-                                    icon = { Icon(tab.icon, contentDescription = null) },
+                                    selected = selected,
+                                    onClick = {
+                                        // Guarded on purpose (§3) — without this,
+                                        // re-tapping the tab you're already on
+                                        // still buzzes for a navigation that
+                                        // never happens, which reads as broken
+                                        // rather than tactile.
+                                        if (!selected) {
+                                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            navigateTo(tab.route)
+                                        }
+                                    },
+                                    interactionSource = interactionSource,
+                                    alwaysShowLabel = false,
+                                    icon = {
+                                        Icon(
+                                            if (selected) tab.icon else tab.unselectedIcon,
+                                            // Label itself only renders when
+                                            // selected (alwaysShowLabel = false
+                                            // above), so this content
+                                            // description is TalkBack's only
+                                            // way to read an unselected tab.
+                                            contentDescription = tab.label,
+                                            modifier = Modifier.graphicsLayer {
+                                                scaleX = iconScale
+                                                scaleY = iconScale
+                                            }
+                                        )
+                                    },
                                     label = { Text(tab.label) },
                                     colors = NavigationBarItemDefaults.colors(
                                         selectedIconColor = MaterialTheme.colorScheme.primary,
