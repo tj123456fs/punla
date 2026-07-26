@@ -114,9 +114,9 @@ fun DashboardScreen(vm: PunlaViewModel, onOpenNextClassOnMap: () -> Unit = {}, o
     }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) requestNextClassFix() else {
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        if (results.values.any { it }) requestNextClassFix() else {
             locating = false
             locateFailure = LocationFailure.PERMISSION_DENIED
         }
@@ -464,7 +464,7 @@ fun DashboardScreen(vm: PunlaViewModel, onOpenNextClassOnMap: () -> Unit = {}, o
                                                 when {
                                                     hasLocationPermission(context) -> requestNextClassFix()
                                                     permanentlyDenied -> openAppLocationSettings(context)
-                                                    else -> locationPermissionLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+                                                    else -> locationPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
                                                 }
                                             },
                                             contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)

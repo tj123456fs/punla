@@ -81,9 +81,9 @@ fun CampusMapScreen(vm: PunlaViewModel, initialSearch: String = "", onOpenFullMa
     }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) fetchLocation() else {
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        if (results.values.any { it }) fetchLocation() else {
             locating = false
             locateFailure = LocationFailure.PERMISSION_DENIED
         }
@@ -96,7 +96,7 @@ fun CampusMapScreen(vm: PunlaViewModel, initialSearch: String = "", onOpenFullMa
         when {
             hasLocationPermission(context) -> fetchLocation()
             permanentlyDenied -> openAppLocationSettings(context)
-            else -> locationPermissionLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+            else -> locationPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
         }
     }
 
