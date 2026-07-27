@@ -509,7 +509,15 @@ fun PunlaApp(vm: PunlaViewModel, startRoute: String? = null, darkTheme: Boolean 
                             tonalElevation = 0.dp,
                             windowInsets = WindowInsets(0, 0, 0, 0)
                         ) {
-                            val haptics = LocalHapticFeedback.current
+                            // Debounces bottom-tab taps against the NavHost's
+                            // own transition duration (220ms enter / 160ms
+                            // exit — see isTabSwitch's branch above). Without
+                            // this, mashing the bar retargets the crossfade
+                            // mid-flight on every tap, which blends two (or
+                            // three) transitions into one smeared-looking
+                            // frame instead of settling cleanly. 250ms is
+                            // just past the longer of the two durations.
+                            var lastTabSwitchAt by remember { mutableStateOf(0L) }
                             BOTTOM_TABS.forEach { tab ->
                                 val selected = currentRoute == tab.route
                                 // Nav bar UX plan §3 — press feedback lives on
@@ -537,27 +545,24 @@ fun PunlaApp(vm: PunlaViewModel, startRoute: String? = null, darkTheme: Boolean 
                                 NavigationBarItem(
                                     selected = selected,
                                     onClick = {
-                                        // Guarded on purpose (§3) — without this,
-                                        // re-tapping the tab you're already on
-                                        // still buzzes for a navigation that
-                                        // never happens, which reads as broken
-                                        // rather than tactile.
-                                        if (!selected) {
-                                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        val now = System.currentTimeMillis()
+                                        if (!selected && now - lastTabSwitchAt > 250L) {
+                                            lastTabSwitchAt = now
                                             navigateTo(tab.route)
                                         }
                                     },
                                     interactionSource = interactionSource,
-                                    alwaysShowLabel = false,
                                     icon = {
                                         Icon(
                                             if (selected) tab.icon else tab.unselectedIcon,
-                                            // Label itself only renders when
-                                            // selected (alwaysShowLabel = false
-                                            // above), so this content
-                                            // description is TalkBack's only
-                                            // way to read an unselected tab.
-                                            contentDescription = tab.label,
+                                            // Label is always shown (no
+                                            // alwaysShowLabel override — 5
+                                            // tabs is comfortably within
+                                            // Material's guidance for
+                                            // showing every label), so this
+                                            // stays null to avoid TalkBack
+                                            // announcing the name twice.
+                                            contentDescription = null,
                                             modifier = Modifier.graphicsLayer {
                                                 scaleX = iconScale
                                                 scaleY = iconScale
