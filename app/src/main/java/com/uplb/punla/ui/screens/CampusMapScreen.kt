@@ -1,6 +1,7 @@
 package com.uplb.punla.ui.screens
 
 import android.Manifest
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -33,12 +34,14 @@ import com.uplb.punla.data.RoutePlan
 import com.uplb.punla.data.RoutePlanLeg
 import com.uplb.punla.data.RouteStop
 import com.uplb.punla.data.fetchOneShotLocation
+import com.uplb.punla.data.fetchWalkingMatrix
 import com.uplb.punla.data.fetchWalkingRoute
 import com.uplb.punla.data.fmtDistance
 import com.uplb.punla.data.hasLocationPermission
 import com.uplb.punla.data.haversineMeters
 import com.uplb.punla.data.openAppLocationSettings
 import com.uplb.punla.data.optimizeStopOrder
+import com.uplb.punla.data.optimizeStopOrderReal
 import com.uplb.punla.data.shouldShowLocationRationale
 import com.uplb.punla.ui.PunlaViewModel
 import com.uplb.punla.ui.theme.PunlaDisplay
@@ -81,9 +84,9 @@ fun CampusMapScreen(vm: PunlaViewModel, initialSearch: String = "", onOpenFullMa
     }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { results ->
-        if (results.values.any { it }) fetchLocation() else {
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) fetchLocation() else {
             locating = false
             locateFailure = LocationFailure.PERMISSION_DENIED
         }
@@ -96,7 +99,7 @@ fun CampusMapScreen(vm: PunlaViewModel, initialSearch: String = "", onOpenFullMa
         when {
             hasLocationPermission(context) -> fetchLocation()
             permanentlyDenied -> openAppLocationSettings(context)
-            else -> locationPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+            else -> locationPermissionLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
         }
     }
 
@@ -104,13 +107,21 @@ fun CampusMapScreen(vm: PunlaViewModel, initialSearch: String = "", onOpenFullMa
      * Turns the current [selectedStops] into an ordered [RoutePlan] and hands
      * it to the shared ViewModel state for `CampusFullMapScreen` to render.
      *
-     * Ordering uses cheap straight-line distances (`optimizeStopOrder`); only
-     * once an order is decided does this fetch a real walking route for each
-     * of the (stops.size) sequential legs — not every pair, which would be
-     * an O(n²) burst against a free, rate-limited public routing server.
-     * Fetches run one at a time (not in parallel) as a courtesy to that
-     * server, so this can take a few seconds for a longer stop list —
-     * `planningRoute` drives a loading state in the UI for that reason.
+     * Ordering prefers real walking *time* (`optimizeStopOrderReal`), fetched
+     * as a single OSRM Table-service call covering every pair at once
+     * (`fetchWalkingMatrix`) — this is what correctly orders stops on
+     * opposite sides of the river, where straight-line distance would ignore
+     * that Narra Bridge is the only crossing. If that call fails for any
+     * reason (no connectivity, demo server down/rate-limited), this falls
+     * back to the cheap straight-line ordering (`optimizeStopOrder`) rather
+     * than blocking route planning on it.
+     *
+     * Either way, only once an order is decided does this fetch a real
+     * walking route for each of the (stops.size) sequential legs — not every
+     * pair. Fetches run one at a time (not in parallel) as a courtesy to the
+     * (free, rate-limited) routing server, so this can take a few seconds
+     * for a longer stop list — `planningRoute` drives a loading state in the
+     * UI for that reason.
      */
     fun planRoute() {
         val loc = userLoc
@@ -125,9 +136,16 @@ fun CampusMapScreen(vm: PunlaViewModel, initialSearch: String = "", onOpenFullMa
 
         planningRoute = true
         scope.launch {
-            val ordered = optimizeStopOrder(loc, stops)
+            val matrixPoints = listOf(loc) + stops.map { it.lat to it.lon }
+            val matrix = fetchWalkingMatrix(matrixPoints)
+            val ordered = if (matrix != null && matrix.durationsSeconds.size == matrixPoints.size) {
+                optimizeStopOrderReal(stops, matrix.durationsSeconds)
+            } else {
+                Log.w("CampusMapScreen", "Real walking-time matrix unavailable, falling back to straight-line stop ordering")
+                optimizeStopOrder(loc, stops)
+            }
             val legs = mutableListOf<RoutePlanLeg>()
-            var fromPoint: Pair<Double, Double> = requireNotNull(loc)
+            var fromPoint = loc
             for (stop in ordered) {
                 val route = fetchWalkingRoute(fromPoint, stop.lat to stop.lon)
                 legs.add(RoutePlanLeg(fromPoint, stop, route))

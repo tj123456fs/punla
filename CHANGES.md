@@ -671,3 +671,89 @@ read-through.
 
 **Not compile-checked** — same caveat as always: read-through only, one
 file touched (`data/RoutingApi.kt`), logging-only change.
+
+## Session 12c — GitHub Actions Build Workflow
+
+Added `.github/workflows/build.yml` so a debug APK can be built entirely on
+GitHub's servers and downloaded from the Actions tab — no Android Studio,
+no local Gradle/SDK setup needed.
+
+**Note for next session: this repo/zip has no Gradle wrapper.** There's no
+`gradlew`, `gradlew.bat`, or `gradle/wrapper/gradle-wrapper.jar` anywhere in
+it — only `gradle/wrapper/gradle-wrapper.properties` survived (pins Gradle
+8.13). That breaks the usual `./gradlew build` boilerplate everyone copies
+into Android CI workflows, and it'll also break a local Termux build the
+same way. Worked around it here by having the workflow install Gradle 8.13
+directly via `gradle/actions/setup-gradle` and running `gradle
+assembleDebug` (no wrapper involved at all). The real fix, whenever there's
+a Gradle install handy (Termux, Gitpod, anywhere): run `gradle wrapper
+--gradle-version 8.13` once from the project root and commit the three
+generated files — after that `./gradlew` works everywhere again and this
+workaround stops being necessary (though it'd keep working fine either way).
+
+Also pinned `platforms;android-34` / `build-tools;34.0.0` explicitly via
+`sdkmanager` rather than trusting whatever's preinstalled on the runner —
+GitHub's `ubuntu-latest` image only guarantees API 34+ tooling going
+forward, so this keeps the build from depending on an assumption that could
+change under it.
+
+**Not compile-checked** — this one can't really be "compile-checked" any
+other way than actually running it, since it's the CI definition itself.
+Push it and check the Actions tab; if `sdkmanager --licenses` prompts
+interactively instead of accepting the piped `yes`, that's the first thing
+to look at.
+
+## Session 13 — Real Walking-Time Route Ordering
+
+Upgraded the multi-stop route planner's ordering from straight-line
+(haversine) distance to real walking *time*, prompted directly by a
+screenshot of the campus map: three selected stops (Baker Hall Pool,
+Graduate School Building, Biological Sciences Building) whose route crosses
+the river, where Narra Bridge is the only crossing for a whole stretch —
+exactly the kind of geography where "closest as the crow flies" and
+"closest to actually walk to" diverge, and straight-line ordering can pick
+a genuinely worse sequence than the obvious one.
+
+**`data/RoutingApi.kt`** — added `fetchWalkingMatrix(points)`, using OSRM's
+Table service (`/table/v1/foot/...`, same demo server and profile as the
+existing `fetchWalkingRoute`) to fetch real walking duration *and* distance
+between every pair in one HTTP call, instead of the O(n²) burst that doing
+it via `fetchWalkingRoute` per pair would mean. Same "never throws, `null`
+on any failure" contract as the rest of this file. A `null` entry in OSRM's
+response (a pair it found no path between) maps to a new `UNREACHABLE_COST`
+constant (999,999) rather than crashing the parse or leaving a gap.
+
+**`data/RouteOptimizer.kt`** — refactored the nearest-neighbor + 2-opt
+search into a shared private `bestVisitOrder(stopCount, cost)`, parameterized
+by an arbitrary pairwise cost function, so the same search can be scored two
+ways:
+- `optimizeStopOrderReal(stops, matrix)` — real seconds from the new
+  matrix. **Preferred path.**
+- `optimizeStopOrder(from, stops)` — unchanged straight-line haversine
+  distance. Same function as before, now just the fallback.
+
+**`ui/screens/CampusMapScreen.kt`** — `planRoute()` now fetches the matrix
+first (`listOf(userLoc) + stops`, in that order, so matrix index `0` is the
+user and `1..n` line up with `stops[0..]`), uses `optimizeStopOrderReal`
+when that succeeds, and only falls back to the old `optimizeStopOrder` if
+the matrix call comes back `null` (logged via `Log.w("CampusMapScreen", ...)`
+so a silent fallback is checkable in Logcat, same pattern Session 12b added
+for `RoutingApi.kt`). Net new network cost per "Plan route" tap: exactly one
+extra HTTP call (the table request) — the per-leg `fetchWalkingRoute` calls
+for drawing the actual polyline are unchanged, still one per leg, still
+sequential.
+
+Deliberately did **not** touch the per-building "View on map" preview
+(`ModalBottomSheet` → `CampusMapView`) that Session 12b flagged as never
+drawing any route — that's a single-destination view with nothing to order,
+unrelated to this multi-stop work.
+
+**Not compile-checked** — same caveat as every session: manual read-through
+only. Three files touched (`data/RoutingApi.kt`, `data/RouteOptimizer.kt`,
+`ui/screens/CampusMapScreen.kt`), no new dependencies, no Gradle/manifest
+changes. Worth an on-device check in particular: OSRM's public Table
+service endpoint has a lower default max-locations limit than most people
+expect from a demo server — fine for this app's realistic stop counts (a
+handful), but if stop lists ever grow into the dozens this will start
+failing (gracefully, via the existing fallback) and would need chunking or
+a self-hosted OSRM instance.
