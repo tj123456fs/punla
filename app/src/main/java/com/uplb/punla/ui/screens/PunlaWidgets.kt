@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -21,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,6 +40,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.error
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -251,6 +255,7 @@ fun SegmentedControl(options: List<String>, selected: Int, onSelect: (Int) -> Un
                     .clip(RoundedCornerShape(8.dp))
                     .background(if (active) MaterialTheme.colorScheme.primary else Color.Transparent)
                     .clickable { onSelect(i) }
+                    .heightIn(min = 48.dp)
                     .padding(vertical = 7.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -285,6 +290,7 @@ fun DayPill(label: String, active: Boolean, hasDot: Boolean = false, onClick: ()
                     RoundedCornerShape(20.dp)
                 )
                 .clickable { onClick() }
+                .heightIn(min = 48.dp)
                 .padding(horizontal = 14.dp, vertical = 7.dp)
         ) {
             Text(
@@ -348,13 +354,16 @@ fun PunlaField(
     onValueChange: (String) -> Unit,
     modifier: Modifier = Modifier,
     placeholder: String? = null,
-    keyboardOptions: KeyboardOptions = KeyboardOptions.Default
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    isError: Boolean = false,
+    supportingText: String? = null
 ) {
+    val borderColor = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline
     Column(modifier) {
         Text(
             label,
             style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.5.sp, fontWeight = FontWeight.Medium),
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(4.dp))
         BasicTextField(
@@ -366,14 +375,16 @@ fun PunlaField(
                 color = MaterialTheme.colorScheme.onSurface
             ),
             keyboardOptions = keyboardOptions,
-            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+            cursorBrush = SolidColor(if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary),
             decorationBox = { inner ->
                 Box(
                     Modifier
                         .fillMaxWidth()
+                        .heightIn(min = 48.dp)
                         .background(MaterialTheme.colorScheme.background, RoundedCornerShape(8.dp))
-                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp))
-                        .padding(horizontal = 10.dp, vertical = 9.dp)
+                        .border(1.dp, borderColor, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 10.dp, vertical = 9.dp),
+                    contentAlignment = Alignment.CenterStart
                 ) {
                     if (value.isEmpty() && placeholder != null) {
                         Text(placeholder, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp), color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
@@ -381,8 +392,18 @@ fun PunlaField(
                     inner()
                 }
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(if (isError && supportingText != null) Modifier.semantics { error(supportingText) } else Modifier)
         )
+        if (supportingText != null) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                supportingText,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 
@@ -416,6 +437,7 @@ fun PunlaDropdownField(
                     .background(MaterialTheme.colorScheme.background, RoundedCornerShape(8.dp))
                     .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp))
                     .clickable { expanded = true }
+                    .heightIn(min = 48.dp)
                     .padding(horizontal = 10.dp, vertical = 9.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
@@ -450,6 +472,33 @@ fun PunlaDropdownField(
             }
         }
     }
+}
+
+/**
+ * Shared confirmation dialog for irreversible actions. Keeping the wording
+ * and button placement consistent prevents destructive actions from feeling
+ * unpredictable across Schedule, Budget, Deadlines, Grades and Checklist.
+ */
+@Composable
+fun DestructiveActionDialog(
+    title: String,
+    message: String,
+    confirmLabel: String = "Delete",
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(message) },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirm,
+                colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+            ) { Text(confirmLabel) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }
 
 /**

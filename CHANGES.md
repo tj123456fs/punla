@@ -780,3 +780,18 @@ var fromPoint: Pair<Double, Double> = loc
 specific class of error shows up again anywhere else, the general fix is
 the same: any `var` initialized from a smart-cast nullable value should get
 an explicit non-null type annotation rather than relying on inference.
+
+## Session 15 — UI/UX Safety, Validation, State, Permissions, and Adaptive Navigation
+
+Implemented the highest-impact remaining UI/UX improvements across the main student workflows:
+
+- Added shared inline validation support to `PunlaField`, including error semantics for screen readers and minimum 48 dp field height.
+- Added validation for required class/course/semester/checklist/deadline fields, positive expense and unit values, non-negative budgets, valid deadline dates, and trimmed saved text.
+- Added unsaved-change protection to class, expense, deadline, semester, course, and checklist forms.
+- Added consistent confirmation dialogs before deleting classes, expenses, deadlines, courses, semesters, and checklist items; checklist reset now uses the same destructive-action pattern.
+- Converted key screen and form state to `rememberSaveable` so selections, open forms, entered values, and confirmation state survive rotation/process recreation.
+- Replaced the immediate Android 13+ notification permission prompt with a contextual explanation, and made Settings reflect/request the real Android permission.
+- Increased shared segmented-control, day-pill, dropdown, and text-field touch targets.
+- Added adaptive Material 3 navigation: phones keep the five-item bottom bar, while screens 840 dp and wider use a navigation rail.
+
+Validation: every Kotlin source file was parsed through Kotlin PSI with no syntax errors. A full Android build was not available in the editing container because Gradle and the Android SDK are absent; GitHub Actions remains the final compile check.

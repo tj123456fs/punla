@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -37,8 +38,10 @@ import com.uplb.punla.ui.theme.PunlaDisplay
 fun ChecklistScreen(vm: PunlaViewModel) {
     val items by vm.checklistItems.collectAsState()
     val dataReady by vm.isDataReady.collectAsState()
-    var showAddDialog by remember { mutableStateOf(false) }
-    var showResetConfirm by remember { mutableStateOf(false) }
+    var showAddDialog by rememberSaveable { mutableStateOf(false) }
+    var showResetConfirm by rememberSaveable { mutableStateOf(false) }
+    var pendingDeleteItemId by rememberSaveable { mutableStateOf<String?>(null) }
+    val pendingDeleteItem = remember(pendingDeleteItemId, items) { items.firstOrNull { it.id == pendingDeleteItemId } }
 
     val daysLeft = remember { vm.repo.daysUntilClassesStart() }
     val checkedCount = items.count { it.checked }
@@ -105,7 +108,7 @@ fun ChecklistScreen(vm: PunlaViewModel) {
                     ChecklistItemCard(
                         item = checklistItem,
                         onToggle = { vm.toggleChecklistItem(checklistItem) },
-                        onDelete = { vm.deleteChecklistItem(checklistItem) }
+                        onDelete = { pendingDeleteItemId = checklistItem.id }
                     )
                 }
                 item {
@@ -136,14 +139,24 @@ fun ChecklistScreen(vm: PunlaViewModel) {
     }
 
     if (showResetConfirm) {
-        AlertDialog(
-            onDismissRequest = { showResetConfirm = false },
-            title = { Text("Reset checklist?") },
-            text = { Text("This replaces your current list with the default requirements, discarding any edits, checks, or custom items.") },
-            confirmButton = {
-                TextButton(onClick = { vm.resetChecklistToDefaults(); showResetConfirm = false }) { Text("Reset") }
+        DestructiveActionDialog(
+            title = "Reset checklist?",
+            message = "This replaces your current list with the default requirements, discarding any edits, checks, or custom items.",
+            confirmLabel = "Reset",
+            onConfirm = { vm.resetChecklistToDefaults(); showResetConfirm = false },
+            onDismiss = { showResetConfirm = false }
+        )
+    }
+
+    if (pendingDeleteItem != null) {
+        DestructiveActionDialog(
+            title = "Delete requirement?",
+            message = "Remove “${pendingDeleteItem.title}” from the checklist?",
+            onConfirm = {
+                vm.deleteChecklistItem(pendingDeleteItem)
+                pendingDeleteItemId = null
             },
-            dismissButton = { TextButton(onClick = { showResetConfirm = false }) { Text("Cancel") } }
+            onDismiss = { pendingDeleteItemId = null }
         )
     }
 }
@@ -189,24 +202,56 @@ private fun ChecklistItemCard(item: ChecklistItem, onToggle: () -> Unit, onDelet
 
 @Composable
 private fun AddChecklistItemDialog(onDismiss: () -> Unit, onSave: (String, String?) -> Unit) {
-    var title by remember { mutableStateOf("") }
-    var note by remember { mutableStateOf("") }
+    var title by rememberSaveable { mutableStateOf("") }
+    var note by rememberSaveable { mutableStateOf("") }
+    var titleTouched by rememberSaveable { mutableStateOf(false) }
+    var showDiscardConfirm by rememberSaveable { mutableStateOf(false) }
+    val invalidTitle = titleTouched && title.isBlank()
+    val isDirty = title.isNotBlank() || note.isNotBlank()
+
+    fun requestDismiss() {
+        if (isDirty) showDiscardConfirm = true else onDismiss()
+    }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add requirement") },
+        onDismissRequest = { requestDismiss() },
+        title = { Text(if (showDiscardConfirm) "Discard requirement?" else "Add requirement") },
         text = {
-            Column {
-                PunlaField("Title", title, { title = it }, placeholder = "e.g. Renew scholarship documents", modifier = Modifier.fillMaxWidth())
-                Spacer(Modifier.height(8.dp))
-                PunlaField("Note", note, { note = it }, placeholder = "Optional", modifier = Modifier.fillMaxWidth())
+            if (showDiscardConfirm) {
+                Text("Your unsaved checklist item will be lost.")
+            } else {
+                Column {
+                    PunlaField(
+                        "Title",
+                        title,
+                        { title = it; titleTouched = true },
+                        placeholder = "e.g. Renew scholarship documents",
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = invalidTitle,
+                        supportingText = if (invalidTitle) "A title is required." else null
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    PunlaField("Note", note, { note = it }, placeholder = "Optional", modifier = Modifier.fillMaxWidth())
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = {
-                if (title.isNotBlank()) onSave(title.trim(), note.ifBlank { null })
-            }) { Text("Save") }
+            if (showDiscardConfirm) {
+                TextButton(
+                    onClick = onDismiss,
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) { Text("Discard") }
+            } else {
+                TextButton(onClick = {
+                    titleTouched = true
+                    if (title.isNotBlank()) onSave(title.trim(), note.trim().ifBlank { null })
+                }) { Text("Save") }
+            }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = {
+            TextButton(onClick = {
+                if (showDiscardConfirm) showDiscardConfirm = false else requestDismiss()
+            }) { Text(if (showDiscardConfirm) "Keep editing" else "Cancel") }
+        }
     )
 }

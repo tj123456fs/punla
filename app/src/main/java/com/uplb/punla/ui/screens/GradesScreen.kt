@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Grade
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -63,16 +64,21 @@ fun GradesScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
         selectedSemester?.let { vm.coursesFlow(it.id) } ?: flowOf(emptyList())
     }.collectAsState(initial = emptyList())
 
-    var showSemesterDialog by remember { mutableStateOf(false) }
-    var showCourseDialog by remember { mutableStateOf(false) }
-    var editingCourse by remember { mutableStateOf<GradeCourse?>(null) }
+    var showSemesterDialog by rememberSaveable { mutableStateOf(false) }
+    var showCourseDialog by rememberSaveable { mutableStateOf(false) }
+    var editingCourseId by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingDeleteSemesterId by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingDeleteCourseId by rememberSaveable { mutableStateOf<String?>(null) }
+    val editingCourse = remember(editingCourseId, courses) { courses.firstOrNull { it.id == editingCourseId } }
+    val pendingDeleteSemester = remember(pendingDeleteSemesterId, semesters) { semesters.firstOrNull { it.id == pendingDeleteSemesterId } }
+    val pendingDeleteCourse = remember(pendingDeleteCourseId, courses) { courses.firstOrNull { it.id == pendingDeleteCourseId } }
 
     // Quick-add "grade": mirrors the web app's rule — jump into "new course"
     // if a semester already exists, otherwise prompt to create one first.
     LaunchedEffect(openFormOnStart, semesters) {
         if (openFormOnStart) {
             if (semesters.isEmpty()) showSemesterDialog = true
-            else { editingCourse = null; showCourseDialog = true }
+            else { editingCourseId = null; showCourseDialog = true }
         }
     }
 
@@ -88,7 +94,7 @@ fun GradesScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
         floatingActionButton = {
             if (selectedSemester != null) {
                 FloatingActionButton(
-                    onClick = { editingCourse = null; showCourseDialog = true },
+                    onClick = { editingCourseId = null; showCourseDialog = true },
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary
                 ) { Icon(Icons.Default.Add, "Add course") }
@@ -117,7 +123,7 @@ fun GradesScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
                         selectedId = vm.selectedSemesterId,
                         onSelect = { vm.selectSemester(it) },
                         onAddNew = { showSemesterDialog = true },
-                        onDelete = { vm.deleteSemester(it) }
+                        onDelete = { pendingDeleteSemesterId = it.id }
                     )
                     Spacer(Modifier.height(12.dp))
                     GwaSummaryCard(vm = vm, gwa = gwa, totalUnits = totalUnits)
@@ -135,8 +141,8 @@ fun GradesScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
                     items(courses.sortedBy { it.code }, key = { it.id }) { c ->
                         CourseCard(
                             course = c,
-                            onEdit = { editingCourse = c; showCourseDialog = true },
-                            onDelete = { vm.deleteCourse(c) }
+                            onEdit = { editingCourseId = c.id; showCourseDialog = true },
+                            onDelete = { pendingDeleteCourseId = c.id }
                         )
                     }
                 } else {
@@ -163,8 +169,32 @@ fun GradesScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
         CourseFormDialog(
             semesterId = selectedSemester.id,
             existing = editingCourse,
-            onDismiss = { showCourseDialog = false },
-            onSave = { vm.upsertCourse(it); showCourseDialog = false }
+            onDismiss = { showCourseDialog = false; editingCourseId = null },
+            onSave = { vm.upsertCourse(it); showCourseDialog = false; editingCourseId = null }
+        )
+    }
+
+    if (pendingDeleteCourse != null) {
+        DestructiveActionDialog(
+            title = "Delete course?",
+            message = "Remove ${pendingDeleteCourse.code} and its grade from this semester?",
+            onConfirm = {
+                vm.deleteCourse(pendingDeleteCourse)
+                pendingDeleteCourseId = null
+            },
+            onDismiss = { pendingDeleteCourseId = null }
+        )
+    }
+
+    if (pendingDeleteSemester != null) {
+        DestructiveActionDialog(
+            title = "Delete ${pendingDeleteSemester.label}?",
+            message = "This permanently removes the semester and every course recorded under it.",
+            onConfirm = {
+                vm.deleteSemester(pendingDeleteSemester)
+                pendingDeleteSemesterId = null
+            },
+            onDismiss = { pendingDeleteSemesterId = null }
         )
     }
 }
@@ -483,22 +513,51 @@ private fun CourseCard(course: GradeCourse, onEdit: () -> Unit, onDelete: () -> 
 
 @Composable
 private fun SemesterFormDialog(onDismiss: () -> Unit, onSave: (String) -> Unit) {
-    var label by remember { mutableStateOf("") }
+    var label by rememberSaveable { mutableStateOf("") }
+    var labelTouched by rememberSaveable { mutableStateOf(false) }
+    var showDiscardConfirm by rememberSaveable { mutableStateOf(false) }
+    val invalidLabel = labelTouched && label.isBlank()
+
+    fun requestDismiss() {
+        if (label.isNotBlank()) showDiscardConfirm = true else onDismiss()
+    }
+
     AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add semester") },
+        onDismissRequest = { requestDismiss() },
+        title = { Text(if (showDiscardConfirm) "Discard semester?" else "Add semester") },
         text = {
-            PunlaField(
-                "Semester label",
-                label, { label = it },
-                placeholder = "e.g. AY 2026–2027, 1st Sem",
-                modifier = Modifier.fillMaxWidth()
-            )
+            if (showDiscardConfirm) {
+                Text("Your unsaved semester label will be lost.")
+            } else {
+                PunlaField(
+                    "Semester label",
+                    label,
+                    { label = it; labelTouched = true },
+                    placeholder = "e.g. AY 2026–2027, 1st Sem",
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = invalidLabel,
+                    supportingText = if (invalidLabel) "A semester label is required." else null
+                )
+            }
         },
         confirmButton = {
-            TextButton(onClick = { if (label.isNotBlank()) onSave(label) }) { Text("Save") }
+            if (showDiscardConfirm) {
+                TextButton(
+                    onClick = onDismiss,
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) { Text("Discard") }
+            } else {
+                TextButton(onClick = {
+                    labelTouched = true
+                    if (label.isNotBlank()) onSave(label.trim())
+                }) { Text("Save") }
+            }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = {
+            TextButton(onClick = {
+                if (showDiscardConfirm) showDiscardConfirm = false else requestDismiss()
+            }) { Text(if (showDiscardConfirm) "Keep editing" else "Cancel") }
+        }
     )
 }
 
@@ -510,54 +569,97 @@ private fun CourseFormDialog(
     onDismiss: () -> Unit,
     onSave: (GradeCourse) -> Unit
 ) {
-    var code by remember(existing?.id) { mutableStateOf(existing?.code ?: "") }
-    var title by remember(existing?.id) { mutableStateOf(existing?.title ?: "") }
-    var units by remember(existing?.id) { mutableStateOf(existing?.units?.let { if (it > 0) it.toString() else "" } ?: "3") }
-    var grade by remember(existing?.id) { mutableStateOf(existing?.grade?.ifBlank { GRADE_OPTIONS.first() } ?: GRADE_OPTIONS.first()) }
+    var code by rememberSaveable(existing?.id) { mutableStateOf(existing?.code ?: "") }
+    var title by rememberSaveable(existing?.id) { mutableStateOf(existing?.title ?: "") }
+    var units by rememberSaveable(existing?.id) { mutableStateOf(existing?.units?.let { if (it > 0) it.toString() else "" } ?: "3") }
+    var grade by rememberSaveable(existing?.id) { mutableStateOf(existing?.grade?.ifBlank { GRADE_OPTIONS.first() } ?: GRADE_OPTIONS.first()) }
+    var codeTouched by rememberSaveable(existing?.id) { mutableStateOf(false) }
+    var unitsTouched by rememberSaveable(existing?.id) { mutableStateOf(false) }
+    var showDiscardConfirm by rememberSaveable(existing?.id) { mutableStateOf(false) }
     val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
 
+    val parsedUnits = units.toDoubleOrNull()
+    val invalidCode = codeTouched && code.isBlank()
+    val invalidUnits = unitsTouched && (parsedUnits == null || parsedUnits <= 0)
+    val initialCode = existing?.code ?: ""
+    val initialTitle = existing?.title ?: ""
+    val initialUnits = existing?.units?.let { if (it > 0) it.toString() else "" } ?: "3"
+    val initialGrade = existing?.grade?.ifBlank { GRADE_OPTIONS.first() } ?: GRADE_OPTIONS.first()
+    val isDirty = code != initialCode || title != initialTitle || units != initialUnits || grade != initialGrade
+
+    fun requestDismiss() {
+        if (isDirty) showDiscardConfirm = true else onDismiss()
+    }
+
     AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (existing == null) "Add course" else "Edit course") },
+        onDismissRequest = { requestDismiss() },
+        title = { Text(if (showDiscardConfirm) "Discard course changes?" else if (existing == null) "Add course" else "Edit course") },
         text = {
-            Column {
-                PunlaField("Course code", code, { code = it }, modifier = Modifier.fillMaxWidth())
-                Spacer(Modifier.height(8.dp))
-                PunlaField("Course title", title, { title = it }, placeholder = "Optional", modifier = Modifier.fillMaxWidth())
-                Spacer(Modifier.height(8.dp))
-                PunlaField(
-                    "Units",
-                    units, { units = it },
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(Modifier.height(8.dp))
-                PunlaDropdownField(
-                    "Grade",
-                    grade,
-                    GRADE_OPTIONS,
-                    onSelect = { grade = GRADE_OPTIONS[it] },
-                    modifier = Modifier.fillMaxWidth()
-                )
+            if (showDiscardConfirm) {
+                Text("Your unsaved course details will be lost.")
+            } else {
+                Column {
+                    PunlaField(
+                        "Course code",
+                        code,
+                        { code = it; codeTouched = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = invalidCode,
+                        supportingText = if (invalidCode) "Course code is required." else null
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    PunlaField("Course title", title, { title = it }, placeholder = "Optional", modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(8.dp))
+                    PunlaField(
+                        "Units",
+                        units,
+                        { units = it; unitsTouched = true },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = invalidUnits,
+                        supportingText = if (invalidUnits) "Enter units greater than 0." else null
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    PunlaDropdownField(
+                        "Grade",
+                        grade,
+                        GRADE_OPTIONS,
+                        onSelect = { grade = GRADE_OPTIONS[it] },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = {
-                if (code.isNotBlank()) {
-                    haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                    onSave(
-                        GradeCourse(
-                            id = existing?.id ?: java.util.UUID.randomUUID().toString(),
-                            semesterId = semesterId,
-                            code = code,
-                            title = title.ifBlank { null },
-                            units = units.toDoubleOrNull() ?: 0.0,
-                            grade = grade
+            if (showDiscardConfirm) {
+                TextButton(
+                    onClick = onDismiss,
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) { Text("Discard") }
+            } else {
+                TextButton(onClick = {
+                    codeTouched = true
+                    unitsTouched = true
+                    if (code.isNotBlank() && parsedUnits != null && parsedUnits > 0) {
+                        haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                        onSave(
+                            GradeCourse(
+                                id = existing?.id ?: java.util.UUID.randomUUID().toString(),
+                                semesterId = semesterId,
+                                code = code.trim(),
+                                title = title.trim().ifBlank { null },
+                                units = parsedUnits,
+                                grade = grade
+                            )
                         )
-                    )
-                }
-            }) { Text("Save") }
+                    }
+                }) { Text("Save") }
+            }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = {
+            TextButton(onClick = {
+                if (showDiscardConfirm) showDiscardConfirm = false else requestDismiss()
+            }) { Text(if (showDiscardConfirm) "Keep editing" else "Cancel") }
+        }
     )
 }

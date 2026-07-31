@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -48,27 +49,31 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 @Composable
-fun SettingsScreen(vm: PunlaViewModel) {
-    var userNameInput by remember { mutableStateOf(vm.userName) }
-    var budgetInput by remember {
+fun SettingsScreen(
+    vm: PunlaViewModel,
+    notificationPermissionGranted: Boolean = true,
+    onRequestNotificationPermission: () -> Unit = {}
+) {
+    var userNameInput by rememberSaveable { mutableStateOf(vm.userName) }
+    var budgetInput by rememberSaveable {
         mutableStateOf(vm.monthlyBudget.let {
             if (it > 0) it.toInt().toString() else ""
         })
     }
-    var targetInput by remember { mutableStateOf(vm.chedTarget?.let { "%.2f".format(it) } ?: "") }
-    var weeklyBudgetInput by remember {
+    var targetInput by rememberSaveable { mutableStateOf(vm.chedTarget?.let { "%.2f".format(it) } ?: "") }
+    var weeklyBudgetInput by rememberSaveable {
         mutableStateOf(vm.weeklyBudgetOverride?.let { if (it > 0) it.toInt().toString() else "" } ?: "")
     }
 
     val archives by vm.archives.collectAsState()
 
-    var showArchiveConfirm by remember { mutableStateOf(false) }
-    var archiveLabel by remember { mutableStateOf("") }
+    var showArchiveConfirm by rememberSaveable { mutableStateOf(false) }
+    var archiveLabel by rememberSaveable { mutableStateOf("") }
 
     var pendingImportUri by remember { mutableStateOf<Uri?>(null) }
     val backupResult = vm.backupResult
 
-    var showCustomColorDialog by remember { mutableStateOf(false) }
+    var showCustomColorDialog by rememberSaveable { mutableStateOf(false) }
 
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
@@ -156,15 +161,32 @@ fun SettingsScreen(vm: PunlaViewModel) {
                     ) {
                         Text("Deadline Reminders", style = MaterialTheme.typography.bodyMedium)
                         Switch(
-                            checked = vm.notificationsEnabled,
-                            onCheckedChange = { vm.toggleNotifications(it) }
+                            checked = vm.notificationsEnabled && notificationPermissionGranted,
+                            onCheckedChange = { enabled ->
+                                if (enabled && !notificationPermissionGranted) {
+                                    onRequestNotificationPermission()
+                                } else {
+                                    vm.toggleNotifications(enabled)
+                                }
+                            }
                         )
                     }
                     Text(
-                        "Daily checks for deadlines due within 3 days.",
+                        if (notificationPermissionGranted) {
+                            "Class, deadline, checklist, backup, and budget reminders are allowed by Android."
+                        } else {
+                            "Android notification permission is off. Turn it on to receive reminders."
+                        },
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = if (notificationPermissionGranted) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error
                     )
+                    if (!notificationPermissionGranted) {
+                        Spacer(Modifier.height(6.dp))
+                        TextButton(
+                            onClick = onRequestNotificationPermission,
+                            contentPadding = PaddingValues(0.dp)
+                        ) { Text("Allow notifications") }
+                    }
                 }
             }
         }

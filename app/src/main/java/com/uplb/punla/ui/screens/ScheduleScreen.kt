@@ -1,5 +1,6 @@
 package com.uplb.punla.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -19,9 +20,9 @@ import androidx.compose.material.icons.filled.EventBusy
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -33,10 +34,6 @@ import com.uplb.punla.ui.PunlaViewModel
 import com.uplb.punla.ui.theme.LocalPunlaPalette
 import com.uplb.punla.ui.theme.PunlaDisplay
 import com.uplb.punla.ui.theme.PunlaMono
-import kotlinx.coroutines.delay
-import java.time.DayOfWeek
-import java.time.LocalDate
-import java.time.LocalTime
 
 private val DAYS = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
 private val DAY_FULL = mapOf(
@@ -60,7 +57,6 @@ private val TIME_OPTIONS: List<String> = buildList {
 private const val GRID_START_HOUR = 7
 private const val GRID_END_HOUR = 21
 private val GRID_HOUR_DP = 40.dp
-private val DAY_COLUMN_WIDTH = 88.dp
 
 /**
  * Feature plan — Free-Time Finder. Gaps of at least 30 minutes between
@@ -119,18 +115,21 @@ fun ScheduleScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false, onStudy
     // Room's first real emission, so it doesn't flash on cold launch.
     val dataReady by vm.isDataReady.collectAsState()
 
-    var scheduleDay by remember { mutableStateOf(DAYS[0]) }
-    var viewMode by remember { mutableStateOf(0) } // 0 = list, 1 = weekly grid
-    var showForm by remember { mutableStateOf(false) }
-    var editingClass by remember { mutableStateOf<ClassSession?>(null) }
+    var scheduleDay by rememberSaveable { mutableStateOf(DAYS[0]) }
+    var viewMode by rememberSaveable { mutableStateOf(0) } // 0 = list, 1 = weekly grid
+    var showForm by rememberSaveable { mutableStateOf(false) }
+    var editingClassId by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingDeleteClassId by rememberSaveable { mutableStateOf<String?>(null) }
+    val editingClass = remember(editingClassId, classes) { classes.firstOrNull { it.id == editingClassId } }
+    val pendingDeleteClass = remember(pendingDeleteClassId, classes) { classes.firstOrNull { it.id == pendingDeleteClassId } }
 
     LaunchedEffect(openFormOnStart) {
-        if (openFormOnStart) { editingClass = null; showForm = true }
+        if (openFormOnStart) { editingClassId = null; showForm = true }
     }
 
     fun openAdd() {
-        if (showForm && editingClass == null) { showForm = false } else {
-            editingClass = null; showForm = true
+        if (showForm && editingClassId == null) { showForm = false } else {
+            editingClassId = null; showForm = true
         }
     }
 
@@ -159,18 +158,14 @@ fun ScheduleScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false, onStudy
                     editing = editingClass,
                     allClasses = classes,
                     defaultDay = scheduleDay,
-                    onCancel = { showForm = false; editingClass = null },
+                    onCancel = { showForm = false; editingClassId = null },
                     onSubmit = { candidate ->
-                        vm.addOrUpdateClass(candidate); showForm = false; editingClass = null
+                        vm.addOrUpdateClass(candidate); showForm = false; editingClassId = null
                     },
                     modifier = Modifier.padding(bottom = 14.dp)
                 )
             }
-            ScheduleGrid(
-                classes,
-                onEdit = { editingClass = it; showForm = true },
-                modifier = Modifier.weight(1f)
-            )
+            ScheduleGrid(classes, Modifier.weight(1f))
         } else {
             // web: .day-pills
             Row(
@@ -213,9 +208,9 @@ fun ScheduleScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false, onStudy
                     editing = editingClass,
                     allClasses = classes,
                     defaultDay = scheduleDay,
-                    onCancel = { showForm = false; editingClass = null },
+                    onCancel = { showForm = false; editingClassId = null },
                     onSubmit = { candidate ->
-                        vm.addOrUpdateClass(candidate); showForm = false; editingClass = null
+                        vm.addOrUpdateClass(candidate); showForm = false; editingClassId = null
                     },
                     modifier = Modifier.padding(bottom = 14.dp)
                 )
@@ -236,8 +231,8 @@ fun ScheduleScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false, onStudy
                         ClassCard(
                             c = c,
                             deadlines = deadlines,
-                            onEdit = { editingClass = it; showForm = true },
-                            onDelete = { vm.deleteClass(it) },
+                            onEdit = { editingClassId = it.id; showForm = true },
+                            onDelete = { pendingDeleteClassId = it.id },
                             onMarkAbsent = { vm.incrementAbsence(it) },
                             onUndoAbsence = { vm.decrementAbsence(it) }
                         )
@@ -246,6 +241,18 @@ fun ScheduleScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false, onStudy
                 }
             }
         }
+    }
+
+    if (pendingDeleteClass != null) {
+        DestructiveActionDialog(
+            title = "Delete ${pendingDeleteClass.code}?",
+            message = "This removes the class from your schedule and cannot be undone.",
+            onConfirm = {
+                vm.deleteClass(pendingDeleteClass)
+                pendingDeleteClassId = null
+            },
+            onDismiss = { pendingDeleteClassId = null }
+        )
     }
 }
 
@@ -451,16 +458,37 @@ private fun ClassFormCard(
     onSubmit: (ClassSession) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var code by remember(editing?.id) { mutableStateOf(editing?.code ?: "") }
-    var section by remember(editing?.id) { mutableStateOf(editing?.section ?: "") }
-    var title by remember(editing?.id) { mutableStateOf(editing?.title ?: "") }
-    var day by remember(editing?.id) { mutableStateOf(editing?.day ?: defaultDay) }
-    var type by remember(editing?.id) { mutableStateOf(editing?.type ?: "lec") }
-    var start by remember(editing?.id) { mutableStateOf(editing?.start ?: "07:00") }
-    var end by remember(editing?.id) { mutableStateOf(editing?.end ?: "08:00") }
-    var room by remember(editing?.id) { mutableStateOf(editing?.room ?: "") }
-    var instructor by remember(editing?.id) { mutableStateOf(editing?.instructor ?: "") }
+    var code by rememberSaveable(editing?.id) { mutableStateOf(editing?.code ?: "") }
+    var section by rememberSaveable(editing?.id) { mutableStateOf(editing?.section ?: "") }
+    var title by rememberSaveable(editing?.id) { mutableStateOf(editing?.title ?: "") }
+    var day by rememberSaveable(editing?.id) { mutableStateOf(editing?.day ?: defaultDay) }
+    var type by rememberSaveable(editing?.id) { mutableStateOf(editing?.type ?: "lec") }
+    var start by rememberSaveable(editing?.id) { mutableStateOf(editing?.start ?: "07:00") }
+    var end by rememberSaveable(editing?.id) { mutableStateOf(editing?.end ?: "08:00") }
+    var room by rememberSaveable(editing?.id) { mutableStateOf(editing?.room ?: "") }
+    var instructor by rememberSaveable(editing?.id) { mutableStateOf(editing?.instructor ?: "") }
     val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+    var codeTouched by rememberSaveable(editing?.id) { mutableStateOf(false) }
+    var showDiscardConfirm by rememberSaveable(editing?.id) { mutableStateOf(false) }
+
+    val initialCode = editing?.code ?: ""
+    val initialSection = editing?.section ?: ""
+    val initialTitle = editing?.title ?: ""
+    val initialDay = editing?.day ?: defaultDay
+    val initialType = editing?.type ?: "lec"
+    val initialStart = editing?.start ?: "07:00"
+    val initialEnd = editing?.end ?: "08:00"
+    val initialRoom = editing?.room ?: ""
+    val initialInstructor = editing?.instructor ?: ""
+    val isDirty = code != initialCode || section != initialSection || title != initialTitle ||
+        day != initialDay || type != initialType || start != initialStart || end != initialEnd ||
+        room != initialRoom || instructor != initialInstructor
+
+    fun requestCancel() {
+        if (isDirty) showDiscardConfirm = true else onCancel()
+    }
+
+    BackHandler { requestCancel() }
 
     val conflict = remember(day, start, end, editing?.id, allClasses) {
         allClasses.firstOrNull { existing ->
@@ -519,7 +547,15 @@ private fun ClassFormCard(
             }
 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                PunlaField("Course code", code, { code = it }, placeholder = "e.g. MATH 20", modifier = Modifier.weight(1f))
+                PunlaField(
+                    "Course code",
+                    code,
+                    { code = it; codeTouched = true },
+                    placeholder = "e.g. MATH 20",
+                    modifier = Modifier.weight(1f),
+                    isError = codeTouched && code.isBlank(),
+                    supportingText = if (codeTouched && code.isBlank()) "Course code is required." else null
+                )
                 PunlaField("Section", section, { section = it }, placeholder = "e.g. WFY-2L", modifier = Modifier.weight(1f))
             }
             Spacer(Modifier.height(10.dp))
@@ -556,25 +592,26 @@ private fun ClassFormCard(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
                     onClick = {
+                        codeTouched = true
                         if (code.isNotBlank() && !invalidTimeRange) {
                             haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
                             onSubmit(
                                 ClassSession(
                                     id = editing?.id ?: java.util.UUID.randomUUID().toString(),
-                                    code = code, section = section.ifBlank { null }, title = title.ifBlank { null },
+                                    code = code.trim(), section = section.trim().ifBlank { null }, title = title.trim().ifBlank { null },
                                     day = day, type = type, start = start, end = end,
-                                    room = room.ifBlank { null }, instructor = instructor.ifBlank { null },
+                                    room = room.trim().ifBlank { null }, instructor = instructor.trim().ifBlank { null },
                                     absences = editing?.absences ?: 0
                                 )
                             )
                         }
                     },
-                    enabled = code.isNotBlank() && !invalidTimeRange,
+                    enabled = !invalidTimeRange,
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = LocalPunlaPalette.current.ink, contentColor = LocalPunlaPalette.current.paper)
                 ) { Text(if (editing != null) "Save changes" else "Add class", style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, fontWeight = FontWeight.SemiBold)) }
                 OutlinedButton(
-                    onClick = onCancel,
+                    onClick = { requestCancel() },
                     shape = RoundedCornerShape(10.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface)
@@ -582,109 +619,27 @@ private fun ClassFormCard(
             }
         }
     }
-}
 
-/**
- * Weekly-grid improvement #1 — same-day overlapping classes used to render
- * on top of each other. This is a reachable case, not a hypothetical one:
- * the add/edit form only *warns* on a schedule conflict ("You can still
- * save — just double check it's intentional"), it never blocks the save.
- *
- * Standard calendar-layout algorithm: sort by start time, cluster classes
- * into maximal overlapping groups (tracking a running max end-time; a
- * class starting at or after that running end begins a new cluster), then
- * within each cluster greedily pack classes into the fewest side-by-side
- * columns needed (reusing a column once its last class has ended). String
- * comparisons on "HH:mm" are safe here since the rest of the file already
- * relies on that (see `freeSlotsFor`'s `cursor < c.start`).
- */
-internal data class GridPlacement(val session: ClassSession, val column: Int, val columnCount: Int)
-
-internal fun layoutDayClasses(dayClasses: List<ClassSession>): List<GridPlacement> {
-    val sorted = dayClasses.sortedWith(compareBy({ it.start }, { it.end }))
-    val placements = mutableListOf<GridPlacement>()
-    var i = 0
-    while (i < sorted.size) {
-        var clusterEnd = sorted[i].end
-        var j = i + 1
-        while (j < sorted.size && sorted[j].start < clusterEnd) {
-            if (sorted[j].end > clusterEnd) clusterEnd = sorted[j].end
-            j++
-        }
-        val cluster = sorted.subList(i, j)
-        val columnEnds = mutableListOf<String>() // last-occupied end time per column
-        val columnOf = IntArray(cluster.size)
-        cluster.forEachIndexed { idx, c ->
-            val reusable = columnEnds.indexOfFirst { it <= c.start }
-            if (reusable == -1) {
-                columnEnds.add(c.end)
-                columnOf[idx] = columnEnds.lastIndex
-            } else {
-                columnEnds[reusable] = c.end
-                columnOf[idx] = reusable
-            }
-        }
-        val columnCount = columnEnds.size
-        cluster.forEachIndexed { idx, c -> placements += GridPlacement(c, columnOf[idx], columnCount) }
-        i = j
+    if (showDiscardConfirm) {
+        DestructiveActionDialog(
+            title = "Discard changes?",
+            message = "Your unsaved class details will be lost.",
+            confirmLabel = "Discard",
+            onConfirm = { showDiscardConfirm = false; onCancel() },
+            onDismiss = { showDiscardConfirm = false }
+        )
     }
-    return placements
-}
-
-/**
- * Weekly-grid improvement #3 — classes outside the default 7am–9pm window
- * used to get silently clamped into that range (wrong position, wrong
- * duration, no indication anything was off) instead of actually being
- * shown. Expands the grid to cover every class's real start/end instead
- * of clipping to a fixed window; only widens, never shrinks below the
- * original 7–21 default so a normal day's grid doesn't shrink to fit a
- * single early class.
- */
-private fun gridHourRange(classes: List<ClassSession>): Pair<Int, Int> {
-    if (classes.isEmpty()) return GRID_START_HOUR to GRID_END_HOUR
-    val earliestHour = classes.minOf { parseTime(it.start).first }
-    val latestHour = classes.maxOf { c ->
-        val (h, m) = parseTime(c.end)
-        if (m > 0) h + 1 else h // round a :30 end up so it isn't drawn cut off
-    }
-    return minOf(GRID_START_HOUR, earliestHour) to maxOf(GRID_END_HOUR, latestHour)
-}
-
-/** Weekly-grid improvement #4/#5 — today's DAYS label ("Mon".."Sat"), or
- * null on Sunday since DAYS has no entry for it (no today-highlight or
- * now-line makes sense when there's nothing to highlight). */
-private fun todayDayLabel(): String? = when (LocalDate.now().dayOfWeek) {
-    DayOfWeek.MONDAY -> "Mon"
-    DayOfWeek.TUESDAY -> "Tue"
-    DayOfWeek.WEDNESDAY -> "Wed"
-    DayOfWeek.THURSDAY -> "Thu"
-    DayOfWeek.FRIDAY -> "Fri"
-    DayOfWeek.SATURDAY -> "Sat"
-    DayOfWeek.SUNDAY -> null
 }
 
 /**
  * web: renderScheduleGrid() — a horizontally-scrolling weekly timetable:
  * a fixed time-label column plus one column per day, with class blocks
- * absolutely positioned by minutes-since-gridStartHour.
+ * absolutely positioned by minutes-since-GRID_START_HOUR.
  */
 @Composable
-private fun ScheduleGrid(classes: List<ClassSession>, onEdit: (ClassSession) -> Unit, modifier: Modifier = Modifier) {
-    val (gridStartHour, gridEndHour) = remember(classes) { gridHourRange(classes) }
-    val totalHours = gridEndHour - gridStartHour
+private fun ScheduleGrid(classes: List<ClassSession>, modifier: Modifier = Modifier) {
+    val totalHours = GRID_END_HOUR - GRID_START_HOUR
     val bodyHeight = GRID_HOUR_DP * totalHours
-    val todayLabel = remember { todayDayLabel() }
-
-    // Weekly-grid improvement #5 — a live current-time line. Ticks once a
-    // minute rather than trying to be second-accurate, which is plenty for
-    // a line whose height is a full 40dp-per-hour anyway.
-    var nowMinutes by remember { mutableStateOf(LocalTime.now().let { it.hour * 60 + it.minute }) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(60_000L)
-            nowMinutes = LocalTime.now().let { it.hour * 60 + it.minute }
-        }
-    }
 
     Box(
         modifier
@@ -696,8 +651,8 @@ private fun ScheduleGrid(classes: List<ClassSession>, onEdit: (ClassSession) -> 
             Column(Modifier.width(42.dp)) {
                 Box(Modifier.fillMaxWidth().height(28.dp).background(MaterialTheme.colorScheme.surfaceVariant))
                 Box(Modifier.width(42.dp).height(bodyHeight)) {
-                    for (h in gridStartHour until gridEndHour) {
-                        val top = GRID_HOUR_DP * (h - gridStartHour)
+                    for (h in GRID_START_HOUR until GRID_END_HOUR) {
+                        val top = GRID_HOUR_DP * (h - GRID_START_HOUR)
                         Text(
                             fmtTime("${h.toString().padStart(2, '0')}:00"),
                             style = MaterialTheme.typography.bodySmall.copy(fontFamily = PunlaMono, fontSize = 9.sp),
@@ -713,102 +668,50 @@ private fun ScheduleGrid(classes: List<ClassSession>, onEdit: (ClassSession) -> 
             }
             DAYS.forEach { d ->
                 val dayClasses = classes.filter { it.day == d }
-                val isToday = d == todayLabel
                 Column(
                     Modifier
-                        .width(DAY_COLUMN_WIDTH)
+                        .width(88.dp)
                         .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outline))
                 ) {
-                    // Improvement #4 — today's column gets a distinct header
-                    // treatment (color + weight) so there's a visual anchor
-                    // for "where am I in the week" at a glance; the List
-                    // view already has this via its day-pills, the grid
-                    // didn't have an equivalent.
                     Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .height(28.dp)
-                            .background(if (isToday) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant),
+                        Modifier.fillMaxWidth().height(28.dp).background(MaterialTheme.colorScheme.surfaceVariant).border(androidx.compose.foundation.BorderStroke(0.dp, Color.Transparent)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            d,
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontSize = 11.sp,
-                                fontWeight = if (isToday) FontWeight.Bold else FontWeight.SemiBold
-                            ),
-                            color = if (isToday) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                        )
+                        Text(d, style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onSurface)
                     }
                     Box(
                         Modifier
-                            .width(DAY_COLUMN_WIDTH)
+                            .width(88.dp)
                             .height(bodyHeight)
                             .background(MaterialTheme.colorScheme.surfaceVariant)
                     ) {
-                        // Improvement #6 — the same free-time gaps already
-                        // powering the List view's "Study here?" chips and
-                        // the Dashboard suggestion card, drawn as a subtle
-                        // tint here too (visual only — doesn't open the
-                        // suggestion flow, just shows where the gaps are).
-                        // Drawn first/bottom-most so hour lines and class
-                        // blocks both render over it.
-                        freeSlotsFor(d, classes).forEach { (start, end) ->
-                            val (sh, sm) = parseTime(start)
-                            val (eh, em) = parseTime(end)
-                            val gapStartMin = ((sh * 60 + sm) - gridStartHour * 60).coerceAtLeast(0)
-                            val gapEndMin = ((eh * 60 + em) - gridStartHour * 60).coerceAtMost(totalHours * 60)
-                            if (gapEndMin > gapStartMin) {
-                                Box(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .offset(y = GRID_HOUR_DP * (gapStartMin / 60f))
-                                        .height(GRID_HOUR_DP * ((gapEndMin - gapStartMin) / 60f))
-                                        .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f))
-                                )
-                            }
-                        }
-                        for (h in gridStartHour..gridEndHour) {
-                            val top = GRID_HOUR_DP * (h - gridStartHour)
+                        for (h in GRID_START_HOUR..GRID_END_HOUR) {
+                            val top = GRID_HOUR_DP * (h - GRID_START_HOUR)
                             Box(Modifier.fillMaxWidth().offset(y = top).height(1.dp).background(MaterialTheme.colorScheme.outline))
                         }
-                        // Improvement #1 — side-by-side placement for classes
-                        // that overlap on the same day, instead of every
-                        // block filling the full column width and stacking
-                        // on top of each other.
-                        layoutDayClasses(dayClasses).forEach { placement ->
-                            val c = placement.session
+                        dayClasses.forEach { c ->
                             val (sh, sm) = parseTime(c.start)
                             val (eh, em) = parseTime(c.end)
-                            val startMin = ((sh * 60 + sm) - gridStartHour * 60).coerceAtLeast(0)
-                            val endMin = ((eh * 60 + em) - gridStartHour * 60).coerceAtMost(totalHours * 60)
+                            val startMin = ((sh * 60 + sm) - GRID_START_HOUR * 60).coerceAtLeast(0)
+                            val endMin = ((eh * 60 + em) - GRID_START_HOUR * 60).coerceAtMost(totalHours * 60)
                             val topDp = GRID_HOUR_DP * (startMin / 60f)
                             val heightDp = (GRID_HOUR_DP * ((endMin - startMin) / 60f)).let { if (it < 18.dp) 18.dp else it }
                             val isLab = c.type == "lab"
-                            val slotWidth = DAY_COLUMN_WIDTH / placement.columnCount
-                            val xOffset = slotWidth * placement.column
                             Box(
                                 Modifier
-                                    .offset(x = xOffset, y = topDp)
-                                    .padding(horizontal = 1.dp)
-                                    .width(slotWidth)
+                                    .offset(y = topDp)
+                                    .padding(horizontal = 2.dp)
+                                    .fillMaxWidth()
                                     .height(heightDp)
-                                    .clip(RoundedCornerShape(6.dp))
                                     .background(
                                         if (isLab) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.primaryContainer,
                                         RoundedCornerShape(6.dp)
                                     )
-                                    // Improvement #2 — grid blocks were dead
-                                    // boxes before; tapping one now opens the
-                                    // same edit form the List view's
-                                    // ClassCard uses, via the onEdit callback
-                                    // threaded in from ScheduleScreen.
-                                    .clickable { onEdit(c) }
                                     .border(
                                         BorderStroke(0.dp, Color.Transparent)
                                     )
                             ) {
-                                Column(Modifier.padding(horizontal = 4.dp, vertical = 3.dp)) {
+                                Column(Modifier.padding(horizontal = 5.dp, vertical = 3.dp)) {
                                     Text(
                                         c.code,
                                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 9.5.sp, fontWeight = FontWeight.Bold),
@@ -822,22 +725,6 @@ private fun ScheduleGrid(classes: List<ClassSession>, onEdit: (ClassSession) -> 
                                         maxLines = 1
                                     )
                                 }
-                            }
-                        }
-                        // Improvement #5 — only drawn in today's own column
-                        // (matches how calendar apps typically scope a "now"
-                        // line in a multi-day week view), and only when
-                        // "now" actually falls within the visible range.
-                        if (isToday) {
-                            val nowOffsetMin = nowMinutes - gridStartHour * 60
-                            if (nowOffsetMin in 0..(totalHours * 60)) {
-                                Box(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .offset(y = GRID_HOUR_DP * (nowOffsetMin / 60f) - 1.dp)
-                                        .height(2.dp)
-                                        .background(MaterialTheme.colorScheme.error)
-                                )
                             }
                         }
                     }

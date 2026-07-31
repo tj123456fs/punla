@@ -16,9 +16,7 @@ import androidx.work.WorkManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -31,7 +29,6 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -51,11 +48,6 @@ import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material.icons.outlined.AttachMoney
-import androidx.compose.material.icons.outlined.CalendarMonth
-import androidx.compose.material.icons.outlined.Flag
-import androidx.compose.material.icons.outlined.Grade
-import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -71,6 +63,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavBackStackEntry
@@ -119,11 +112,25 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_START_ROUTE = "start_route"
     }
 
+    private val notificationPermissionGrantedState = mutableStateOf(true)
+
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
-        if (isGranted) {
-            // Permission is granted. WorkManager will handle notifications correctly.
+        notificationPermissionGrantedState.value = isGranted
+        vm.toggleNotifications(isGranted)
+    }
+
+    private fun hasNotificationPermission(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasNotificationPermission()) {
+            requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            notificationPermissionGrantedState.value = true
+            vm.toggleNotifications(true)
         }
     }
 
@@ -138,6 +145,11 @@ class MainActivity : ComponentActivity() {
         startRouteState.value = intent.getStringExtra(EXTRA_START_ROUTE)
     }
 
+    override fun onResume() {
+        super.onResume()
+        notificationPermissionGrantedState.value = hasNotificationPermission()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Roadmap A: draw behind the system bars instead of stopping short
@@ -146,6 +158,7 @@ class MainActivity : ComponentActivity() {
         // targetSdk moves to 35.
         enableEdgeToEdge()
         startRouteState.value = intent?.getStringExtra(EXTRA_START_ROUTE)
+        notificationPermissionGrantedState.value = hasNotificationPermission()
         
         // Enqueue daily deadline worker
         val workRequest = PeriodicWorkRequestBuilder<DeadlineWorker>(24, TimeUnit.HOURS)
@@ -199,13 +212,6 @@ class MainActivity : ComponentActivity() {
             checklistRequest
         )
 
-        // Request notification permission on Android 13+
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            }
-        }
-
         setContent {
             // Resolves against the live system setting so ThemeMode.SYSTEM
             // reacts immediately if the device switches light/dark (e.g. by
@@ -217,6 +223,15 @@ class MainActivity : ComponentActivity() {
                 ThemeMode.SYSTEM -> systemDark
             }
             val startRoute by startRouteState
+            val notificationPermissionGranted by notificationPermissionGrantedState
+            val permissionPrefs = remember { getSharedPreferences("punla_permissions", MODE_PRIVATE) }
+            var showNotificationRationale by rememberSaveable {
+                mutableStateOf(
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        !notificationPermissionGranted &&
+                        !permissionPrefs.getBoolean("notification_rationale_seen", false)
+                )
+            }
 
             // Feature request — logo animation on open. rememberSaveable so
             // a rotation mid-animation doesn't replay it, but a fresh
@@ -228,25 +243,49 @@ class MainActivity : ComponentActivity() {
                     if (intro) {
                         LogoIntroScreen(userName = vm.userName, onFinished = { showIntro = false })
                     } else {
-                        PunlaApp(vm, startRoute = startRoute, darkTheme = isDark)
+                        PunlaApp(
+                            vm = vm,
+                            startRoute = startRoute,
+                            darkTheme = isDark,
+                            notificationPermissionGranted = notificationPermissionGranted,
+                            onRequestNotificationPermission = { requestNotificationPermission() }
+                        )
                     }
+                }
+
+                if (!showIntro && showNotificationRationale) {
+                    AlertDialog(
+                        onDismissRequest = {
+                            permissionPrefs.edit().putBoolean("notification_rationale_seen", true).apply()
+                            vm.toggleNotifications(false)
+                            showNotificationRationale = false
+                        },
+                        title = { Text("Stay ahead of classes and deadlines") },
+                        text = {
+                            Text("Punla can remind you before a class starts, when a deadline is near, and when your budget needs attention. You can change this anytime in Settings.")
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                permissionPrefs.edit().putBoolean("notification_rationale_seen", true).apply()
+                                showNotificationRationale = false
+                                requestNotificationPermission()
+                            }) { Text("Enable notifications") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = {
+                                permissionPrefs.edit().putBoolean("notification_rationale_seen", true).apply()
+                                vm.toggleNotifications(false)
+                                showNotificationRationale = false
+                            }) { Text("Not now") }
+                        }
+                    )
                 }
             }
         }
     }
 }
 
-// `icon` doubles as "the filled/selected icon" for bottom tabs and as
-// "the only icon" for drawer items (default keeps drawer construction
-// unchanged). `unselectedIcon` is only meaningfully different for
-// BOTTOM_TABS, which pass an outlined variant explicitly below — nav bar
-// UX plan §2 (outline -> filled swap on selection).
-private data class Tab(
-    val route: String,
-    val label: String,
-    val icon: androidx.compose.ui.graphics.vector.ImageVector,
-    val unselectedIcon: androidx.compose.ui.graphics.vector.ImageVector = icon
-)
+private data class Tab(val route: String, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
 
 // UX polish plan (nav section) — hybrid drawer/bottom-bar switch. Bottom
 // bar caps at 5 items before losing label space, so the 6 former "TABS"
@@ -256,11 +295,11 @@ private data class Tab(
 // "next class on map" shortcut card, so it isn't losing quick access, just
 // losing bottom-bar-level prominence.
 private val BOTTOM_TABS = listOf(
-    Tab("dashboard", "Home", Icons.Filled.Home, Icons.Outlined.Home),
-    Tab("schedule", "Schedule", Icons.Filled.CalendarMonth, Icons.Outlined.CalendarMonth),
-    Tab("deadlines", "Deadlines", Icons.Filled.Flag, Icons.Outlined.Flag),
-    Tab("budget", "Budget", Icons.Filled.AttachMoney, Icons.Outlined.AttachMoney),
-    Tab("grades", "Grades", Icons.Filled.Grade, Icons.Outlined.Grade)
+    Tab("dashboard", "Home", Icons.Default.Home),
+    Tab("schedule", "Schedule", Icons.Default.CalendarMonth),
+    Tab("deadlines", "Deadlines", Icons.Default.Flag),
+    Tab("budget", "Budget", Icons.Default.AttachMoney),
+    Tab("grades", "Grades", Icons.Default.Grade)
 )
 
 // Drawer now holds only lower-frequency destinations: Campus (moved out of
@@ -315,7 +354,13 @@ private fun isTabSwitch(from: NavBackStackEntry, to: NavBackStackEntry): Boolean
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PunlaApp(vm: PunlaViewModel, startRoute: String? = null, darkTheme: Boolean = false) {
+fun PunlaApp(
+    vm: PunlaViewModel,
+    startRoute: String? = null,
+    darkTheme: Boolean = false,
+    notificationPermissionGranted: Boolean = true,
+    onRequestNotificationPermission: () -> Unit = {}
+) {
     val navController: NavHostController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry.baseRoute()
@@ -343,7 +388,8 @@ fun PunlaApp(vm: PunlaViewModel, startRoute: String? = null, darkTheme: Boolean 
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    var quickAddOpen by remember { mutableStateOf(false) }
+    var quickAddOpen by rememberSaveable { mutableStateOf(false) }
+    val useNavigationRail = LocalConfiguration.current.screenWidthDp >= 840
 
     // Navigates to a base route (drawer/bottom-nav taps) without triggering
     // any quick-add form.
@@ -422,7 +468,39 @@ fun PunlaApp(vm: PunlaViewModel, startRoute: String? = null, darkTheme: Boolean 
         }
     ) {
       Box(Modifier.fillMaxSize().appBackground(vm.backgroundStyle, darkTheme = darkTheme)) {
-        Scaffold(
+        Row(Modifier.fillMaxSize()) {
+            if (useNavigationRail) {
+                NavigationRail(
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+                    header = {
+                        Spacer(Modifier.height(8.dp))
+                        Icon(
+                            Icons.Default.Home,
+                            contentDescription = "Punla home",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(Modifier.height(12.dp))
+                    }
+                ) {
+                    BOTTOM_TABS.forEach { tab ->
+                        NavigationRailItem(
+                            selected = currentRoute == tab.route,
+                            onClick = { navigateTo(tab.route) },
+                            icon = { Icon(tab.icon, contentDescription = tab.label) },
+                            label = { Text(tab.label) },
+                            colors = NavigationRailItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.primary,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
+                                indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                            )
+                        )
+                    }
+                }
+            }
+
+            Scaffold(
+            modifier = Modifier.weight(1f),
             topBar = {
                 CenterAlignedTopAppBar(
                     title = {
@@ -480,7 +558,7 @@ fun PunlaApp(vm: PunlaViewModel, startRoute: String? = null, darkTheme: Boolean 
             // keep the existing Back-arrow top bar with no bottom bar at all,
             // same as before this change.
             bottomBar = {
-                if (BOTTOM_TABS.any { it.route == currentRoute }) {
+                if (!useNavigationRail && BOTTOM_TABS.any { it.route == currentRoute }) {
                     // UX polish plan (glass + nav sections) — the bar now
                     // floats as a rounded, inset "glass" pill instead of a
                     // flush edge-to-edge strip, reusing the same opaque
@@ -509,66 +587,11 @@ fun PunlaApp(vm: PunlaViewModel, startRoute: String? = null, darkTheme: Boolean 
                             tonalElevation = 0.dp,
                             windowInsets = WindowInsets(0, 0, 0, 0)
                         ) {
-                            // Debounces bottom-tab taps against the NavHost's
-                            // own transition duration (220ms enter / 160ms
-                            // exit — see isTabSwitch's branch above). Without
-                            // this, mashing the bar retargets the crossfade
-                            // mid-flight on every tap, which blends two (or
-                            // three) transitions into one smeared-looking
-                            // frame instead of settling cleanly. 250ms is
-                            // just past the longer of the two durations.
-                            var lastTabSwitchAt by remember { mutableStateOf(0L) }
                             BOTTOM_TABS.forEach { tab ->
-                                val selected = currentRoute == tab.route
-                                // Nav bar UX plan §3 — press feedback lives on
-                                // each item's own interactionSource so a press
-                                // on one tab never animates a sibling. Two
-                                // curves on purpose: press-in is a quick, stiff
-                                // tween (feels immediate under the finger),
-                                // release is a springy overshoot past 1.0
-                                // (feels organic) — the same asymmetry
-                                // Material's own ripple uses.
-                                val interactionSource = remember { MutableInteractionSource() }
-                                val pressed by interactionSource.collectIsPressedAsState()
-                                val iconScale by animateFloatAsState(
-                                    targetValue = if (pressed) 0.85f else 1f,
-                                    animationSpec = if (pressed) {
-                                        tween(durationMillis = 80, easing = FastOutSlowInEasing)
-                                    } else {
-                                        spring(
-                                            dampingRatio = Spring.DampingRatioMediumBouncy,
-                                            stiffness = Spring.StiffnessMedium
-                                        )
-                                    },
-                                    label = "navIconPress"
-                                )
                                 NavigationBarItem(
-                                    selected = selected,
-                                    onClick = {
-                                        val now = System.currentTimeMillis()
-                                        if (!selected && now - lastTabSwitchAt > 250L) {
-                                            lastTabSwitchAt = now
-                                            navigateTo(tab.route)
-                                        }
-                                    },
-                                    interactionSource = interactionSource,
-                                    icon = {
-                                        Icon(
-                                            if (selected) tab.icon else tab.unselectedIcon,
-                                            // Label is always shown (no
-                                            // alwaysShowLabel override — 5
-                                            // tabs is comfortably within
-                                            // Material's guidance for
-                                            // showing every label), so this
-                                            // stays null to avoid TalkBack
-                                            // announcing the name twice.
-                                            contentDescription = null,
-                                            modifier = Modifier.graphicsLayer {
-                                                scaleX = iconScale
-                                                scaleY = iconScale
-                                            }
-                                        )
-                                    },
+                                    selected = currentRoute == tab.route,
+                                    onClick = { navigateTo(tab.route) },
+                                    icon = { Icon(tab.icon, contentDescription = null) },
                                     label = { Text(tab.label) },
                                     colors = NavigationBarItemDefaults.colors(
                                         selectedIconColor = MaterialTheme.colorScheme.primary,
@@ -721,8 +744,15 @@ fun PunlaApp(vm: PunlaViewModel, startRoute: String? = null, darkTheme: Boolean 
                     )
                 }
                 composable("study-analysis") { StudyAnalysisScreen(vm) }
-                composable("settings") { SettingsScreen(vm) }
+                composable("settings") {
+                    SettingsScreen(
+                        vm = vm,
+                        notificationPermissionGranted = notificationPermissionGranted,
+                        onRequestNotificationPermission = onRequestNotificationPermission
+                    )
+                }
             }
+        }
         }
 
         // Scrim behind the open quick-add speed dial — tapping anywhere

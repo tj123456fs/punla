@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -48,8 +49,11 @@ fun BudgetScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
     // Roadmap C — withhold "No expenses logged yet" until Room's first
     // real emission, so it doesn't flash for a frame on cold launch.
     val dataReady by vm.isDataReady.collectAsState()
-    var showForm by remember { mutableStateOf(false) }
-    var budgetInput by remember(vm.monthlyBudget) { mutableStateOf(vm.monthlyBudget.let { if (it > 0) it.toInt().toString() else "" }) }
+    var showForm by rememberSaveable { mutableStateOf(false) }
+    var budgetInput by rememberSaveable(vm.monthlyBudget) { mutableStateOf(vm.monthlyBudget.let { if (it > 0) it.toInt().toString() else "" }) }
+    var budgetTouched by rememberSaveable { mutableStateOf(false) }
+    var pendingDeleteExpenseId by rememberSaveable { mutableStateOf<String?>(null) }
+    val pendingDeleteExpense = remember(pendingDeleteExpenseId, expenses) { expenses.firstOrNull { it.id == pendingDeleteExpenseId } }
 
     // Quick-add: when launched from the global quick-add FAB, jump straight
     // into the "new expense" form instead of making the user tap + again.
@@ -223,16 +227,29 @@ fun BudgetScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
                                 )
                             }
                             Spacer(Modifier.height(16.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            val parsedBudget = budgetInput.toDoubleOrNull()
+                            val invalidBudget = budgetTouched && (parsedBudget == null || parsedBudget < 0)
+                            Row(verticalAlignment = Alignment.Top) {
                                 OutlinedTextField(
                                     value = budgetInput,
-                                    onValueChange = { budgetInput = it },
+                                    onValueChange = { budgetInput = it; budgetTouched = true },
                                     label = { Text("Monthly budget (₱)") },
                                     singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    isError = invalidBudget,
+                                    supportingText = if (invalidBudget) {
+                                        { Text("Enter a valid amount of 0 or more.") }
+                                    } else null,
                                     modifier = Modifier.weight(1f)
                                 )
                                 Spacer(Modifier.width(8.dp))
-                                Button(onClick = { budgetInput.toDoubleOrNull()?.let { vm.setBudget(it) } }) { Text("Set") }
+                                Button(
+                                    onClick = {
+                                        budgetTouched = true
+                                        if (parsedBudget != null && parsedBudget >= 0) vm.setBudget(parsedBudget)
+                                    },
+                                    modifier = Modifier.padding(top = 8.dp)
+                                ) { Text("Set") }
                             }
                         }
                     }
@@ -426,7 +443,9 @@ fun BudgetScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
 
             if (expenses.isNotEmpty()) {
                 item { SectionLabel("Recent expenses") }
-                items(expenses.sortedByDescending { it.date }, key = { it.id }) { e -> ExpenseCard(e, vm) }
+                items(expenses.sortedByDescending { it.date }, key = { it.id }) { e ->
+                    ExpenseCard(e, vm, onDelete = { pendingDeleteExpenseId = e.id })
+                }
             } else if (dataReady) {
                 item {
                     EmptyState(
@@ -443,6 +462,18 @@ fun BudgetScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
         ExpenseFormDialog(
             onDismiss = { showForm = false },
             onSave = { expense, repeat -> vm.addExpense(expense, repeat); showForm = false }
+        )
+    }
+
+    if (pendingDeleteExpense != null) {
+        DestructiveActionDialog(
+            title = "Delete expense?",
+            message = "Remove ₱${"%,.2f".format(pendingDeleteExpense.amount)} from ${pendingDeleteExpense.category}?",
+            onConfirm = {
+                vm.deleteExpense(pendingDeleteExpense)
+                pendingDeleteExpenseId = null
+            },
+            onDismiss = { pendingDeleteExpenseId = null }
         )
     }
 }
@@ -507,7 +538,7 @@ private fun RemainingCard(
 }
 
 @Composable
-private fun ExpenseCard(e: Expense, vm: PunlaViewModel) {
+private fun ExpenseCard(e: Expense, vm: PunlaViewModel, onDelete: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -562,7 +593,7 @@ private fun ExpenseCard(e: Expense, vm: PunlaViewModel) {
                             Icon(Icons.Default.EventBusy, "Stop repeating", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
-                    IconButton(onClick = { vm.deleteExpense(e) }) {
+                    IconButton(onClick = onDelete) {
                         Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -739,73 +770,110 @@ private val CATEGORY_OPTIONS = listOf(
 private fun ExpenseFormDialog(onDismiss: () -> Unit, onSave: (Expense, String?) -> Unit) {
     val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
     val palette = LocalPunlaPalette.current
-    var amount by remember { mutableStateOf("") }
-    var category by remember { mutableStateOf(CATEGORY_OPTIONS.first()) }
-    var note by remember { mutableStateOf("") }
-    var repeat by remember { mutableStateOf<String?>(null) }
-    var isFixed by remember { mutableStateOf(false) }
+    var amount by rememberSaveable { mutableStateOf("") }
+    var category by rememberSaveable { mutableStateOf(CATEGORY_OPTIONS.first()) }
+    var note by rememberSaveable { mutableStateOf("") }
+    var repeat by rememberSaveable { mutableStateOf<String?>(null) }
+    var isFixed by rememberSaveable { mutableStateOf(false) }
+    var amountTouched by rememberSaveable { mutableStateOf(false) }
+    var showDiscardConfirm by rememberSaveable { mutableStateOf(false) }
     val today = remember { LocalDate.now().toString() }
+    val parsedAmount = amount.toDoubleOrNull()
+    val invalidAmount = amountTouched && (parsedAmount == null || parsedAmount <= 0)
+    val isDirty = amount.isNotBlank() || category != CATEGORY_OPTIONS.first() || note.isNotBlank() || repeat != null || isFixed
+
+    fun requestDismiss() {
+        if (isDirty) showDiscardConfirm = true else onDismiss()
+    }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add expense") },
+        onDismissRequest = { requestDismiss() },
+        title = { Text(if (showDiscardConfirm) "Discard expense?" else "Add expense") },
         text = {
-            Column {
-                PunlaField(
-                    "Amount (₱)",
-                    amount,
-                    { amount = it },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(Modifier.height(8.dp))
+            if (showDiscardConfirm) {
+                Text("Your unsaved expense details will be lost.")
+            } else {
+                Column {
+                    PunlaField(
+                        "Amount (₱)",
+                        amount,
+                        { amount = it; amountTouched = true },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = invalidAmount,
+                        supportingText = if (invalidAmount) "Enter an amount greater than 0." else null
+                    )
+                    Spacer(Modifier.height(8.dp))
 
-                PunlaDropdownField(
-                    "Category",
-                    category,
-                    CATEGORY_OPTIONS,
-                    onSelect = { category = CATEGORY_OPTIONS[it] },
-                    optionLeadingColor = { getCategoryColor(CATEGORY_OPTIONS[it], palette) },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                    PunlaDropdownField(
+                        "Category",
+                        category,
+                        CATEGORY_OPTIONS,
+                        onSelect = { category = CATEGORY_OPTIONS[it] },
+                        optionLeadingColor = { getCategoryColor(CATEGORY_OPTIONS[it], palette) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
 
-                Spacer(Modifier.height(8.dp))
-                PunlaField("Note", note, { note = it }, placeholder = "Optional", modifier = Modifier.fillMaxWidth())
-                Spacer(Modifier.height(8.dp))
-                PunlaDropdownField(
-                    "Repeats",
-                    REPEAT_OPTIONS.first { it.first == repeat }.second,
-                    REPEAT_OPTIONS.map { it.second },
-                    onSelect = { repeat = REPEAT_OPTIONS[it].first },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(Modifier.height(4.dp))
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clickable { isFixed = !isFixed },
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Checkbox(checked = isFixed, onCheckedChange = { isFixed = it })
-                    Column {
-                        Text("Fixed / recurring bill", style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            "Rent, tuition, subscriptions — left out of the weekly budget view.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    Spacer(Modifier.height(8.dp))
+                    PunlaField("Note", note, { note = it }, placeholder = "Optional", modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(8.dp))
+                    PunlaDropdownField(
+                        "Repeats",
+                        REPEAT_OPTIONS.first { it.first == repeat }.second,
+                        REPEAT_OPTIONS.map { it.second },
+                        onSelect = { repeat = REPEAT_OPTIONS[it].first },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .clickable { isFixed = !isFixed },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(checked = isFixed, onCheckedChange = { isFixed = it })
+                        Column {
+                            Text("Fixed / recurring bill", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                "Rent, tuition, subscriptions — left out of the weekly budget view.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = {
-                amount.toDoubleOrNull()?.let {
-                    haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                    onSave(Expense(amount = it, category = category, date = today, note = note.ifBlank { null }, isFixed = isFixed), repeat)
-                }
-            }) { Text("Save") }
+            if (showDiscardConfirm) {
+                TextButton(
+                    onClick = onDismiss,
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) { Text("Discard") }
+            } else {
+                TextButton(onClick = {
+                    amountTouched = true
+                    if (parsedAmount != null && parsedAmount > 0) {
+                        haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                        onSave(
+                            Expense(
+                                amount = parsedAmount,
+                                category = category,
+                                date = today,
+                                note = note.trim().ifBlank { null },
+                                isFixed = isFixed
+                            ),
+                            repeat
+                        )
+                    }
+                }) { Text("Save") }
+            }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = {
+            TextButton(onClick = {
+                if (showDiscardConfirm) showDiscardConfirm = false else requestDismiss()
+            }) { Text(if (showDiscardConfirm) "Keep editing" else "Cancel") }
+        }
     )
 }

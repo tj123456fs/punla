@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -55,16 +56,21 @@ fun DeadlinesScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
     // Roadmap C — withhold "No deadlines logged yet" until Room's first
     // real emission, so it doesn't flash for a frame on cold launch.
     val dataReady by vm.isDataReady.collectAsState()
-    var showForm by remember { mutableStateOf(false) }
-    var viewMode by remember { mutableStateOf(0) } // 0 = List, 1 = Calendar
+    var showForm by rememberSaveable { mutableStateOf(false) }
+    var viewMode by rememberSaveable { mutableStateOf(0) } // 0 = List, 1 = Calendar
+    var pendingDeleteDeadlineId by rememberSaveable { mutableStateOf<String?>(null) }
+    val pendingDeleteDeadline = remember(pendingDeleteDeadlineId, deadlines) { deadlines.firstOrNull { it.id == pendingDeleteDeadlineId } }
 
     LaunchedEffect(openFormOnStart) {
         if (openFormOnStart) showForm = true
     }
 
-    // Calendar state
-    var calendarCursor by remember { mutableStateOf(YearMonth.now()) }
-    var selectedDate by remember { mutableStateOf(LocalDate.now()) }
+    // Calendar state is stored as ISO strings so it survives rotation and
+    // process recreation without requiring custom Savers.
+    var calendarCursorValue by rememberSaveable { mutableStateOf(YearMonth.now().toString()) }
+    var selectedDateValue by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
+    val calendarCursor = remember(calendarCursorValue) { YearMonth.parse(calendarCursorValue) }
+    val selectedDate = remember(selectedDateValue) { LocalDate.parse(selectedDateValue) }
 
     val pending = deadlines.filter { !it.done }.sortedBy { it.due }
     val done = deadlines.filter { it.done }.sortedByDescending { it.due }
@@ -107,11 +113,11 @@ fun DeadlinesScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
                     LazyColumn(modifier = Modifier.weight(1f)) {
                         if (pending.isNotEmpty()) {
                             item { SectionLabel("Upcoming") }
-                            items(pending, key = { it.id }) { d -> DeadlineRow(d, vm) }
+                            items(pending, key = { it.id }) { d -> DeadlineRow(d, vm, onDelete = { pendingDeleteDeadlineId = d.id }) }
                         }
                         if (done.isNotEmpty()) {
                             item { SectionLabel("Completed") }
-                            items(done, key = { it.id }) { d -> DeadlineRow(d, vm) }
+                            items(done, key = { it.id }) { d -> DeadlineRow(d, vm, onDelete = { pendingDeleteDeadlineId = d.id }) }
                         }
                         item { Spacer(Modifier.height(80.dp)) }
                     }
@@ -122,8 +128,9 @@ fun DeadlinesScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
                     deadlines = deadlines,
                     calendarCursor = calendarCursor,
                     selectedDate = selectedDate,
-                    onCursorChange = { calendarCursor = it },
-                    onDateSelect = { selectedDate = it },
+                    onCursorChange = { calendarCursorValue = it.toString() },
+                    onDateSelect = { selectedDateValue = it.toString() },
+                    onDelete = { pendingDeleteDeadlineId = it.id },
                     vm = vm
                 )
             }
@@ -137,6 +144,18 @@ fun DeadlinesScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
             onSave = { deadline, repeatWeekly -> vm.addOrUpdateDeadline(deadline, repeatWeekly); showForm = false }
         )
     }
+
+    if (pendingDeleteDeadline != null) {
+        DestructiveActionDialog(
+            title = "Delete deadline?",
+            message = "Remove “${pendingDeleteDeadline.title}” from your deadline list?",
+            onConfirm = {
+                vm.deleteDeadline(pendingDeleteDeadline)
+                pendingDeleteDeadlineId = null
+            },
+            onDismiss = { pendingDeleteDeadlineId = null }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -147,6 +166,7 @@ fun DeadlineCalendarView(
     selectedDate: LocalDate,
     onCursorChange: (YearMonth) -> Unit,
     onDateSelect: (LocalDate) -> Unit,
+    onDelete: (Deadline) -> Unit,
     vm: PunlaViewModel
 ) {
     val firstOfMonth = calendarCursor.atDay(1)
@@ -295,7 +315,7 @@ fun DeadlineCalendarView(
         } else {
             LazyColumn(modifier = Modifier.weight(1f)) {
                 items(selectedDeadlines, key = { it.id }) { d ->
-                    DeadlineRow(d, vm)
+                    DeadlineRow(d, vm, onDelete)
                 }
                 item { Spacer(Modifier.height(80.dp)) }
             }
@@ -331,7 +351,7 @@ private fun priorityFlagColor(priority: String): Color? = when (priority) {
 }
 
 @Composable
-private fun DeadlineRow(d: Deadline, vm: PunlaViewModel) {
+private fun DeadlineRow(d: Deadline, vm: PunlaViewModel, onDelete: (Deadline) -> Unit) {
     val haptics = LocalHapticFeedback.current
     val days = runCatching { ChronoUnit.DAYS.between(LocalDate.now(), LocalDate.parse(d.due)) }.getOrNull()
     val urgency = urgencyStyle(days)
@@ -434,7 +454,7 @@ private fun DeadlineRow(d: Deadline, vm: PunlaViewModel) {
                                 Icon(Icons.Default.EventBusy, "Stop repeating", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
-                        IconButton(onClick = { vm.deleteDeadline(d) }) {
+                        IconButton(onClick = { onDelete(d) }) {
                             Icon(Icons.Default.Delete, "Delete", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
@@ -452,64 +472,118 @@ private fun DeadlineFormDialog(
     onSave: (Deadline, Boolean) -> Unit
 ) {
     val haptics = LocalHapticFeedback.current
-    var title by remember { mutableStateOf("") }
-    var course by remember { mutableStateOf("") }
-    var due by remember { mutableStateOf(defaultDue) }
-    var type by remember { mutableStateOf(TYPES[0]) }
-    var priority by remember { mutableStateOf(PRIORITIES[1]) }
-    var repeatWeekly by remember { mutableStateOf(false) }
+    var title by rememberSaveable(defaultDue) { mutableStateOf("") }
+    var course by rememberSaveable(defaultDue) { mutableStateOf("") }
+    var due by rememberSaveable(defaultDue) { mutableStateOf(defaultDue) }
+    var type by rememberSaveable(defaultDue) { mutableStateOf(TYPES[0]) }
+    var priority by rememberSaveable(defaultDue) { mutableStateOf(PRIORITIES[1]) }
+    var repeatWeekly by rememberSaveable(defaultDue) { mutableStateOf(false) }
+    var titleTouched by rememberSaveable(defaultDue) { mutableStateOf(false) }
+    var dueTouched by rememberSaveable(defaultDue) { mutableStateOf(false) }
+    var showDiscardConfirm by rememberSaveable(defaultDue) { mutableStateOf(false) }
+
+    val parsedDue = runCatching { LocalDate.parse(due) }.getOrNull()
+    val invalidTitle = titleTouched && title.isBlank()
+    val invalidDue = dueTouched && parsedDue == null
+    val isDirty = title.isNotBlank() || course.isNotBlank() || due != defaultDue ||
+        type != TYPES[0] || priority != PRIORITIES[1] || repeatWeekly
+
+    fun requestDismiss() {
+        if (isDirty) showDiscardConfirm = true else onDismiss()
+    }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add deadline") },
+        onDismissRequest = { requestDismiss() },
+        title = { Text(if (showDiscardConfirm) "Discard deadline?" else "Add deadline") },
         text = {
-            Column {
-                PunlaField("Title", title, { title = it }, modifier = Modifier.fillMaxWidth())
-                Spacer(Modifier.height(8.dp))
-                PunlaField("Course", course, { course = it }, placeholder = "Optional", modifier = Modifier.fillMaxWidth())
-                Spacer(Modifier.height(8.dp))
-                PunlaField("Due date (yyyy-MM-dd)", due, { due = it }, modifier = Modifier.fillMaxWidth())
-                Spacer(Modifier.height(8.dp))
+            if (showDiscardConfirm) {
+                Text("Your unsaved deadline details will be lost.")
+            } else {
+                Column {
+                    PunlaField(
+                        "Title",
+                        title,
+                        { title = it; titleTouched = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = invalidTitle,
+                        supportingText = if (invalidTitle) "Deadline title is required." else null
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    PunlaField("Course", course, { course = it }, placeholder = "Optional", modifier = Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(8.dp))
+                    PunlaField(
+                        "Due date (yyyy-MM-dd)",
+                        due,
+                        { due = it; dueTouched = true },
+                        placeholder = "2026-08-15",
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = invalidDue,
+                        supportingText = if (invalidDue) "Use a valid date such as 2026-08-15." else null
+                    )
+                    Spacer(Modifier.height(8.dp))
 
-                PunlaDropdownField(
-                    "Type",
-                    type,
-                    TYPES,
-                    onSelect = { type = TYPES[it] },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                    PunlaDropdownField(
+                        "Type",
+                        type,
+                        TYPES,
+                        onSelect = { type = TYPES[it] },
+                        modifier = Modifier.fillMaxWidth()
+                    )
 
-                Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(8.dp))
 
-                PunlaDropdownField(
-                    "Priority",
-                    priority,
-                    PRIORITIES,
-                    onSelect = { priority = PRIORITIES[it] },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                    PunlaDropdownField(
+                        "Priority",
+                        priority,
+                        PRIORITIES,
+                        onSelect = { priority = PRIORITIES[it] },
+                        modifier = Modifier.fillMaxWidth()
+                    )
 
-                Spacer(Modifier.height(8.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.clickable { repeatWeekly = !repeatWeekly }
-                ) {
-                    Checkbox(checked = repeatWeekly, onCheckedChange = { repeatWeekly = it })
-                    Text("Repeats weekly (e.g. weekly problem sets, quizzes)", style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .clickable { repeatWeekly = !repeatWeekly }
+                    ) {
+                        Checkbox(checked = repeatWeekly, onCheckedChange = { repeatWeekly = it })
+                        Text("Repeats weekly (e.g. weekly problem sets, quizzes)", style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = {
-                if (title.isNotBlank()) {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onSave(
-                        Deadline(title = title, course = course.ifBlank { null }, due = due, type = type, priority = priority),
-                        repeatWeekly
-                    )
-                }
-            }) { Text("Save") }
+            if (showDiscardConfirm) {
+                TextButton(
+                    onClick = onDismiss,
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) { Text("Discard") }
+            } else {
+                TextButton(onClick = {
+                    titleTouched = true
+                    dueTouched = true
+                    if (title.isNotBlank() && parsedDue != null) {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onSave(
+                            Deadline(
+                                title = title.trim(),
+                                course = course.trim().ifBlank { null },
+                                due = parsedDue.toString(),
+                                type = type,
+                                priority = priority
+                            ),
+                            repeatWeekly
+                        )
+                    }
+                }) { Text("Save") }
+            }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = {
+            TextButton(onClick = {
+                if (showDiscardConfirm) showDiscardConfirm = false else requestDismiss()
+            }) { Text(if (showDiscardConfirm) "Keep editing" else "Cancel") }
+        }
     )
 }
