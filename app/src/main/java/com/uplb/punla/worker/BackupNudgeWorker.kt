@@ -3,9 +3,7 @@ package com.uplb.punla.worker
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
@@ -13,10 +11,10 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.uplb.punla.MainActivity
 import com.uplb.punla.R
 import com.uplb.punla.data.PunlaDatabase
 import com.uplb.punla.data.PunlaRepository
+import com.uplb.punla.notification.TrackedNotification
 import java.util.concurrent.TimeUnit
 
 /**
@@ -72,7 +70,7 @@ class BackupNudgeWorker(
         return Result.success()
     }
 
-    private fun showNotification(title: String, content: String) {
+    private suspend fun showNotification(title: String, content: String) {
         val channelId = "punla_backup_channel"
         val notificationManager = NotificationManagerCompat.from(context)
 
@@ -85,28 +83,23 @@ class BackupNudgeWorker(
         val sysManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         sysManager.createNotificationChannel(channel)
 
-        val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-            putExtra(MainActivity.EXTRA_START_ROUTE, "settings")
-        }
-
-        val pendingIntent: PendingIntent = PendingIntent.getActivity(
-            context,
-            0,
-            intent,
-            PendingIntent.FLAG_IMMUTABLE
-        )
-
         val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(content)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setContentIntent(pendingIntent)
-            .setAutoCancel(true)
+                        .setAutoCancel(true)
 
         try {
-            notificationManager.notify(2, builder.build())
+            TrackedNotification.post(
+                context = context,
+                manager = notificationManager,
+                notificationId = 2,
+                builder = builder,
+                workerName = "BackupNudgeWorker",
+                notificationType = "backup",
+                route = "settings"
+            )
         } catch (e: SecurityException) {
             // Permission wasn't granted
         }

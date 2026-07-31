@@ -25,7 +25,15 @@ import com.uplb.punla.data.entity.ExpenseRule
 import com.uplb.punla.data.entity.GradeCourse
 import com.uplb.punla.data.entity.Semester
 import com.uplb.punla.data.entity.StudySession
+import com.uplb.punla.data.entity.StudySuggestionEvent
 import com.uplb.punla.widget.WidgetRefresher
+import com.uplb.punla.ml.StudySlotFeatures
+import com.uplb.punla.ml.StudySlotPredictor
+import com.uplb.punla.ui.pomodoro.StudySuggestion
+import com.uplb.punla.assistant.AssistantSnapshot
+import com.uplb.punla.assistant.LocalAssistant
+import com.uplb.punla.data.AssistantApi
+import com.uplb.punla.data.AssistantApiResult
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -54,6 +62,9 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val expenses: StateFlow<List<Expense>> = db.expenseDao().observeAll()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val expenseRules: StateFlow<List<ExpenseRule>> = db.expenseDao().observeRules()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val deadlines: StateFlow<List<Deadline>> = db.deadlineDao().observeAll()
@@ -224,6 +235,43 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
 
     var notificationsEnabled by mutableStateOf(repo.notificationsEnabled)
         private set
+
+    var termStartDate by mutableStateOf(repo.termStartDate)
+        private set
+    var termEndDate by mutableStateOf(repo.termEndDate)
+        private set
+    var cloudAssistantEnabled by mutableStateOf(repo.cloudAssistantEnabled)
+        private set
+    var assistantModel by mutableStateOf(repo.assistantModel)
+        private set
+    var assistantApiKeyConfigured by mutableStateOf(!repo.assistantApiKey.isNullOrBlank())
+        private set
+    var preferredReminderHour by mutableStateOf(repo.preferredReminderHour)
+        private set
+    var dismissedExpensePatternKeys by mutableStateOf(repo.dismissedExpensePatternKeys)
+        private set
+
+    fun updateTermDates(start: java.time.LocalDate, end: java.time.LocalDate) {
+        repo.termStartDate = start
+        repo.termEndDate = end
+        termStartDate = start
+        termEndDate = end
+    }
+
+    fun updateCloudAssistantEnabled(enabled: Boolean) {
+        repo.cloudAssistantEnabled = enabled
+        cloudAssistantEnabled = enabled
+    }
+
+    fun updateAssistantModel(model: String) {
+        repo.assistantModel = model.ifBlank { "claude-haiku-4-5" }
+        assistantModel = repo.assistantModel
+    }
+
+    fun updateAssistantApiKey(apiKey: String) {
+        repo.assistantApiKey = apiKey
+        assistantApiKeyConfigured = !repo.assistantApiKey.isNullOrBlank()
+    }
 
     // Compose-observable mirrors of the Weekly Budgeting settings, same
     // reasoning as themeMode/themePreset above.
@@ -575,6 +623,13 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
             chedTarget = repo.chedTarget
             userName = repo.userName
             notificationsEnabled = repo.notificationsEnabled
+            termStartDate = repo.termStartDate
+            termEndDate = repo.termEndDate
+            cloudAssistantEnabled = repo.cloudAssistantEnabled
+            assistantModel = repo.assistantModel
+            assistantApiKeyConfigured = !repo.assistantApiKey.isNullOrBlank()
+            preferredReminderHour = repo.preferredReminderHour
+            dismissedExpensePatternKeys = repo.dismissedExpensePatternKeys
             WidgetRefresher.refreshAll(getApplication())
             backupResult = BackupResult.Success("Backup restored.")
         }.onFailure { e ->
@@ -584,6 +639,12 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- Pomodoro timer ----
     val studySessions: StateFlow<List<StudySession>> = repo.observeStudySessions()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val studySuggestionEvents: StateFlow<List<StudySuggestionEvent>> = repo.observeStudySuggestionEvents()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val notificationEvents = repo.observeNotificationEvents()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // ---- Study habits (roadmap Study Habits 2.3) ----
@@ -628,12 +689,181 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     var studySuggestionDismissedAt by mutableStateOf(repo.lastStudySuggestionDismissedAt)
         private set
 
-    /** Dismisses today's Dashboard study-slot suggestion; it won't reappear
-     * until tomorrow. See [PunlaRepository.lastStudySuggestionDismissedAt]. */
-    fun dismissStudySuggestion() {
+    private val shownSuggestionIds = mutableSetOf<String>()
+
+    private fun suggestionFeatures(suggestion: StudySuggestion): StudySlotFeatures {
+        val recent = studySessions.value.take(20)
+        val completionRate = if (recent.isEmpty()) 0.5f else recent.count { it.completed }.toFloat() / recent.size
+        return StudySlotFeatures(
+            hour = suggestion.slotStart.substringBefore(':').toIntOrNull() ?: 12,
+            dayOfWeek = suggestion.date.dayOfWeek.value,
+            urgencyDays = suggestion.urgencyDays,
+            availableMinutes = suggestion.availableMinutes,
+            plannedMinutes = repo.pomodoroWorkMinutes,
+            recentCompletionRate = completionRate,
+            currentStreak = currentStudyStreak.value
+        )
+    }
+
+    fun recordStudySuggestionShown(suggestion: StudySuggestion) {
+        if (!shownSuggestionIds.add(suggestion.id)) return
+        viewModelScope.launch {
+            repo.logStudySuggestionEvent(
+                StudySuggestionEvent(
+                    suggestionId = suggestion.id,
+                    outcome = "SHOWN",
+                    slotHour = suggestion.slotStart.substringBefore(':').toIntOrNull() ?: 12,
+                    dayOfWeek = suggestion.date.dayOfWeek.value,
+                    urgencyDays = suggestion.urgencyDays,
+                    availableMinutes = suggestion.availableMinutes,
+                    deadlineId = suggestion.deadline.id,
+                    courseCode = suggestion.course
+                )
+            )
+        }
+    }
+
+    /** Dismisses today's Dashboard study-slot suggestion and learns a local negative outcome. */
+    fun dismissStudySuggestion(suggestion: StudySuggestion? = null) {
         val now = System.currentTimeMillis()
         repo.lastStudySuggestionDismissedAt = now
         studySuggestionDismissedAt = now
+        if (suggestion != null) {
+            repo.studySlotModelState = StudySlotPredictor.update(repo.studySlotModelState, suggestionFeatures(suggestion), used = false)
+            viewModelScope.launch {
+                repo.logStudySuggestionEvent(
+                    StudySuggestionEvent(
+                        suggestionId = suggestion.id,
+                        outcome = "DISMISSED",
+                        slotHour = suggestion.slotStart.substringBefore(':').toIntOrNull() ?: 12,
+                        dayOfWeek = suggestion.date.dayOfWeek.value,
+                        urgencyDays = suggestion.urgencyDays,
+                        availableMinutes = suggestion.availableMinutes,
+                        deadlineId = suggestion.deadline.id,
+                        courseCode = suggestion.course
+                    )
+                )
+            }
+        }
+    }
+
+    fun acceptStudySuggestion(suggestion: StudySuggestion) {
+        repo.pendingStudySuggestionId = suggestion.id
+        val features = suggestionFeatures(suggestion)
+        val expiresAt = runCatching {
+            java.time.LocalDateTime.of(suggestion.date, java.time.LocalTime.parse(suggestion.slotEnd))
+                .atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        }.getOrDefault(System.currentTimeMillis() + java.util.concurrent.TimeUnit.HOURS.toMillis(4))
+        // Persist the feature snapshot until the timer actually starts. Merely
+        // opening the Pomodoro screen is not yet a positive training label.
+        repo.pendingStudySuggestionFeatures = listOf(
+            features.hour,
+            features.dayOfWeek,
+            features.urgencyDays,
+            features.availableMinutes,
+            features.plannedMinutes,
+            features.recentCompletionRate,
+            features.currentStreak,
+            expiresAt
+        ).joinToString("|")
+    }
+
+    private fun activatePendingStudySuggestion() {
+        val suggestionId = repo.pendingStudySuggestionId ?: return
+        val parts = repo.pendingStudySuggestionFeatures?.split('|')
+        if (parts == null || parts.size != 8) {
+            repo.pendingStudySuggestionId = null
+            repo.pendingStudySuggestionFeatures = null
+            return
+        }
+        val expiresAt = parts[7].toLongOrNull() ?: 0L
+        if (System.currentTimeMillis() > expiresAt + java.util.concurrent.TimeUnit.HOURS.toMillis(1)) {
+            repo.pendingStudySuggestionId = null
+            repo.pendingStudySuggestionFeatures = null
+            return
+        }
+        val features = StudySlotFeatures(
+            hour = parts[0].toIntOrNull() ?: 12,
+            dayOfWeek = parts[1].toIntOrNull() ?: 1,
+            urgencyDays = parts[2].toIntOrNull() ?: 7,
+            availableMinutes = parts[3].toIntOrNull() ?: repo.pomodoroWorkMinutes,
+            plannedMinutes = parts[4].toIntOrNull() ?: repo.pomodoroWorkMinutes,
+            recentCompletionRate = parts[5].toFloatOrNull() ?: 0.5f,
+            currentStreak = parts[6].toIntOrNull() ?: 0
+        )
+        repo.studySlotModelState = StudySlotPredictor.update(repo.studySlotModelState, features, used = true)
+        // Clearing only the feature snapshot makes this idempotent while the
+        // suggestion id remains available to link the eventual session row.
+        repo.pendingStudySuggestionFeatures = null
+        viewModelScope.launch {
+            repo.latestStudySuggestionEvent(suggestionId)?.let { source ->
+                repo.logStudySuggestionEvent(
+                    source.copy(
+                        id = java.util.UUID.randomUUID().toString(),
+                        occurredAt = System.currentTimeMillis(),
+                        outcome = "STARTED",
+                        sessionId = null
+                    )
+                )
+            }
+        }
+    }
+
+    fun dismissExpensePattern(key: String) {
+        dismissedExpensePatternKeys = dismissedExpensePatternKeys + key
+        repo.dismissedExpensePatternKeys = dismissedExpensePatternKeys
+    }
+
+    fun createRecurringRuleFromPattern(pattern: com.uplb.punla.ml.ExpensePattern) = viewModelScope.launch {
+        val latest = expenses.value.filter { it.id in pattern.expenseIds }.maxByOrNull { it.date } ?: return@launch
+        val rule = ExpenseRule(
+            amount = pattern.typicalAmount,
+            category = pattern.category,
+            note = latest.note,
+            startDate = latest.date,
+            repeat = if ((pattern.cadenceDays ?: 30) <= 10) "weekly" else "monthly",
+            lastGenerated = latest.date,
+            isFixed = latest.isFixed
+        )
+        db.expenseDao().upsertRule(rule)
+        db.expenseDao().upsert(latest.copy(ruleId = rule.id, isRecurring = true))
+        dismissExpensePattern(pattern.key)
+        WidgetRefresher.refreshAll(getApplication())
+    }
+
+    fun resetLearnedRecommendations() = viewModelScope.launch {
+        repo.clearStudySuggestionEvents()
+        repo.studySlotModelState = com.uplb.punla.ml.StudySlotModelState()
+        repo.pendingStudySuggestionId = null
+        repo.pendingStudySuggestionFeatures = null
+        repo.dismissedExpensePatternKeys = emptySet()
+        repo.lastStudySuggestionDismissedAt = null
+        dismissedExpensePatternKeys = emptySet()
+        studySuggestionDismissedAt = null
+        shownSuggestionIds.clear()
+    }
+
+    fun useLearnedReminderHour(hour: Int) {
+        repo.preferredReminderHour = hour
+        preferredReminderHour = hour
+        com.uplb.punla.worker.ReminderScheduler.scheduleDaily(getApplication(), updateExisting = true)
+    }
+
+    fun resetNotificationLearning() = viewModelScope.launch {
+        repo.clearNotificationEvents()
+        repo.preferredReminderHour = null
+        preferredReminderHour = null
+        com.uplb.punla.worker.ReminderScheduler.scheduleDaily(getApplication(), updateExisting = true)
+    }
+
+    suspend fun askCloudAssistant(query: String): AssistantApiResult {
+        if (!repo.cloudAssistantEnabled) return AssistantApiResult.Failure("Cloud assistant is disabled in Settings.")
+        val key = repo.assistantApiKey ?: return AssistantApiResult.Failure("Add your API key in Settings first.")
+        if (!repo.consumeAssistantCall()) {
+            return AssistantApiResult.Failure("Today's 10-call cloud limit has been reached. Local commands still work.")
+        }
+        val snapshot = AssistantSnapshot(classes.value, deadlines.value, expenses.value, studySessions.value, repo)
+        return AssistantApi.ask(key, repo.assistantModel, query, LocalAssistant.compactCloudContext(snapshot, query))
     }
 
     var pomodoroWorkMinutes by mutableStateOf(repo.pomodoroWorkMinutes)
@@ -680,6 +910,7 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     private var phaseStartedAt: Long = 0L  // for actualSeconds on early stop
 
     fun startPomodoroWork(courseCode: String?) {
+        activatePendingStudySuggestion()
         val minutes = repo.pomodoroWorkMinutes
         beginPhase(com.uplb.punla.ui.pomodoro.PomodoroPhase.WORK, minutes * 60, courseCode)
     }
@@ -755,9 +986,33 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         pomodoroJob?.cancel()
         if (pomodoroState.phase == com.uplb.punla.ui.pomodoro.PomodoroPhase.WORK) {
             val actual = ((System.currentTimeMillis() - phaseStartedAt) / 1000).toInt()
-            if (actual >= 60) logCompletedOrStoppedWork(actual, completed = false)
+            if (actual >= 60) {
+                logCompletedOrStoppedWork(actual, completed = false)
+            } else {
+                // Do not let an accidental sub-minute start attach the old
+                // suggestion to a later, unrelated focus session.
+                clearPendingSuggestionAsStopped()
+            }
         }
         pomodoroState = com.uplb.punla.ui.pomodoro.PomodoroUiState()
+    }
+
+    private fun clearPendingSuggestionAsStopped() {
+        val suggestionId = repo.pendingStudySuggestionId ?: return
+        repo.pendingStudySuggestionId = null
+        repo.pendingStudySuggestionFeatures = null
+        viewModelScope.launch {
+            repo.latestStudySuggestionEvent(suggestionId)?.let { source ->
+                repo.logStudySuggestionEvent(
+                    source.copy(
+                        id = java.util.UUID.randomUUID().toString(),
+                        occurredAt = System.currentTimeMillis(),
+                        outcome = "STOPPED",
+                        sessionId = null
+                    )
+                )
+            }
+        }
     }
 
     private fun onPhaseComplete() {
@@ -790,17 +1045,34 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun logCompletedOrStoppedWork(actualSeconds: Int, completed: Boolean) {
         viewModelScope.launch {
-            repo.logStudySession(
-                StudySession(
-                    courseCode = pomodoroState.courseCode,
-                    startedAt = phaseStartedAt,
-                    endedAt = System.currentTimeMillis(),
-                    plannedMinutes = repo.pomodoroWorkMinutes,
-                    actualSeconds = actualSeconds,
-                    completed = completed,
-                    cyclesInSession = pomodoroState.cycleCount + 1
-                )
+            val suggestionId = repo.pendingStudySuggestionId
+            val session = StudySession(
+                courseCode = pomodoroState.courseCode,
+                startedAt = phaseStartedAt,
+                endedAt = System.currentTimeMillis(),
+                plannedMinutes = repo.pomodoroWorkMinutes,
+                actualSeconds = actualSeconds,
+                completed = completed,
+                cyclesInSession = pomodoroState.cycleCount + 1,
+                endReason = if (completed) "COMPLETED" else "STOPPED_EARLY",
+                suggestionId = suggestionId
             )
+            repo.logStudySession(session)
+            if (suggestionId != null) {
+                val source = repo.latestStudySuggestionEvent(suggestionId)
+                if (source != null) {
+                    repo.logStudySuggestionEvent(
+                        source.copy(
+                            id = java.util.UUID.randomUUID().toString(),
+                            occurredAt = System.currentTimeMillis(),
+                            outcome = if (completed) "COMPLETED" else "STOPPED",
+                            sessionId = session.id
+                        )
+                    )
+                }
+                repo.pendingStudySuggestionId = null
+                repo.pendingStudySuggestionFeatures = null
+            }
         }
     }
 

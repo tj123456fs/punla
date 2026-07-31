@@ -3,9 +3,7 @@ package com.uplb.punla.worker
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
@@ -13,9 +11,9 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.uplb.punla.MainActivity
 import com.uplb.punla.R
 import com.uplb.punla.data.PunlaRepository
+import com.uplb.punla.notification.TrackedNotification
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
@@ -66,7 +64,7 @@ class DeadlineWorker(
         return Result.success()
     }
 
-    private fun showNotification(title: String, content: String) {
+    private suspend fun showNotification(title: String, content: String) {
         val channelId = "punla_deadline_channel"
         val notificationManager = NotificationManagerCompat.from(context)
 
@@ -81,27 +79,23 @@ class DeadlineWorker(
         val sysManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         sysManager.createNotificationChannel(channel)
 
-        val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-        }
-        
-        val pendingIntent: PendingIntent = PendingIntent.getActivity(
-            context, 
-            0, 
-            intent, 
-            PendingIntent.FLAG_IMMUTABLE
-        )
-
         val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.mipmap.ic_launcher) // Defaulting to launcher icon as no custom icon was provided
             .setContentTitle(title)
             .setContentText(content)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setContentIntent(pendingIntent)
-            .setAutoCancel(true)
+                        .setAutoCancel(true)
 
         try {
-            notificationManager.notify(1, builder.build())
+            TrackedNotification.post(
+                context = context,
+                manager = notificationManager,
+                notificationId = 1,
+                builder = builder,
+                workerName = "DeadlineWorker",
+                notificationType = "deadline",
+                route = "deadlines"
+            )
         } catch (e: SecurityException) {
             // Permission wasn't granted
         }

@@ -53,6 +53,9 @@ interface ExpenseDao {
     suspend fun clearAll()
 
     @Query("SELECT * FROM expense_rules")
+    fun observeRules(): Flow<List<ExpenseRule>>
+
+    @Query("SELECT * FROM expense_rules")
     suspend fun getAllRules(): List<ExpenseRule>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

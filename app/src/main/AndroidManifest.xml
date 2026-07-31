@@ -79,6 +79,10 @@
                 android:resource="@xml/next_deadline_widget_info" />
         </receiver>
 
+        <receiver
+            android:name=".notification.NotificationInteractionReceiver"
+            android:exported="false" />
+
         <!-- Background push (FCM) -->
         <service
             android:name=".push.PunlaFirebaseMessagingService"

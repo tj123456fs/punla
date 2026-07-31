@@ -54,9 +54,14 @@ fun fmtDistance(m: Double): String =
  * private duplicate of this exact function (shadowing this one under the
  * same name). Both now call this one directly; the two copies are gone.
  */
+fun hasFineLocationPermission(context: Context): Boolean =
+    ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+fun hasCoarseLocationPermission(context: Context): Boolean =
+    ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
 fun hasLocationPermission(context: Context): Boolean =
-    ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
-            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+    hasFineLocationPermission(context) || hasCoarseLocationPermission(context)
 
 /**
  * Unwraps a Compose `Context` (which may be a `ContextThemeWrapper` etc.)
@@ -172,7 +177,12 @@ fun fetchOneShotLocation(
     }
     timeoutHandler.postDelayed(timeoutRunnable, timeoutMillis)
 
-    client.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, cancelSource.token)
+    val priority = if (hasFineLocationPermission(context)) {
+        Priority.PRIORITY_HIGH_ACCURACY
+    } else {
+        Priority.PRIORITY_BALANCED_POWER_ACCURACY
+    }
+    client.getCurrentLocation(priority, cancelSource.token)
         .addOnSuccessListener { location ->
             if (resolved) return@addOnSuccessListener
             resolved = true
@@ -226,7 +236,10 @@ fun rememberLiveLocation(
         }
         val client = LocationServices.getFusedLocationProviderClient(context)
         val request = LocationRequest.Builder(intervalMillis)
-            .setPriority(Priority.PRIORITY_BALANCED_POWER_ACCURACY)
+            .setPriority(
+                if (hasFineLocationPermission(context)) Priority.PRIORITY_HIGH_ACCURACY
+                else Priority.PRIORITY_BALANCED_POWER_ACCURACY
+            )
             .setMinUpdateIntervalMillis(intervalMillis / 2)
             .build()
         val callback = object : LocationCallback() {

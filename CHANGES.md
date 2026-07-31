@@ -795,3 +795,43 @@ Implemented the highest-impact remaining UI/UX improvements across the main stud
 - Added adaptive Material 3 navigation: phones keep the five-item bottom bar, while screens 840 dp and wider use a navigation rail.
 
 Validation: every Kotlin source file was parsed through Kotlin PSI with no syntax errors. A full Android build was not available in the editing container because Gradle and the Android SDK are absent; GitHub Actions remains the final compile check.
+
+## Session 16 — Local Intelligence, Assistant, Precise Location, and Learned Reminders
+
+Implemented the staged personal-intelligence plan as a local-first extension of Punla's existing Room data.
+
+### Data and migration
+- Bumped Room to v7 with an explicit v6→v7 migration instead of destructively recreating current personal data.
+- Added `endReason` and `suggestionId` to `StudySession`.
+- Added append-only `StudySuggestionEvent` and `NotificationEvent` tables plus `IntelligenceDao`.
+- Upgraded backups to version 2 so event history, learned model state, term dates, dismissed patterns, and learned reminder hour survive export/import. Encrypted API keys remain excluded.
+
+### On-device intelligence
+- Added pure pattern functions for study-hour completion, early stops, recurring expenses, attendance projections, notification engagement, and best study hour.
+- Added heuristic free-slot ranking and a hand-written online logistic-regression layer with sparse-data fallback and persisted weights.
+- Added pattern cards to Study Analysis and Budget, and projected attendance warnings to Schedule.
+- Added configurable term dates and reset controls to Settings.
+
+### Local-first assistant
+- Added a drawer-level Assistant screen.
+- Local commands answer schedule, deadline, budget, attendance, and study questions without network access and can prepare focus/expense actions.
+- Added an optional Claude Messages API fallback, off by default, using an Android-Keystore-encrypted user key, compact context, prompt-cache marker, error fallback, and a 10-call daily cap.
+
+### Learned notifications
+- Added tracked open/dismiss intents to existing reminder notifications without adding alarms or workers.
+- Settings surfaces the best-performing hour after enough events and can align daily deadline/budget/checklist work to it. Urgent class reminders remain unchanged at 15-minute cadence.
+
+### Precise location
+- Restored Android's Approximate/Precise choice by requesting `ACCESS_FINE_LOCATION` and `ACCESS_COARSE_LOCATION` together from every location entry point.
+- Added `Enable precise` prompts when only coarse permission is available.
+- High-accuracy fused location is used only when fine permission is granted; approximate remains a working fallback.
+
+- Hardened the final integration pass: notification taps now launch the app directly instead of using a blocked broadcast-to-activity trampoline; cloud context is selected by query; study recommendations skip elapsed time slots; model positives are recorded only when the focus timer actually starts; early-term attendance smoothing no longer warns with zero absences.
+
+### Validation
+- Kotlin PSI syntax check passed for the full source tree.
+- Pure pattern/model logic compiled and executed successfully.
+- AndroidManifest XML and `git diff --check` passed.
+- Added JUnit tests for pattern functions and the online predictor.
+
+A full Android build was not run because this editing environment lacks Gradle and Android SDK 34; the included GitHub Actions workflow remains the final compile check.

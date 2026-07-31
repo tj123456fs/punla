@@ -10,6 +10,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.EventBusy
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Repeat
@@ -27,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import com.uplb.punla.data.BudgetPeriod
 import com.uplb.punla.data.entity.Expense
 import com.uplb.punla.ui.PunlaViewModel
+import com.uplb.punla.ml.recurringExpenseCandidates
 import com.uplb.punla.ui.theme.LocalPunlaPalette
 import com.uplb.punla.ui.theme.PunlaMono
 import com.uplb.punla.ui.theme.PunlaPalette
@@ -46,6 +49,7 @@ fun getCategoryColor(category: String, palette: PunlaPalette): Color = when (cat
 @Composable
 fun BudgetScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
     val expenses by vm.expenses.collectAsState()
+    val expenseRules by vm.expenseRules.collectAsState()
     // Roadmap C — withhold "No expenses logged yet" until Room's first
     // real emission, so it doesn't flash for a frame on cold launch.
     val dataReady by vm.isDataReady.collectAsState()
@@ -155,6 +159,9 @@ fun BudgetScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
         categoryTotals.map { (cat, amt) -> Triple(cat, amt, amt - (prevCategoryTotals[cat] ?: 0.0)) }
             .maxByOrNull { (_, _, delta) -> kotlin.math.abs(delta) }
     } else null
+    val recurringCandidates = remember(expenses, expenseRules, vm.dismissedExpensePatternKeys) {
+        recurringExpenseCandidates(expenses, expenseRules, vm.dismissedExpensePatternKeys).take(3)
+    }
 
     Scaffold(
         floatingActionButton = {
@@ -395,6 +402,52 @@ fun BudgetScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
                         projectedMonthEnd = projectedMonthEnd,
                         biggestMover = biggestMover
                     )
+                }
+            }
+
+            if (recurringCandidates.isNotEmpty()) {
+                item { SectionLabel("Pattern suggestions") }
+                items(recurringCandidates, key = { it.key }) { pattern ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                    ) {
+                        Column(Modifier.padding(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        "Looks recurring: ${pattern.label}",
+                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                                    )
+                                    Text(
+                                        "About ₱${"%,.2f".format(pattern.typicalAmount)} · ${pattern.occurrences} entries" +
+                                            (pattern.cadenceDays?.let { " · roughly every $it days" } ?: ""),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                                    )
+                                }
+                                IconButton(onClick = { vm.dismissExpensePattern(pattern.key) }) {
+                                    Icon(Icons.Default.Close, contentDescription = "Dismiss suggestion")
+                                }
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(onClick = { vm.createRecurringRuleFromPattern(pattern) }) {
+                                    Text("Make recurring")
+                                }
+                                TextButton(onClick = { vm.dismissExpensePattern(pattern.key) }) {
+                                    Text("Not recurring")
+                                }
+                            }
+                        }
+                    }
                 }
             }
 

@@ -1,5 +1,6 @@
 package com.uplb.punla.data.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import java.util.UUID
@@ -19,8 +20,11 @@ data class StudySession(
     val endedAt: Long,                   // epoch millis
     val plannedMinutes: Int,             // the work-interval length it was run at
     val actualSeconds: Int,              // real elapsed focus time (see 1.3 pause handling)
-    val completed: Boolean,              // true = ran to 00:00 naturally, false = stopped early
-    val cyclesInSession: Int = 1         // which pomodoro # this was within its session run (see 1.4)
+    val completed: Boolean,              // kept for backwards-compatible stats/UI
+    val cyclesInSession: Int = 1,        // which pomodoro # this was within its session run (see 1.4)
+    @ColumnInfo(defaultValue = "'COMPLETED'")
+    val endReason: String = if (completed) "COMPLETED" else "STOPPED_EARLY",
+    val suggestionId: String? = null
 )
 
 /** User-tunable durations, persisted via PunlaRepository (see 1.2) rather

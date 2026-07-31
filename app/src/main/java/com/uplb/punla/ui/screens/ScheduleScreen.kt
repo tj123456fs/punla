@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.uplb.punla.data.entity.ClassSession
 import com.uplb.punla.data.entity.allowedAbsences
+import com.uplb.punla.ml.projectAttendanceRisk
 import com.uplb.punla.ui.PunlaViewModel
 import com.uplb.punla.ui.theme.LocalPunlaPalette
 import com.uplb.punla.ui.theme.PunlaDisplay
@@ -234,7 +235,9 @@ fun ScheduleScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false, onStudy
                             onEdit = { editingClassId = it.id; showForm = true },
                             onDelete = { pendingDeleteClassId = it.id },
                             onMarkAbsent = { vm.incrementAbsence(it) },
-                            onUndoAbsence = { vm.decrementAbsence(it) }
+                            onUndoAbsence = { vm.decrementAbsence(it) },
+                            termStart = vm.termStartDate,
+                            termEnd = vm.termEndDate
                         )
                     }
                     item { Spacer(Modifier.height(24.dp)) }
@@ -322,7 +325,9 @@ private fun ClassCard(
     onEdit: (ClassSession) -> Unit,
     onDelete: (ClassSession) -> Unit,
     onMarkAbsent: (ClassSession) -> Unit = {},
-    onUndoAbsence: (ClassSession) -> Unit = {}
+    onUndoAbsence: (ClassSession) -> Unit = {},
+    termStart: java.time.LocalDate,
+    termEnd: java.time.LocalDate
 ) {
     val isLab = c.type == "lab"
     val accent = if (isLab) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary
@@ -392,10 +397,15 @@ private fun ClassCard(
                 // estimates that threshold for this specific weekly block.
                 Spacer(Modifier.height(10.dp))
                 val allowed = c.allowedAbsences()
+                val projection = remember(c.absences, termStart, termEnd) {
+                    projectAttendanceRisk(c, allowed, termStart, termEnd)
+                }
                 val overLimit = c.absences >= allowed
-                val nearLimit = !overLimit && c.absences == allowed - 1
+                val projectedRisk = projection.risk == "HIGH" || projection.risk == "WATCH"
+                val nearLimit = !overLimit && (c.absences == allowed - 1 || projectedRisk)
                 val attendanceColor = when {
                     overLimit -> MaterialTheme.colorScheme.error
+                    projection.risk == "HIGH" -> MaterialTheme.colorScheme.error
                     nearLimit -> MaterialTheme.colorScheme.tertiary
                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                 }
@@ -429,6 +439,17 @@ private fun ClassCard(
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                }
+                if (!overLimit && projection.risk != "LOW") {
+                    Text(
+                        if (projection.risk == "HIGH")
+                            "At your current pace, you may reach the limit before term end. ${projection.explanation}"
+                        else
+                            "Attendance pace to watch. ${projection.explanation}",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                        color = attendanceColor,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
                 }
 
                 if (linked.isNotEmpty()) {

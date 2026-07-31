@@ -12,6 +12,9 @@ import com.uplb.punla.data.entity.ExpenseRule
 import com.uplb.punla.data.entity.GradeCourse
 import com.uplb.punla.data.entity.Semester
 import com.uplb.punla.data.entity.StudySession
+import com.uplb.punla.data.entity.StudySuggestionEvent
+import com.uplb.punla.data.entity.NotificationEvent
+import com.uplb.punla.ml.StudySlotModelState
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -28,7 +31,7 @@ import java.util.Locale
  */
 object BackupManager {
 
-    const val CURRENT_VERSION = 1
+    const val CURRENT_VERSION = 2
 
     /** Suggested filename, mirrors the web app's punla-backup-YYYY-MM-DD.json. */
     fun suggestedFileName(): String {
@@ -53,6 +56,8 @@ object BackupManager {
         val allCourses = db.gradesDao().getAllCourses()
         val archives = db.gradesDao().getAllArchives()
         val studySessions = db.studySessionDao().getAll()
+        val studySuggestionEvents = db.intelligenceDao().getStudySuggestionEvents()
+        val notificationEvents = db.intelligenceDao().getNotificationEvents()
 
         val root = JSONObject().apply {
             put("version", CURRENT_VERSION)
@@ -71,6 +76,8 @@ object BackupManager {
             }))
             put("archives", JSONArray(archives.map(::archiveToJson)))
             put("studySessions", JSONArray(studySessions.map(::studySessionToJson)))
+            put("studySuggestionEvents", JSONArray(studySuggestionEvents.map(::studySuggestionEventToJson)))
+            put("notificationEvents", JSONArray(notificationEvents.map(::notificationEventToJson)))
             put("budget", repo.monthlyBudget)
             put("userName", repo.userName)
             put("chedTarget", repo.chedTarget)
@@ -82,6 +89,13 @@ object BackupManager {
             put("weekStartDay", repo.weekStartDay.name)
             put("weeklyBudgetOverride", repo.weeklyBudgetOverride)
             put("weeklyRolloverEnabled", repo.weeklyRolloverEnabled)
+            put("termStartDate", repo.termStartDate.toString())
+            put("termEndDate", repo.termEndDate.toString())
+            put("cloudAssistantEnabled", repo.cloudAssistantEnabled)
+            put("assistantModel", repo.assistantModel)
+            put("preferredReminderHour", repo.preferredReminderHour)
+            put("dismissedExpensePatternKeys", JSONArray(repo.dismissedExpensePatternKeys.toList()))
+            put("studySlotModel", studySlotModelToJson(repo.studySlotModelState))
         }
         return root.toString(2)
     }
@@ -144,6 +158,8 @@ object BackupManager {
 
         val archives = root.optJSONArray("archives")?.mapObjects(::archiveFromJson) ?: emptyList()
         val studySessions = root.optJSONArray("studySessions")?.mapObjects(::studySessionFromJson) ?: emptyList()
+        val studySuggestionEvents = root.optJSONArray("studySuggestionEvents")?.mapObjects(::studySuggestionEventFromJson) ?: emptyList()
+        val notificationEvents = root.optJSONArray("notificationEvents")?.mapObjects(::notificationEventFromJson) ?: emptyList()
 
         db.withTransaction {
             db.classSessionDao().clearAll()
@@ -169,6 +185,11 @@ object BackupManager {
 
             db.studySessionDao().clearAll()
             studySessions.forEach { db.studySessionDao().upsert(it) }
+
+            db.intelligenceDao().clearStudySuggestionEvents()
+            studySuggestionEvents.forEach { db.intelligenceDao().insertStudySuggestionEvent(it) }
+            db.intelligenceDao().clearNotificationEvents()
+            notificationEvents.forEach { db.intelligenceDao().insertNotificationEvent(it) }
         }
 
         // Prefs live outside Room, so they're written after the DB transaction commits.
@@ -193,10 +214,25 @@ object BackupManager {
         }.getOrDefault(java.time.DayOfWeek.MONDAY)
         repo.weeklyBudgetOverride = if (!root.has("weeklyBudgetOverride") || root.isNull("weeklyBudgetOverride")) null else root.optDouble("weeklyBudgetOverride")
         repo.weeklyRolloverEnabled = root.optBoolean("weeklyRolloverEnabled", false)
+        root.optStringOrNull("termStartDate")?.let { raw ->
+            runCatching { java.time.LocalDate.parse(raw) }.getOrNull()?.let { repo.termStartDate = it }
+        }
+        root.optStringOrNull("termEndDate")?.let { raw ->
+            runCatching { java.time.LocalDate.parse(raw) }.getOrNull()?.let { repo.termEndDate = it }
+        }
+        repo.cloudAssistantEnabled = root.optBoolean("cloudAssistantEnabled", false)
+        repo.assistantModel = root.optString("assistantModel", repo.assistantModel)
+        repo.preferredReminderHour = if (!root.has("preferredReminderHour") || root.isNull("preferredReminderHour")) null else root.optInt("preferredReminderHour")
+        repo.dismissedExpensePatternKeys = root.optJSONArray("dismissedExpensePatternKeys")?.toStringSet() ?: emptySet()
+        root.optJSONObject("studySlotModel")?.let { repo.studySlotModelState = studySlotModelFromJson(it) }
     }
 }
 
 // ---- Small JSON helpers ----
+
+private fun JSONArray.toStringSet(): Set<String> = buildSet {
+    for (i in 0 until length()) optString(i).takeIf { it.isNotBlank() }?.let(::add)
+}
 
 private inline fun <T> JSONArray.mapObjects(transform: (JSONObject) -> T): List<T> {
     val out = ArrayList<T>(length())
@@ -334,6 +370,7 @@ private fun studySessionToJson(s: StudySession) = JSONObject().apply {
     put("startedAt", s.startedAt); put("endedAt", s.endedAt)
     put("plannedMinutes", s.plannedMinutes); put("actualSeconds", s.actualSeconds)
     put("completed", s.completed); put("cyclesInSession", s.cyclesInSession)
+    put("endReason", s.endReason); put("suggestionId", s.suggestionId)
 }
 
 private fun studySessionFromJson(o: JSONObject) = StudySession(
@@ -344,5 +381,62 @@ private fun studySessionFromJson(o: JSONObject) = StudySession(
     plannedMinutes = o.getInt("plannedMinutes"),
     actualSeconds = o.getInt("actualSeconds"),
     completed = o.optBoolean("completed", false),
-    cyclesInSession = o.optInt("cyclesInSession", 1)
+    cyclesInSession = o.optInt("cyclesInSession", 1),
+    endReason = o.optString("endReason", if (o.optBoolean("completed", false)) "COMPLETED" else "STOPPED_EARLY"),
+    suggestionId = o.optStringOrNull("suggestionId")
 )
+
+
+private fun studySuggestionEventToJson(e: StudySuggestionEvent) = JSONObject().apply {
+    put("id", e.id); put("suggestionId", e.suggestionId); put("occurredAt", e.occurredAt)
+    put("outcome", e.outcome); put("slotHour", e.slotHour); put("dayOfWeek", e.dayOfWeek)
+    put("urgencyDays", e.urgencyDays); put("availableMinutes", e.availableMinutes)
+    put("deadlineId", e.deadlineId); put("courseCode", e.courseCode); put("sessionId", e.sessionId)
+}
+
+private fun studySuggestionEventFromJson(o: JSONObject) = StudySuggestionEvent(
+    id = o.getString("id"),
+    suggestionId = o.getString("suggestionId"),
+    occurredAt = o.getLong("occurredAt"),
+    outcome = o.getString("outcome"),
+    slotHour = o.optInt("slotHour", 12),
+    dayOfWeek = o.optInt("dayOfWeek", 1),
+    urgencyDays = o.optInt("urgencyDays", 7),
+    availableMinutes = o.optInt("availableMinutes", 25),
+    deadlineId = o.optStringOrNull("deadlineId"),
+    courseCode = o.optStringOrNull("courseCode"),
+    sessionId = o.optStringOrNull("sessionId")
+)
+
+private fun notificationEventToJson(e: NotificationEvent) = JSONObject().apply {
+    put("id", e.id); put("notificationKey", e.notificationKey); put("workerName", e.workerName)
+    put("notificationType", e.notificationType); put("occurredAt", e.occurredAt)
+    put("localHour", e.localHour); put("outcome", e.outcome)
+}
+
+private fun notificationEventFromJson(o: JSONObject) = NotificationEvent(
+    id = o.getString("id"),
+    notificationKey = o.getString("notificationKey"),
+    workerName = o.optString("workerName", "unknown"),
+    notificationType = o.optString("notificationType", "general"),
+    occurredAt = o.getLong("occurredAt"),
+    localHour = o.optInt("localHour", 12),
+    outcome = o.getString("outcome")
+)
+
+private fun studySlotModelToJson(model: StudySlotModelState) = JSONObject().apply {
+    put("weights", JSONArray(model.weights)); put("bias", model.bias)
+    put("sampleCount", model.sampleCount); put("version", model.version)
+}
+
+private fun studySlotModelFromJson(o: JSONObject): StudySlotModelState {
+    val arr = o.optJSONArray("weights")
+    val weights = if (arr != null) List(arr.length()) { index -> arr.optDouble(index, 0.0) } else emptyList()
+    return StudySlotModelState(
+        weights = weights.takeIf { it.size == StudySlotModelState.FEATURE_COUNT }
+            ?: List(StudySlotModelState.FEATURE_COUNT) { 0.0 },
+        bias = o.optDouble("bias", 0.0),
+        sampleCount = o.optInt("sampleCount", 0),
+        version = o.optInt("version", 1)
+    )
+}

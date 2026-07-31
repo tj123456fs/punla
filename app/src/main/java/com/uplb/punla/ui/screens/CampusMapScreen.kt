@@ -38,6 +38,7 @@ import com.uplb.punla.data.fetchWalkingMatrix
 import com.uplb.punla.data.fetchWalkingRoute
 import com.uplb.punla.data.fmtDistance
 import com.uplb.punla.data.hasLocationPermission
+import com.uplb.punla.data.hasFineLocationPermission
 import com.uplb.punla.data.haversineMeters
 import com.uplb.punla.data.openAppLocationSettings
 import com.uplb.punla.data.optimizeStopOrder
@@ -84,9 +85,9 @@ fun CampusMapScreen(vm: PunlaViewModel, initialSearch: String = "", onOpenFullMa
     }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) fetchLocation() else {
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        if (results.values.any { it } || hasLocationPermission(context)) fetchLocation() else {
             locating = false
             locateFailure = LocationFailure.PERMISSION_DENIED
         }
@@ -99,7 +100,7 @@ fun CampusMapScreen(vm: PunlaViewModel, initialSearch: String = "", onOpenFullMa
         when {
             hasLocationPermission(context) -> fetchLocation()
             permanentlyDenied -> openAppLocationSettings(context)
-            else -> locationPermissionLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+            else -> locationPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
         }
     }
 
@@ -226,6 +227,28 @@ fun CampusMapScreen(vm: PunlaViewModel, initialSearch: String = "", onOpenFullMa
             } else {
                 FilledTonalIconButton(onClick = { userLoc = null; locateFailure = null }) {
                     Icon(Icons.Default.LocationOff, contentDescription = "Clear location")
+                }
+            }
+        }
+        if (userLoc != null && !hasFineLocationPermission(context)) {
+            Spacer(Modifier.height(6.dp))
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Using approximate location. Precise location improves walking distance and building sorting.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = {
+                        locationPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                    }) { Text("Enable precise") }
                 }
             }
         }

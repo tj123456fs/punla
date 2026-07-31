@@ -59,6 +59,7 @@ import com.uplb.punla.data.fetchOneShotLocation
 import com.uplb.punla.data.fetchWalkingRoute
 import com.uplb.punla.data.fmtDistance
 import com.uplb.punla.data.hasLocationPermission
+import com.uplb.punla.data.hasFineLocationPermission
 import com.uplb.punla.data.haversineMeters
 import com.uplb.punla.data.openAppLocationSettings
 import com.uplb.punla.data.rememberLiveLocation
@@ -129,6 +130,7 @@ fun CampusFullMapScreen(vm: PunlaViewModel) {
     val context = LocalContext.current
     var selectedBuilding by remember { mutableStateOf<Building?>(null) }
     var hasPermission by remember { mutableStateOf(hasLocationPermission(context)) }
+    var hasFinePermission by remember { mutableStateOf(hasFineLocationPermission(context)) }
     var userLoc by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var locateFailure by remember { mutableStateOf<LocationFailure?>(null) }
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
@@ -245,7 +247,8 @@ fun CampusFullMapScreen(vm: PunlaViewModel) {
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
-        hasPermission = results.values.any { it }
+        hasPermission = results.values.any { it } || hasLocationPermission(context)
+        hasFinePermission = hasFineLocationPermission(context)
         if (hasPermission) {
             map?.let { enableLocationPuck(it) }
             requestFix()
@@ -275,6 +278,32 @@ fun CampusFullMapScreen(vm: PunlaViewModel) {
             onBuildingTap = { selectedBuilding = it },
             modifier = Modifier.fillMaxSize()
         )
+
+        if (hasPermission && !hasFinePermission && locateFailure == null) {
+            Card(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(16.dp)
+                    .fillMaxWidth()
+                    .shadow(2.dp, MaterialTheme.shapes.medium),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Approximate location is active. Precise mode improves the walking route origin.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = { permissionLauncher.launch(LOCATION_PERMISSIONS) }) {
+                        Text("Enable precise")
+                    }
+                }
+            }
+        }
 
         if (locateFailure != null && userLoc == null) {
             Card(

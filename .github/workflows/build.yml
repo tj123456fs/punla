@@ -3,7 +3,7 @@ name: Build debug APK
 on:
   push:
     branches: [ main ]
-  workflow_dispatch: {}
+  workflow_dispatch: {}   # adds a manual "Run workflow" button too
 
 jobs:
   build:
@@ -18,15 +18,22 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v4
-        with:
-          packages: 'platforms;android-34 build-tools;34.0.0'
-
+      # This repo's zip doesn't include gradlew/gradlew.bat/gradle-wrapper.jar,
+      # so this installs Gradle 8.13 directly (matching gradle-wrapper.properties)
+      # instead of relying on ./gradlew. See the PS at the bottom of CHANGES.md
+      # if you'd rather regenerate the real wrapper and commit it.
       - name: Set up Gradle 8.13
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '8.13'
+
+      # ubuntu-latest ships an Android SDK, but only guarantees platform/
+      # build-tools 34+ are present — this pins exactly what compileSdk=34
+      # needs so the build doesn't depend on whatever happens to be preinstalled.
+      - name: Ensure Android platform 34 + build-tools
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platforms;android-34" "build-tools;34.0.0"
 
       - name: Assemble debug APK
         run: gradle assembleDebug --no-daemon

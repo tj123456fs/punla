@@ -6,7 +6,8 @@
 
 A from-scratch Android Studio project (Kotlin + Jetpack Compose + Room + Glance)
 recreating the core of the original Punla web app, with **three real home-screen
-widgets**: Next Class, Budget Remaining, and Next Deadline.
+widgets**: Next Class, Budget Remaining, and Next Deadline. It also includes a
+local-first personal intelligence layer and an optional private assistant.
 
 ## Opening the project
 
@@ -21,6 +22,18 @@ widgets**: Next Class, Budget Remaining, and Next Deadline.
    three widgets (Next Class / Budget Remaining / Next Deadline).
 
 ## What's implemented
+
+- **Local intelligence** (`ml/`) — on-device study-hour patterns, early-stop trends,
+  recurring-expense candidates, attendance projections, learned reminder timing,
+  and sparse-data-safe study-slot ranking. A tiny online logistic-regression model
+  is used only after enough personal outcomes exist.
+- **Punla Assistant** (`assistant/`, `AssistantScreen.kt`) — answers common schedule,
+  deadline, spending, attendance, and focus questions locally. Optional cloud
+  fallback is off by default, uses a Keystore-encrypted user API key, sends compact
+  context rather than raw tables, and is capped at ten calls per day.
+- **Approximate + precise campus location** — all location entry points request the
+  Android permissions together, retain approximate fallback, and expose an
+  `Enable precise` upgrade action for better walking-route origins.
 
 - **Room database** (`data/entity`, `data/dao`, `PunlaDatabase.kt`) mirroring your
   original state shape: class sessions, expenses + recurring rules, deadlines +
@@ -75,7 +88,7 @@ from here:
   opposite direction from most schools — 1.00 is the best grade, so "on track"
   means GWA ≤ target).
 - **Deadlines calendar view** — only the list view is implemented.
-- **Building/room map lookup** — not ported.
+- **Building/room map lookup** — implemented with MapLibre, live location, walking routes, and multi-stop route ordering.
 
 ## UI design system
 

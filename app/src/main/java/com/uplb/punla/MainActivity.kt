@@ -1,6 +1,7 @@
 package com.uplb.punla
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -10,6 +11,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
@@ -47,6 +49,7 @@ import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -74,7 +77,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.uplb.punla.data.PunlaRepository
 import com.uplb.punla.data.ThemeMode
+import com.uplb.punla.data.entity.NotificationEvent
+import com.uplb.punla.notification.TrackedNotification
 import com.uplb.punla.ui.LogoIntroScreen
 import com.uplb.punla.ui.PunlaViewModel
 import com.uplb.punla.ui.screens.BudgetScreen
@@ -88,15 +94,15 @@ import com.uplb.punla.ui.screens.PomodoroScreen
 import com.uplb.punla.ui.screens.ScheduleScreen
 import com.uplb.punla.ui.screens.SettingsScreen
 import com.uplb.punla.ui.screens.StudyAnalysisScreen
+import com.uplb.punla.ui.screens.AssistantScreen
 import com.uplb.punla.ui.theme.appBackground
 import com.uplb.punla.ui.theme.PunlaDisplay
 import com.uplb.punla.ui.theme.PunlaMono
 import com.uplb.punla.ui.theme.PunlaTheme
 import com.uplb.punla.worker.BackupNudgeWorker
-import com.uplb.punla.worker.BudgetWorker
-import com.uplb.punla.worker.ChecklistReminderWorker
 import com.uplb.punla.worker.ClassReminderWorker
-import com.uplb.punla.worker.DeadlineWorker
+import com.uplb.punla.worker.ReminderScheduler
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 import com.uplb.punla.ui.screens.CampusFullMapScreen
@@ -139,10 +145,34 @@ class MainActivity : ComponentActivity() {
     // than a fresh onCreate() — still re-navigates instead of being ignored.
     private val startRouteState = mutableStateOf<String?>(null)
 
-    override fun onNewIntent(intent: android.content.Intent) {
+    private fun recordNotificationOpen(intent: Intent?) {
+        if (intent?.getStringExtra(TrackedNotification.EXTRA_OUTCOME) != "OPENED") return
+        val key = intent.getStringExtra(TrackedNotification.EXTRA_KEY) ?: return
+        val worker = intent.getStringExtra(TrackedNotification.EXTRA_WORKER) ?: "unknown"
+        val type = intent.getStringExtra(TrackedNotification.EXTRA_TYPE) ?: "general"
+        // Remove the marker immediately so configuration changes and repeated
+        // lifecycle callbacks do not duplicate the same OPENED event.
+        intent.removeExtra(TrackedNotification.EXTRA_OUTCOME)
+        lifecycleScope.launch(Dispatchers.IO) {
+            runCatching {
+                PunlaRepository(applicationContext).logNotificationEvent(
+                    NotificationEvent(
+                        notificationKey = key,
+                        workerName = worker,
+                        notificationType = type,
+                        localHour = java.time.LocalDateTime.now().hour,
+                        outcome = "OPENED"
+                    )
+                )
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         startRouteState.value = intent.getStringExtra(EXTRA_START_ROUTE)
+        recordNotificationOpen(intent)
     }
 
     override fun onResume() {
@@ -152,6 +182,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        recordNotificationOpen(intent)
         // Roadmap A: draw behind the system bars instead of stopping short
         // of them — lets the ink-colored topbar reach the status bar, and
         // gets ahead of the Android 15+ edge-to-edge requirement once
@@ -160,14 +191,9 @@ class MainActivity : ComponentActivity() {
         startRouteState.value = intent?.getStringExtra(EXTRA_START_ROUTE)
         notificationPermissionGrantedState.value = hasNotificationPermission()
         
-        // Enqueue daily deadline worker
-        val workRequest = PeriodicWorkRequestBuilder<DeadlineWorker>(24, TimeUnit.HOURS)
-            .build()
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "DeadlineWorker",
-            ExistingPeriodicWorkPolicy.KEEP,
-            workRequest
-        )
+        // Daily deadline, budget, and checklist checks share one
+        // locally learned delivery hour when enough interaction history exists.
+        ReminderScheduler.scheduleDaily(this)
 
         // Class-start reminders need a much tighter cadence than the daily
         // deadline check — 15 minutes is WorkManager's minimum periodic
@@ -188,28 +214,6 @@ class MainActivity : ComponentActivity() {
             "backup_nudge_work",
             ExistingPeriodicWorkPolicy.KEEP,
             backupNudgeRequest
-        )
-
-        // Feature plan — daily check for whether spend has crossed the 80%
-        // or 100% budget threshold this month (the worker itself decides
-        // whether a nudge is actually due).
-        val budgetRequest = PeriodicWorkRequestBuilder<BudgetWorker>(24, TimeUnit.HOURS)
-            .build()
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "budget_nudge_work",
-            ExistingPeriodicWorkPolicy.KEEP,
-            budgetRequest
-        )
-
-        // Daily check for whether it's time to nudge about unfinished
-        // pre-enrollment checklist items (the worker itself decides
-        // whether a threshold was actually crossed since last run).
-        val checklistRequest = PeriodicWorkRequestBuilder<ChecklistReminderWorker>(24, TimeUnit.HOURS)
-            .build()
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "checklist_reminder_work",
-            ExistingPeriodicWorkPolicy.KEEP,
-            checklistRequest
         )
 
         setContent {
@@ -310,6 +314,7 @@ private val DRAWER_ITEMS = listOf(
     Tab("campus", "Campus", Icons.Default.Map),
     Tab("checklist", "Before Classes Start", Icons.Default.Checklist),
     Tab("pomodoro", "Focus", Icons.Default.Timer),
+    Tab("assistant", "Assistant", Icons.Default.SmartToy),
     Tab("settings", "Settings", Icons.Default.Settings)
 )
 
@@ -323,7 +328,7 @@ private val ALL_DESTINATIONS = BOTTOM_TABS + DRAWER_ITEMS
 // hidden on those to avoid two FABs stacking in the same corner. Pomodoro
 // has no add-form of its own — its FAB slot doesn't apply, so it's hidden
 // here too rather than showing an unrelated speed dial over the timer.
-private val ROUTES_WITH_OWN_FAB = setOf("budget", "deadlines", "grades", "checklist", "campus/fullmap", "pomodoro")
+private val ROUTES_WITH_OWN_FAB = setOf("budget", "deadlines", "grades", "checklist", "campus/fullmap", "pomodoro", "assistant")
 
 private data class QuickAddAction(
     val kind: String,
@@ -372,6 +377,7 @@ fun PunlaApp(
             "campus/fullmap" -> "Campus Map"
             "pomodoro" -> "Focus"
             "study-analysis" -> "Study Analysis"
+            "assistant" -> "Assistant"
             else -> "Punla"
         }
     val onSettings = currentRoute == "settings"
@@ -384,7 +390,7 @@ fun PunlaApp(
     // Study Analysis is a drill-down from Pomodoro, same story.
     val showBackArrow = currentRoute == "settings" || currentRoute == "checklist" ||
         currentRoute == "campus" || currentRoute == "campus/fullmap" ||
-        currentRoute == "pomodoro" || currentRoute == "study-analysis"
+        currentRoute == "pomodoro" || currentRoute == "study-analysis" || currentRoute == "assistant"
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -744,6 +750,15 @@ fun PunlaApp(
                     )
                 }
                 composable("study-analysis") { StudyAnalysisScreen(vm) }
+                composable("assistant") {
+                    AssistantScreen(
+                        vm = vm,
+                        onOpenPomodoro = { course ->
+                            if (course != null) navController.navigate("pomodoro?course=${android.net.Uri.encode(course)}")
+                            else navController.navigate("pomodoro")
+                        }
+                    )
+                }
                 composable("settings") {
                     SettingsScreen(
                         vm = vm,

@@ -24,6 +24,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.uplb.punla.data.entity.StudySession
 import com.uplb.punla.ui.PunlaViewModel
+import com.uplb.punla.ml.bestStudyHour
+import com.uplb.punla.ml.sessionEarlyStopRate
 import com.uplb.punla.ui.theme.LocalPunlaPalette
 import com.uplb.punla.ui.theme.PunlaDisplay
 import com.uplb.punla.ui.theme.PunlaMono
@@ -40,6 +42,13 @@ private enum class AnalysisRange(val label: String, val days: Int?) {
 
 private fun StudySession.localDate(): LocalDate =
     Instant.ofEpochMilli(startedAt).atZone(ZoneId.systemDefault()).toLocalDate()
+
+private fun formatStudyHour(hour: Int): String = when {
+    hour == 0 -> "12 AM"
+    hour < 12 -> "$hour AM"
+    hour == 12 -> "12 PM"
+    else -> "${hour - 12} PM"
+}
 
 private fun formatHoursMinutes(totalSeconds: Int): String {
     val totalMinutes = totalSeconds / 60
@@ -162,6 +171,50 @@ fun StudyAnalysisScreen(vm: PunlaViewModel) {
                     onContainer = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f)
                 )
+            }
+            Spacer(Modifier.height(20.dp))
+        }
+
+        item {
+            val bestHour = bestStudyHour(sessionsInRange)
+            val earlyStop = sessionEarlyStopRate(sessionsInRange)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+            ) {
+                Column(Modifier.padding(14.dp)) {
+                    Text(
+                        "PERSONAL PATTERNS",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        bestHour?.let { "Your strongest logged start time is around ${formatStudyHour(it)}." }
+                            ?: "Log at least three sessions around the same hour to identify a reliable focus window.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        if (sessionsInRange.size >= 3) {
+                            "${(earlyStop * 100).toInt()}% of sessions ended early. This is shown as a neutral trend, not a penalty."
+                        } else {
+                            "Based on ${sessionsInRange.size} session${if (sessionsInRange.size == 1) "" else "s"}; more history will improve the pattern."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (vm.repo.studySlotModelState.sampleCount > 0) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Study-slot learner: ${vm.repo.studySlotModelState.sampleCount}/${com.uplb.punla.ml.StudySlotPredictor.MIN_SAMPLES_FOR_PREDICTION} outcomes before predictive ranking activates.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
             Spacer(Modifier.height(20.dp))
         }

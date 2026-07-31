@@ -30,12 +30,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.uplb.punla.data.BackgroundStyle
 import com.uplb.punla.data.BackupManager
 import com.uplb.punla.data.BudgetPeriod
 import com.uplb.punla.data.FontChoice
 import com.uplb.punla.data.ThemePreset
 import com.uplb.punla.ui.PunlaViewModel
+import com.uplb.punla.ml.notificationEngagement
 import com.uplb.punla.ui.theme.Palettes
 import com.uplb.punla.ui.theme.PunlaBody
 import com.uplb.punla.ui.theme.PunlaDisplay
@@ -47,6 +49,12 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+
+private fun formatHour(hour: Int): String {
+    val suffix = if (hour >= 12) "PM" else "AM"
+    val display = when (val h = hour % 12) { 0 -> 12; else -> h }
+    return "$display:00 $suffix"
+}
 
 @Composable
 fun SettingsScreen(
@@ -64,8 +72,27 @@ fun SettingsScreen(
     var weeklyBudgetInput by rememberSaveable {
         mutableStateOf(vm.weeklyBudgetOverride?.let { if (it > 0) it.toInt().toString() else "" } ?: "")
     }
+    var termStartInput by rememberSaveable { mutableStateOf(vm.termStartDate.toString()) }
+    var termEndInput by rememberSaveable { mutableStateOf(vm.termEndDate.toString()) }
+    var assistantModelInput by rememberSaveable { mutableStateOf(vm.assistantModel) }
+    var assistantApiKeyInput by rememberSaveable { mutableStateOf("") }
+    var intelligenceMessage by rememberSaveable { mutableStateOf<String?>(null) }
 
     val archives by vm.archives.collectAsState()
+    val notificationEvents by vm.notificationEvents.collectAsState()
+    val adaptiveReminderEvents = remember(notificationEvents) {
+        notificationEvents.filter { it.notificationType in setOf("deadline", "budget", "checklist") }
+    }
+    val reminderEngagement = remember(adaptiveReminderEvents) { notificationEngagement(adaptiveReminderEvents) }
+    val firedReminderCount = remember(adaptiveReminderEvents) { adaptiveReminderEvents.count { it.outcome == "FIRED" } }
+    val openedReminderCount = remember(adaptiveReminderEvents) {
+        adaptiveReminderEvents.count { it.outcome == "OPENED" || it.outcome == "ACTION_USED" }
+    }
+    val bestReminderHour = remember(reminderEngagement, firedReminderCount, openedReminderCount) {
+        reminderEngagement.maxByOrNull { it.value }?.takeIf {
+            firedReminderCount >= 5 && openedReminderCount >= 2 && it.value > 0f
+        }?.key
+    }
 
     var showArchiveConfirm by rememberSaveable { mutableStateOf(false) }
     var archiveLabel by rememberSaveable { mutableStateOf("") }
@@ -186,6 +213,166 @@ fun SettingsScreen(
                             onClick = onRequestNotificationPermission,
                             contentPadding = PaddingValues(0.dp)
                         ) { Text("Allow notifications") }
+                    }
+                    if (bestReminderHour != null) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            "On-device pattern: reminders opened most often around ${formatHour(bestReminderHour)}.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (vm.preferredReminderHour != bestReminderHour) {
+                                TextButton(
+                                    onClick = { vm.useLearnedReminderHour(bestReminderHour) },
+                                    contentPadding = PaddingValues(0.dp)
+                                ) { Text("Use ${formatHour(bestReminderHour)}") }
+                            } else {
+                                Text(
+                                    "Daily reminders are scheduled around this hour.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.align(Alignment.CenterVertically)
+                                )
+                            }
+                            TextButton(
+                                onClick = vm::resetNotificationLearning,
+                                contentPadding = PaddingValues(0.dp)
+                            ) { Text("Reset learning") }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Personal intelligence and optional cloud assistant.
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 6.dp)
+                    .shadow(
+                        1.dp,
+                        MaterialTheme.shapes.medium,
+                        ambientColor = LocalPunlaPalette.current.shadowInk.copy(alpha = 0.05f),
+                        spotColor = LocalPunlaPalette.current.shadowInk.copy(alpha = 0.05f)
+                    ),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Text(
+                        "PERSONAL INTELLIGENCE",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Study, spending, and attendance patterns stay on this device. Term dates make attendance projections more accurate.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        PunlaField(
+                            "Term start",
+                            termStartInput,
+                            { termStartInput = it },
+                            placeholder = "yyyy-MM-dd",
+                            modifier = Modifier.weight(1f)
+                        )
+                        PunlaField(
+                            "Term end",
+                            termEndInput,
+                            { termEndInput = it },
+                            placeholder = "yyyy-MM-dd",
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(onClick = {
+                        val start = runCatching { java.time.LocalDate.parse(termStartInput) }.getOrNull()
+                        val end = runCatching { java.time.LocalDate.parse(termEndInput) }.getOrNull()
+                        if (start == null || end == null || end.isBefore(start)) {
+                            intelligenceMessage = "Enter valid dates with the end on or after the start."
+                        } else {
+                            vm.updateTermDates(start, end)
+                            intelligenceMessage = "Term dates saved."
+                        }
+                    }) { Text("Save term dates") }
+                    Spacer(Modifier.height(6.dp))
+                    TextButton(
+                        onClick = {
+                            vm.resetLearnedRecommendations()
+                            intelligenceMessage = "Learned recommendation data reset. Study-session history was kept."
+                        },
+                        contentPadding = PaddingValues(0.dp)
+                    ) { Text("Reset learned recommendations") }
+
+                    Spacer(Modifier.height(16.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Cloud assistant fallback", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium))
+                            Text(
+                                "Off by default. Local commands never call the API. Unknown questions send only a query-specific planner summary and are capped at 10 requests per day.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = vm.cloudAssistantEnabled,
+                            onCheckedChange = vm::updateCloudAssistantEnabled
+                        )
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = assistantApiKeyInput,
+                        onValueChange = { assistantApiKeyInput = it },
+                        label = { Text(if (vm.assistantApiKeyConfigured) "API key (configured)" else "API key") },
+                        placeholder = { Text(if (vm.assistantApiKeyConfigured) "Enter a new key to replace it" else "Stored with Android Keystore") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    PunlaField(
+                        "Claude model",
+                        assistantModelInput,
+                        { assistantModelInput = it },
+                        placeholder = "claude-haiku-4-5",
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = {
+                            vm.updateAssistantModel(assistantModelInput)
+                            if (assistantApiKeyInput.isNotBlank()) {
+                                vm.updateAssistantApiKey(assistantApiKeyInput)
+                                assistantApiKeyInput = ""
+                            }
+                            intelligenceMessage = "Assistant settings saved."
+                        }) { Text("Save assistant settings") }
+                        if (vm.assistantApiKeyConfigured) {
+                            TextButton(onClick = {
+                                vm.updateAssistantApiKey("")
+                                assistantApiKeyInput = ""
+                                intelligenceMessage = "API key removed."
+                            }) { Text("Remove key") }
+                        }
+                    }
+                    intelligenceMessage?.let {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (it.contains("valid")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                        )
                     }
                 }
             }

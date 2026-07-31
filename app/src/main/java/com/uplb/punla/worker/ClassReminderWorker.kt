@@ -3,9 +3,7 @@ package com.uplb.punla.worker
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
@@ -13,9 +11,9 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.uplb.punla.MainActivity
 import com.uplb.punla.R
 import com.uplb.punla.data.PunlaRepository
+import com.uplb.punla.notification.TrackedNotification
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -81,7 +79,7 @@ class ClassReminderWorker(
         return "$time \u00B7 ${c.room ?: "TBA"}"
     }
 
-    private fun showNotification(code: String, body: String) {
+    private suspend fun showNotification(code: String, body: String) {
         val channelId = "punla_class_channel"
         val notificationManager = NotificationManagerCompat.from(context)
 
@@ -96,23 +94,23 @@ class ClassReminderWorker(
         val sysManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         sysManager.createNotificationChannel(channel)
 
-        val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-        }
-        val pendingIntent = PendingIntent.getActivity(
-            context, code.hashCode(), intent, PendingIntent.FLAG_IMMUTABLE
-        )
-
         val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("$code starts soon")
             .setContentText(body)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setContentIntent(pendingIntent)
-            .setAutoCancel(true)
+                        .setAutoCancel(true)
 
         try {
-            notificationManager.notify(code.hashCode(), builder.build())
+            TrackedNotification.post(
+                context = context,
+                manager = notificationManager,
+                notificationId = code.hashCode(),
+                builder = builder,
+                workerName = "ClassReminderWorker",
+                notificationType = "class",
+                route = "schedule"
+            )
         } catch (e: SecurityException) {
             // Permission wasn't granted
         }

@@ -54,6 +54,7 @@ private val TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm"
 class PunlaRepository(context: Context) {
     private val db = PunlaDatabase.get(context)
     private val prefs = context.getSharedPreferences("punla_prefs", Context.MODE_PRIVATE)
+    private val secureSecrets = SecureSecretStore(context)
 
     // ---- Settings ----
     var monthlyBudget: Double
@@ -189,6 +190,90 @@ class PunlaRepository(context: Context) {
             else prefs.edit().putLong("last_backup_nudge_at", value).apply()
         }
 
+    // ---- Personal intelligence / assistant settings ----
+
+    var termStartDate: LocalDate
+        get() = runCatching { LocalDate.parse(prefs.getString("term_start_date", null)) }
+            .getOrDefault(classesStartDate)
+        set(value) = prefs.edit().putString("term_start_date", value.toString()).apply()
+
+    var termEndDate: LocalDate
+        get() = runCatching { LocalDate.parse(prefs.getString("term_end_date", null)) }
+            .getOrDefault(termStartDate.plusWeeks(15).minusDays(1))
+        set(value) = prefs.edit().putString("term_end_date", value.toString()).apply()
+
+    var cloudAssistantEnabled: Boolean
+        get() = prefs.getBoolean("cloud_assistant_enabled", false)
+        set(value) = prefs.edit().putBoolean("cloud_assistant_enabled", value).apply()
+
+    var assistantModel: String
+        get() = prefs.getString("assistant_model", "claude-haiku-4-5") ?: "claude-haiku-4-5"
+        set(value) = prefs.edit().putString("assistant_model", value.trim()).apply()
+
+    val assistantDailyCallLimit: Int get() = 10
+
+    fun consumeAssistantCall(): Boolean {
+        val today = LocalDate.now().toString()
+        val storedDate = prefs.getString("assistant_call_date", null)
+        val count = if (storedDate == today) prefs.getInt("assistant_call_count", 0) else 0
+        if (count >= assistantDailyCallLimit) return false
+        prefs.edit()
+            .putString("assistant_call_date", today)
+            .putInt("assistant_call_count", count + 1)
+            .apply()
+        return true
+    }
+
+    fun assistantCallsUsedToday(): Int =
+        if (prefs.getString("assistant_call_date", null) == LocalDate.now().toString())
+            prefs.getInt("assistant_call_count", 0)
+        else 0
+
+    var assistantApiKey: String?
+        get() = secureSecrets.getAssistantApiKey()
+        set(value) = secureSecrets.setAssistantApiKey(value.orEmpty())
+
+    var preferredReminderHour: Int?
+        get() = if (prefs.contains("preferred_reminder_hour")) prefs.getInt("preferred_reminder_hour", 19) else null
+        set(value) {
+            if (value == null) prefs.edit().remove("preferred_reminder_hour").apply()
+            else prefs.edit().putInt("preferred_reminder_hour", value.coerceIn(0, 23)).apply()
+        }
+
+    var dismissedExpensePatternKeys: Set<String>
+        get() = prefs.getStringSet("dismissed_expense_pattern_keys", emptySet())?.toSet() ?: emptySet()
+        set(value) = prefs.edit().putStringSet("dismissed_expense_pattern_keys", value).apply()
+
+    var pendingStudySuggestionId: String?
+        get() = prefs.getString("pending_study_suggestion_id", null)
+        set(value) = prefs.edit().putString("pending_study_suggestion_id", value).apply()
+
+    var pendingStudySuggestionFeatures: String?
+        get() = prefs.getString("pending_study_suggestion_features", null)
+        set(value) = prefs.edit().putString("pending_study_suggestion_features", value).apply()
+
+    var studySlotModelState: com.uplb.punla.ml.StudySlotModelState
+        get() {
+            val weights = prefs.getString("study_slot_model_weights", null)
+                ?.split(',')?.mapNotNull { it.toDoubleOrNull() }
+                ?.takeIf { it.size == com.uplb.punla.ml.StudySlotModelState.FEATURE_COUNT }
+                ?: List(com.uplb.punla.ml.StudySlotModelState.FEATURE_COUNT) { 0.0 }
+            return com.uplb.punla.ml.StudySlotModelState(
+                weights = weights,
+                bias = java.lang.Double.longBitsToDouble(prefs.getLong("study_slot_model_bias", 0L)),
+                sampleCount = prefs.getInt("study_slot_model_samples", 0),
+                version = prefs.getInt("study_slot_model_version", 1)
+            )
+        }
+        set(value) {
+            prefs.edit()
+                .putString("study_slot_model_weights", value.weights.joinToString(","))
+                .putLong("study_slot_model_bias", java.lang.Double.doubleToRawLongBits(value.bias))
+                .putInt("study_slot_model_samples", value.sampleCount)
+                .putInt("study_slot_model_version", value.version)
+                .apply()
+        }
+
     // ---- Free-time study suggestion (Free-Time Study Suggestions, Phase 1) ----
 
     /** Epoch millis the person last dismissed the Dashboard's free-slot
@@ -309,6 +394,25 @@ class PunlaRepository(context: Context) {
 
     suspend fun deleteStudySession(session: com.uplb.punla.data.entity.StudySession) =
         db.studySessionDao().delete(session)
+
+    fun observeStudySuggestionEvents(): kotlinx.coroutines.flow.Flow<List<com.uplb.punla.data.entity.StudySuggestionEvent>> =
+        db.intelligenceDao().observeStudySuggestionEvents()
+
+    suspend fun logStudySuggestionEvent(event: com.uplb.punla.data.entity.StudySuggestionEvent) =
+        db.intelligenceDao().insertStudySuggestionEvent(event)
+
+    suspend fun latestStudySuggestionEvent(suggestionId: String) =
+        db.intelligenceDao().latestStudySuggestionEvent(suggestionId)
+
+    suspend fun clearStudySuggestionEvents() = db.intelligenceDao().clearStudySuggestionEvents()
+
+    fun observeNotificationEvents(): kotlinx.coroutines.flow.Flow<List<com.uplb.punla.data.entity.NotificationEvent>> =
+        db.intelligenceDao().observeNotificationEvents()
+
+    suspend fun logNotificationEvent(event: com.uplb.punla.data.entity.NotificationEvent) =
+        db.intelligenceDao().insertNotificationEvent(event)
+
+    suspend fun clearNotificationEvents() = db.intelligenceDao().clearNotificationEvents()
 
     // ---- Study goals (roadmap Study Habits 2.1) ----
     var dailyStudyGoalMinutes: Int

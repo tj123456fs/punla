@@ -40,6 +40,7 @@ import com.uplb.punla.data.fetchOneShotLocation
 import com.uplb.punla.data.fetchWalkingRoute
 import com.uplb.punla.data.fmtDistance
 import com.uplb.punla.data.hasLocationPermission
+import com.uplb.punla.data.hasFineLocationPermission
 import com.uplb.punla.data.haversineMeters
 import com.uplb.punla.data.openAppLocationSettings
 import com.uplb.punla.data.shouldShowLocationRationale
@@ -60,6 +61,8 @@ fun DashboardScreen(vm: PunlaViewModel, onOpenNextClassOnMap: () -> Unit = {}, o
     val deadlines by vm.deadlines.collectAsState()
     val expenses by vm.expenses.collectAsState()
     val checklistItems by vm.checklistItems.collectAsState()
+    val studySessions by vm.studySessions.collectAsState()
+    val studyStreak by vm.currentStudyStreak.collectAsState()
     // Roadmap C — gates "No classes scheduled" / "Nothing due" / weekly
     // empty state so they don't flash for one frame before Room's first
     // real emission lands on a cold launch.
@@ -116,7 +119,7 @@ fun DashboardScreen(vm: PunlaViewModel, onOpenNextClassOnMap: () -> Unit = {}, o
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
-        if (results.values.any { it }) requestNextClassFix() else {
+        if (results.values.any { it } || hasLocationPermission(context)) requestNextClassFix() else {
             locating = false
             locateFailure = LocationFailure.PERMISSION_DENIED
         }
@@ -171,8 +174,15 @@ fun DashboardScreen(vm: PunlaViewModel, onOpenNextClassOnMap: () -> Unit = {}, o
     // deadline match for today (or tomorrow). Dismissing it for the day is
     // tracked via a SharedPreferences timestamp, same pattern as the backup
     // nudge, so it doesn't reappear every time the Dashboard is opened.
-    val studySuggestion = remember(classes, deadlines, vm.pomodoroWorkMinutes) {
-        com.uplb.punla.ui.pomodoro.suggestStudySlotTodayOrTomorrow(classes, deadlines, vm.pomodoroWorkMinutes)
+    val studySuggestion = remember(classes, deadlines, studySessions, vm.pomodoroWorkMinutes, studyStreak) {
+        com.uplb.punla.ui.pomodoro.suggestStudySlotTodayOrTomorrow(
+            classes = classes,
+            deadlines = deadlines,
+            pomodoroWorkMinutes = vm.pomodoroWorkMinutes,
+            sessions = studySessions,
+            modelState = vm.repo.studySlotModelState,
+            currentStreak = studyStreak
+        )
     }
     val suggestionDismissedToday = remember(vm.studySuggestionDismissedAt) {
         val dismissedAt = vm.studySuggestionDismissedAt
@@ -180,6 +190,9 @@ fun DashboardScreen(vm: PunlaViewModel, onOpenNextClassOnMap: () -> Unit = {}, o
             .atZone(java.time.ZoneId.systemDefault()).toLocalDate() == LocalDate.now()
     }
     val activeSuggestion = studySuggestion.takeIf { !suggestionDismissedToday }
+    LaunchedEffect(activeSuggestion?.id) {
+        activeSuggestion?.let(vm::recordStudySuggestionShown)
+    }
 
     // "Before Classes Start" card inputs.
     val daysUntilClasses = remember { vm.repo.daysUntilClassesStart() }
@@ -250,7 +263,7 @@ fun DashboardScreen(vm: PunlaViewModel, onOpenNextClassOnMap: () -> Unit = {}, o
         // as "0", never a nag.
         item {
             val todayMinutes by vm.todayStudyMinutes.collectAsState()
-            val streak by vm.currentStudyStreak.collectAsState()
+            val streak = studyStreak
             val dailyGoal = vm.dailyStudyGoalMinutes
             val goalProgress = if (dailyGoal > 0) (todayMinutes.toFloat() / dailyGoal).coerceIn(0f, 1f) else 0f
 
@@ -261,7 +274,10 @@ fun DashboardScreen(vm: PunlaViewModel, onOpenNextClassOnMap: () -> Unit = {}, o
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 10.dp)
-                    .clickable { onOpenPomodoro(activeSuggestion?.course) },
+                    .clickable {
+                        activeSuggestion?.let(vm::acceptStudySuggestion)
+                        onOpenPomodoro(activeSuggestion?.course)
+                    },
                 contentPadding = PaddingValues(14.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -292,7 +308,7 @@ fun DashboardScreen(vm: PunlaViewModel, onOpenNextClassOnMap: () -> Unit = {}, o
                         }
                     }
                     if (activeSuggestion != null) {
-                        IconButton(onClick = { vm.dismissStudySuggestion() }, modifier = Modifier.size(28.dp)) {
+                        IconButton(onClick = { vm.dismissStudySuggestion(activeSuggestion) }, modifier = Modifier.size(28.dp)) {
                             Icon(
                                 Icons.Default.Close,
                                 contentDescription = "Dismiss suggestion",
@@ -481,6 +497,16 @@ fun DashboardScreen(vm: PunlaViewModel, onOpenNextClassOnMap: () -> Unit = {}, o
                                                 },
                                                 style = MaterialTheme.typography.bodySmall
                                             )
+                                        }
+                                    }
+                                    if (userLoc != null && !hasFineLocationPermission(context)) {
+                                        TextButton(
+                                            onClick = { locationPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)) },
+                                            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
+                                        ) {
+                                            Icon(Icons.Default.NearMe, contentDescription = null, modifier = Modifier.size(14.dp))
+                                            Spacer(Modifier.width(4.dp))
+                                            Text("Enable precise location", style = MaterialTheme.typography.bodySmall)
                                         }
                                     }
                                     TextButton(
