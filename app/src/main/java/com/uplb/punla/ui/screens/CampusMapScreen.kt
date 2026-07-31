@@ -145,7 +145,7 @@ fun CampusMapScreen(vm: PunlaViewModel, initialSearch: String = "", onOpenFullMa
                 optimizeStopOrder(loc, stops)
             }
             val legs = mutableListOf<RoutePlanLeg>()
-            var fromPoint = loc
+            var fromPoint: Pair<Double, Double> = loc
             for (stop in ordered) {
                 val route = fetchWalkingRoute(fromPoint, stop.lat to stop.lon)
                 legs.add(RoutePlanLeg(fromPoint, stop, route))

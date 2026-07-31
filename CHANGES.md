@@ -757,3 +757,26 @@ expect from a demo server — fine for this app's realistic stop counts (a
 handful), but if stop lists ever grow into the dozens this will start
 failing (gracefully, via the existing fallback) and would need chunking or
 a self-hosted OSRM instance.
+
+## Session 14 — Fix Session 13 CI compile failure
+
+Session 13's push failed CI at `compileDebugKotlin` — exactly the "smart-cast
+across a coroutine body" class of error `PROJECT_STATUS.md` already warns
+about, in a new spot.
+
+**`ui/screens/CampusMapScreen.kt`**, `planRoute()`: `var fromPoint = loc`
+was inferring `fromPoint: Pair<Double, Double>?` (nullable) even though
+`loc` is non-null at that point (proven by `optimizeStopOrder(loc, stops)`
+two lines above compiling fine). A `var` declared without an explicit type
+doesn't reliably keep a `val`'s smart-cast narrowing — only `val loc = userLoc`
+right after the null-check is the part of this pattern Kotlin guarantees.
+Fixed by giving `fromPoint` an explicit non-null type:
+
+```kotlin
+var fromPoint: Pair<Double, Double> = loc
+```
+
+**Not compile-checked** — same caveat as always, this fix included. If this
+specific class of error shows up again anywhere else, the general fix is
+the same: any `var` initialized from a smart-cast nullable value should get
+an explicit non-null type annotation rather than relying on inference.
