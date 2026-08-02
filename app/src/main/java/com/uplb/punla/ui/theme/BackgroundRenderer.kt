@@ -28,8 +28,8 @@ fun renderBackgroundBitmap(
         BackgroundStyle.STARFIELD -> paintStarfield(
             canvas, widthPx.toFloat(), heightPx.toFloat(),
             t = FIXED_WIDGET_PHASE,
-            starColorArgb = (if (isDark) palette.paper else palette.textDark).toArgb(),
-            accentColorArgb = palette.mango.toArgb(),
+            starColorArgb = (if (isDark) palette.textDark else palette.ink).toArgb(),
+            accentColorArgb = (if (isDark) palette.tertiaryDark else palette.mango).toArgb(),
             baseColorArgb = base,
         )
         BackgroundStyle.AMBIENT -> paintAmbientWash(canvas, widthPx.toFloat(), heightPx.toFloat(), palette, isDark)

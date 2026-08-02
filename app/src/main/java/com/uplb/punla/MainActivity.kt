@@ -892,6 +892,24 @@ fun PunlaApp(
         }
         }
 
+        // Scrim behind the open quick-add speed dial — tapping anywhere
+        // outside the action bubbles dismisses the menu.
+        AnimatedVisibility(
+            visible = quickAddOpen,
+            enter = fadeIn(tween(200)),
+            exit = fadeOut(tween(150)),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.45f))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { quickAddOpen = false }
+            )
+        }
 
       }
     }

@@ -13,7 +13,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -23,7 +22,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.background
 import com.uplb.punla.ui.PunlaViewModel
 import com.uplb.punla.ui.pomodoro.PomodoroPhase
-import com.uplb.punla.ui.theme.LocalPunlaPalette
 import com.uplb.punla.ui.theme.PunlaDisplay
 import com.uplb.punla.ui.theme.PunlaMono
 
@@ -41,7 +39,6 @@ fun PomodoroScreen(vm: PunlaViewModel, preselectedCourse: String? = null, onOpen
     val state = vm.pomodoroState
     val classes by vm.classes.collectAsState()
     val haptics = LocalHapticFeedback.current
-    val palette = LocalPunlaPalette.current
 
     // Free-Time Study Suggestions (Phase 1) — a Dashboard suggestion deep-
     // links here with a course already picked. Only applied once, and only
@@ -61,9 +58,9 @@ fun PomodoroScreen(vm: PunlaViewModel, preselectedCourse: String? = null, onOpen
     val selectedLabel = state.courseCode ?: "No course"
 
     val phaseColor = when (state.phase) {
-        PomodoroPhase.WORK -> palette.leaf
-        PomodoroPhase.SHORT_BREAK, PomodoroPhase.LONG_BREAK -> palette.mango
-        PomodoroPhase.IDLE -> palette.leaf
+        PomodoroPhase.WORK -> MaterialTheme.colorScheme.primary
+        PomodoroPhase.SHORT_BREAK, PomodoroPhase.LONG_BREAK -> MaterialTheme.colorScheme.tertiary
+        PomodoroPhase.IDLE -> MaterialTheme.colorScheme.primary
     }
     val phaseLabel = when (state.phase) {
         PomodoroPhase.WORK -> "Focus"
@@ -159,7 +156,7 @@ fun PomodoroScreen(vm: PunlaViewModel, preselectedCourse: String? = null, onOpen
                     Modifier
                         .size(9.dp)
                         .background(
-                            if (i < filled) palette.leaf else palette.leaf.copy(alpha = 0.2f),
+                            if (i < filled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
                             CircleShape
                         )
                 )
@@ -178,7 +175,7 @@ fun PomodoroScreen(vm: PunlaViewModel, preselectedCourse: String? = null, onOpen
                             vm.startPomodoroWork(state.courseCode)
                         },
                         shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = palette.ink, contentColor = palette.paper)
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary)
                     ) {
                         Icon(Icons.Default.PlayArrow, contentDescription = null)
                         Spacer(Modifier.width(6.dp))
@@ -193,7 +190,7 @@ fun PomodoroScreen(vm: PunlaViewModel, preselectedCourse: String? = null, onOpen
                             vm.startStagedPhase()
                         },
                         shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = palette.ink, contentColor = palette.paper)
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary)
                     ) {
                         Icon(Icons.Default.PlayArrow, contentDescription = null)
                         Spacer(Modifier.width(6.dp))
@@ -219,7 +216,7 @@ fun PomodoroScreen(vm: PunlaViewModel, preselectedCourse: String? = null, onOpen
                             vm.stopPomodoro()
                         },
                         shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = palette.danger, contentColor = Color.White)
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error, contentColor = MaterialTheme.colorScheme.onError)
                     ) {
                         Icon(Icons.Default.Stop, contentDescription = null)
                         Spacer(Modifier.width(6.dp))
@@ -233,7 +230,7 @@ fun PomodoroScreen(vm: PunlaViewModel, preselectedCourse: String? = null, onOpen
                             vm.resumePomodoro()
                         },
                         shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = palette.ink, contentColor = palette.paper)
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary)
                     ) {
                         Icon(Icons.Default.PlayArrow, contentDescription = null)
                         Spacer(Modifier.width(6.dp))

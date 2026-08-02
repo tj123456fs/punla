@@ -15,7 +15,16 @@ import java.time.format.DateTimeFormatter
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
 /** Curated color presets, plus CUSTOM for a user-picked accent seed color. */
-enum class ThemePreset { FIELD_NOTEBOOK, OCEAN, SUNSET, ORCHID, SLATE, CUSTOM }
+enum class ThemePreset {
+    FIELD_NOTEBOOK,
+    AURORA_BOREALIS,
+    SUNSET_SKY,
+    OCEAN_DEPTHS,
+    COFFEE_SHOP,
+    LOFI_NIGHT,
+    PAPER_INK,
+    CUSTOM
+}
 
 /** How the app's ambient background renders. MINIMAL is a flat theme-color
  * fill, AMBIENT is the drifting-blob wash, STARFIELD is a twinkling star
@@ -82,11 +91,18 @@ class PunlaRepository(context: Context) {
 
     var themePreset: ThemePreset
         get() = when (prefs.getString("theme_preset", null)) {
-            "ocean" -> ThemePreset.OCEAN
-            "sunset" -> ThemePreset.SUNSET
-            "orchid" -> ThemePreset.ORCHID
-            "slate" -> ThemePreset.SLATE
+            "aurora_borealis" -> ThemePreset.AURORA_BOREALIS
+            "sunset_sky" -> ThemePreset.SUNSET_SKY
+            "ocean_depths" -> ThemePreset.OCEAN_DEPTHS
+            "coffee_shop" -> ThemePreset.COFFEE_SHOP
+            "lofi_night" -> ThemePreset.LOFI_NIGHT
+            "paper_ink" -> ThemePreset.PAPER_INK
             "custom" -> ThemePreset.CUSTOM
+            // Migrate the previous palette names to their closest theme-collection match.
+            "ocean" -> ThemePreset.OCEAN_DEPTHS
+            "sunset" -> ThemePreset.SUNSET_SKY
+            "orchid" -> ThemePreset.LOFI_NIGHT
+            "slate" -> ThemePreset.PAPER_INK
             else -> ThemePreset.FIELD_NOTEBOOK
         }
         set(value) = prefs.edit().putString("theme_preset", value.name.lowercase()).apply()

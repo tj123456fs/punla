@@ -196,6 +196,19 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { WidgetRefresher.refreshAll(getApplication()) }
     }
 
+    /** Applies a curated theme and, when supplied, its intended light/dark mode
+     * as one user action. This keeps theme cards faithful to their preview while
+     * leaving Punla Classic and Custom free to preserve the current mode. */
+    fun applyThemePreset(preset: ThemePreset, preferredMode: ThemeMode? = null) {
+        preferredMode?.let {
+            repo.themeMode = it
+            themeMode = it
+        }
+        repo.themePreset = preset
+        themePreset = preset
+        viewModelScope.launch { WidgetRefresher.refreshAll(getApplication()) }
+    }
+
     /** Sets the custom seed color and switches the active preset to CUSTOM in one step. */
     fun updateCustomSeedColor(argb: Int) {
         repo.customSeedColor = argb

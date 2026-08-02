@@ -33,23 +33,23 @@ private fun Color.lightenedForDark(fraction: Float = 0.45f): Color = lerp(this, 
 
 private fun lightColorsFor(p: PunlaPalette) = lightColorScheme(
     primary = p.leaf,
-    onPrimary = p.paper,
+    onPrimary = p.onPrimaryLight,
     primaryContainer = p.leafBgLight,
     onPrimaryContainer = p.inkSoft,
 
     secondary = p.maroon,
-    onSecondary = p.paper,
+    onSecondary = p.onSecondaryLight,
     secondaryContainer = p.maroonBgLight,
     onSecondaryContainer = p.maroon,
 
     tertiary = p.mango,
-    onTertiary = p.paper,
+    onTertiary = p.onTertiaryLight,
     tertiaryContainer = p.mangoBgLight,
     onTertiaryContainer = p.bark,
 
     background = p.paper,
     onBackground = p.ink,
-    surface = p.paper,
+    surface = p.cardLight,
     onSurface = p.ink,
     surfaceVariant = p.cardLight,
     onSurfaceVariant = p.bark,
@@ -62,23 +62,23 @@ private fun lightColorsFor(p: PunlaPalette) = lightColorScheme(
 
 private fun darkColorsFor(p: PunlaPalette) = darkColorScheme(
     primary = p.leafLight,
-    onPrimary = p.darkBg,
+    onPrimary = p.onPrimaryDark,
     primaryContainer = p.leafBgDark,
     onPrimaryContainer = p.textDark,
 
-    secondary = p.maroon.lightenedForDark(),
-    onSecondary = p.maroonBgDark,
+    secondary = p.secondaryDark,
+    onSecondary = p.onSecondaryDark,
     secondaryContainer = p.maroonBgDark,
     onSecondaryContainer = p.textDark,
 
-    tertiary = p.mango,
-    onTertiary = p.mangoBgDark,
+    tertiary = p.tertiaryDark,
+    onTertiary = p.onTertiaryDark,
     tertiaryContainer = p.mangoBgDark,
     onTertiaryContainer = p.textDark,
 
     background = p.darkBg,
     onBackground = p.textDark,
-    surface = p.darkBg,
+    surface = p.cardDark,
     onSurface = p.textDark,
     surfaceVariant = p.cardDark,
     onSurfaceVariant = p.barkDark,

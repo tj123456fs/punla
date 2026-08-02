@@ -629,7 +629,7 @@ private fun ClassFormCard(
                     },
                     enabled = !invalidTimeRange,
                     shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = LocalPunlaPalette.current.ink, contentColor = LocalPunlaPalette.current.paper)
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary)
                 ) { Text(if (editing != null) "Save changes" else "Add class", style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, fontWeight = FontWeight.SemiBold)) }
                 OutlinedButton(
                     onClick = { requestCancel() },

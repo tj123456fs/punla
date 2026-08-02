@@ -313,8 +313,12 @@ private fun AnalysisStatTile(
 
 @Composable
 private fun CourseBreakdown(sessions: List<StudySession>) {
-    val palette = LocalPunlaPalette.current
-    val accentColors = remember(palette) { listOf(palette.leaf, palette.maroon, palette.mango, palette.bark) }
+    val accentColors = listOf(
+        MaterialTheme.colorScheme.primary,
+        MaterialTheme.colorScheme.secondary,
+        MaterialTheme.colorScheme.tertiary,
+        MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 
     val byCourse = remember(sessions) {
         sessions
@@ -384,9 +388,8 @@ private fun DailyHeatmap(
     dailyGoalMinutes: Int,
     today: LocalDate
 ) {
-    val palette = LocalPunlaPalette.current
     val outlineColor = MaterialTheme.colorScheme.outline
-    val fillColor = palette.leaf
+    val fillColor = MaterialTheme.colorScheme.primary
 
     val secondsByDay = remember(sessions) {
         sessions.groupBy { it.localDate() }.mapValues { (_, list) -> list.sumOf { it.actualSeconds } }

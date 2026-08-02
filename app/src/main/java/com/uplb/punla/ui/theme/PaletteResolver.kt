@@ -12,10 +12,12 @@ import com.uplb.punla.data.ThemePreset
  */
 fun resolvePalette(preset: ThemePreset, customSeedArgb: Int?): PunlaPalette = when (preset) {
     ThemePreset.FIELD_NOTEBOOK -> Palettes.FieldNotebook
-    ThemePreset.OCEAN -> Palettes.Ocean
-    ThemePreset.SUNSET -> Palettes.Sunset
-    ThemePreset.ORCHID -> Palettes.Orchid
-    ThemePreset.SLATE -> Palettes.Slate
+    ThemePreset.AURORA_BOREALIS -> Palettes.AuroraBorealis
+    ThemePreset.SUNSET_SKY -> Palettes.SunsetSky
+    ThemePreset.OCEAN_DEPTHS -> Palettes.OceanDepths
+    ThemePreset.COFFEE_SHOP -> Palettes.CoffeeShop
+    ThemePreset.LOFI_NIGHT -> Palettes.LofiNight
+    ThemePreset.PAPER_INK -> Palettes.PaperInk
     ThemePreset.CUSTOM -> customSeedArgb?.let { buildFromSeed(it) } ?: Palettes.FieldNotebook
 }
 
@@ -73,5 +75,15 @@ private fun buildFromSeed(seedArgb: Int): PunlaPalette {
         catSupplies = Palettes.FieldNotebook.catSupplies,
         catOrg = Palettes.FieldNotebook.catOrg,
         catMisc = light.onSurfaceVariant,
+        secondaryDark = dark.secondary,
+        tertiaryDark = dark.tertiary,
+        onPrimaryLight = light.onPrimary,
+        onSecondaryLight = light.onSecondary,
+        onTertiaryLight = light.onTertiary,
+        onPrimaryDark = dark.onPrimary,
+        onSecondaryDark = dark.onSecondary,
+        onTertiaryDark = dark.onTertiary,
+        success = light.primary,
+        warning = light.tertiary,
     )
 }

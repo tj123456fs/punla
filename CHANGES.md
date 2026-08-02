@@ -1,5 +1,16 @@
 # Punla Android — Change Log
 
+## Session 18c — Theme Collection foundation
+
+- Added the six recommended launch themes from `PUNLA_THEME_COLLECTION.md`: Aurora Borealis, Sunset Sky, Ocean Depths, Coffee Shop, Lo-fi Night, and Paper & Ink.
+- Replaced the compact color swatches in Settings with detailed theme preview cards showing intended mode, mood, palette preview, selected state, and an Apply action.
+- Added explicit dark accent and foreground roles to `PunlaPalette` so theme colors remain faithful to the specification without sacrificing filled-control contrast.
+- Curated themes apply their intended dark/light mode in the same action; Punla Classic and Custom continue to respect the current mode.
+- Added preference migration from the former Ocean, Sunset, Orchid, and Slate presets to their closest new collection equivalents.
+- Kept app and widget theme resolution on the same shared palette path.
+- Backups now include the theme preset, custom seed, background style, and font choice.
+- Version bumped to `1.3` (`versionCode 4`) for install-over-update testing.
+
 ## Session 17 — Pomodoro PiP, background alarm, and custom sounds
 
 - **Picture-in-Picture timer** — an optional compact countdown appears when a running Pomodoro leaves the foreground. Android 12+ uses smooth auto-enter; Android 8–11 enters PiP from the Home/app-switch gesture.
