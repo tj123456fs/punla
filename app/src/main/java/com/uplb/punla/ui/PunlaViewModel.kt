@@ -30,6 +30,8 @@ import com.uplb.punla.widget.WidgetRefresher
 import com.uplb.punla.ml.StudySlotFeatures
 import com.uplb.punla.ml.StudySlotPredictor
 import com.uplb.punla.ui.pomodoro.StudySuggestion
+import com.uplb.punla.pomodoro.PomodoroAlarmScheduler
+import com.uplb.punla.pomodoro.PomodoroCompletionCoordinator
 import com.uplb.punla.assistant.AssistantSnapshot
 import com.uplb.punla.assistant.LocalAssistant
 import com.uplb.punla.data.AssistantApi
@@ -876,6 +878,16 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var pomodoroAutoStartNext by mutableStateOf(repo.pomodoroAutoStartNext)
         private set
+    var pomodoroPictureInPicture by mutableStateOf(repo.pomodoroPictureInPicture)
+        private set
+    var pomodoroAlarmSoundEnabled by mutableStateOf(repo.pomodoroAlarmSoundEnabled)
+        private set
+    var pomodoroAlarmVibrationEnabled by mutableStateOf(repo.pomodoroAlarmVibrationEnabled)
+        private set
+    var pomodoroWorkSoundUri by mutableStateOf(repo.pomodoroWorkSoundUri)
+        private set
+    var pomodoroBreakSoundUri by mutableStateOf(repo.pomodoroBreakSoundUri)
+        private set
 
     fun updatePomodoroWorkMinutes(minutes: Int) {
         repo.pomodoroWorkMinutes = minutes
@@ -902,12 +914,143 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         pomodoroAutoStartNext = enabled
     }
 
+    fun updatePomodoroPictureInPicture(enabled: Boolean) {
+        repo.pomodoroPictureInPicture = enabled
+        pomodoroPictureInPicture = enabled
+    }
+
+    fun updatePomodoroAlarmSoundEnabled(enabled: Boolean) {
+        repo.pomodoroAlarmSoundEnabled = enabled
+        pomodoroAlarmSoundEnabled = enabled
+    }
+
+    fun updatePomodoroAlarmVibrationEnabled(enabled: Boolean) {
+        repo.pomodoroAlarmVibrationEnabled = enabled
+        pomodoroAlarmVibrationEnabled = enabled
+    }
+
+    fun updatePomodoroWorkSoundUri(uri: String?) {
+        repo.pomodoroWorkSoundUri = uri
+        pomodoroWorkSoundUri = uri
+    }
+
+    fun updatePomodoroBreakSoundUri(uri: String?) {
+        repo.pomodoroBreakSoundUri = uri
+        pomodoroBreakSoundUri = uri
+    }
+
     var pomodoroState by mutableStateOf(com.uplb.punla.ui.pomodoro.PomodoroUiState())
         private set
 
     private var pomodoroJob: kotlinx.coroutines.Job? = null
     private var phaseDeadline: Long = 0L   // System.currentTimeMillis() target
     private var phaseStartedAt: Long = 0L  // for actualSeconds on early stop
+
+    init {
+        restorePomodoroRuntime()
+    }
+
+    /**
+     * Reconciles the in-memory countdown with its persisted wall-clock
+     * deadline. MainActivity calls this on resume, which covers app switches,
+     * the notification shade, and process recreation without restarting the
+     * timer from its original duration.
+     */
+    fun syncPomodoroClock() {
+        // A background AlarmManager receiver may have advanced the persisted
+        // phase while this Activity was paused or in PiP. Reload before doing
+        // any arithmetic against stale in-memory values.
+        val storedPhase = repo.pomodoroRuntimePhase
+        if (storedPhase != pomodoroState.phase.name ||
+            repo.pomodoroRuntimeRunning != pomodoroState.isRunning ||
+            (repo.pomodoroRuntimeRunning && repo.pomodoroRuntimeDeadline != phaseDeadline)
+        ) {
+            restorePomodoroRuntime()
+            return
+        }
+        if (!pomodoroState.isRunning) return
+        val remainingMs = phaseDeadline - System.currentTimeMillis()
+        if (remainingMs <= 0L) {
+            pomodoroJob?.cancel()
+            onPhaseComplete()
+            return
+        }
+        val remainingSeconds = ((remainingMs + 999L) / 1000L).toInt()
+        if (remainingSeconds != pomodoroState.remainingSeconds) {
+            pomodoroState = pomodoroState.copy(remainingSeconds = remainingSeconds)
+        }
+        // Replacing the same PendingIntent is cheap and upgrades an inexact
+        // fallback immediately if the user just granted exact-alarm access.
+        PomodoroAlarmScheduler.schedule(getApplication<Application>(), phaseDeadline)
+        if (pomodoroJob?.isActive != true) tickPomodoro()
+    }
+
+    private fun restorePomodoroRuntime() {
+        pomodoroJob?.cancel()
+        val storedPhase = repo.pomodoroRuntimePhase
+        if (storedPhase == null) {
+            phaseDeadline = 0L
+            phaseStartedAt = 0L
+            pomodoroState = com.uplb.punla.ui.pomodoro.PomodoroUiState()
+            return
+        }
+        val phase = runCatching {
+            com.uplb.punla.ui.pomodoro.PomodoroPhase.valueOf(storedPhase)
+        }.getOrNull() ?: run {
+            repo.clearPomodoroRuntime()
+            pomodoroState = com.uplb.punla.ui.pomodoro.PomodoroUiState()
+            return
+        }
+        if (phase == com.uplb.punla.ui.pomodoro.PomodoroPhase.IDLE) {
+            repo.clearPomodoroRuntime()
+            pomodoroState = com.uplb.punla.ui.pomodoro.PomodoroUiState()
+            return
+        }
+
+        phaseDeadline = repo.pomodoroRuntimeDeadline
+        phaseStartedAt = repo.pomodoroRuntimeStartedAt
+        val running = repo.pomodoroRuntimeRunning
+        val remaining = if (running) {
+            (((phaseDeadline - System.currentTimeMillis()).coerceAtLeast(0L) + 999L) / 1000L).toInt()
+        } else {
+            repo.pomodoroRuntimeRemainingSeconds.coerceAtLeast(0)
+        }
+
+        pomodoroState = com.uplb.punla.ui.pomodoro.PomodoroUiState(
+            phase = phase,
+            remainingSeconds = remaining,
+            totalSecondsForPhase = repo.pomodoroRuntimeTotalSeconds.coerceAtLeast(0),
+            isRunning = running,
+            cycleCount = repo.pomodoroRuntimeCycleCount.coerceAtLeast(0),
+            courseCode = repo.pomodoroRuntimeCourseCode
+        )
+
+        if (running) {
+            if (remaining <= 0) {
+                onPhaseComplete()
+            } else {
+                PomodoroAlarmScheduler.schedule(getApplication<Application>(), phaseDeadline)
+                tickPomodoro()
+            }
+        }
+    }
+
+    private fun persistPomodoroRuntime() {
+        if (pomodoroState.phase == com.uplb.punla.ui.pomodoro.PomodoroPhase.IDLE) {
+            repo.clearPomodoroRuntime()
+            return
+        }
+        repo.savePomodoroRuntime(
+            phase = pomodoroState.phase.name,
+            deadline = phaseDeadline,
+            startedAt = phaseStartedAt,
+            remainingSeconds = pomodoroState.remainingSeconds,
+            totalSeconds = pomodoroState.totalSecondsForPhase,
+            running = pomodoroState.isRunning,
+            cycleCount = pomodoroState.cycleCount,
+            courseCode = pomodoroState.courseCode
+        )
+    }
 
     fun startPomodoroWork(courseCode: String?) {
         activatePendingStudySuggestion()
@@ -951,6 +1094,8 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
             phase = phase, remainingSeconds = seconds, totalSecondsForPhase = seconds,
             isRunning = true, courseCode = courseCode ?: pomodoroState.courseCode
         )
+        persistPomodoroRuntime()
+        PomodoroAlarmScheduler.schedule(getApplication<Application>(), phaseDeadline)
         tickPomodoro()
     }
 
@@ -962,7 +1107,7 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
                     onPhaseComplete()
                     break
                 }
-                pomodoroState = pomodoroState.copy(remainingSeconds = (remainingMs / 1000).toInt())
+                pomodoroState = pomodoroState.copy(remainingSeconds = ((remainingMs + 999L) / 1000L).toInt())
                 kotlinx.coroutines.delay(250) // sub-second poll, cheap, keeps UI smooth
             }
         }
@@ -970,12 +1115,21 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
 
     fun pausePomodoro() {
         pomodoroJob?.cancel()
-        pomodoroState = pomodoroState.copy(isRunning = false)
+        PomodoroAlarmScheduler.cancel(getApplication<Application>())
+        if (pomodoroState.isRunning) {
+            val remainingMs = phaseDeadline - System.currentTimeMillis()
+            val remainingSeconds = (((remainingMs.coerceAtLeast(0L)) + 999L) / 1000L).toInt()
+            pomodoroState = pomodoroState.copy(isRunning = false, remainingSeconds = remainingSeconds)
+        }
+        persistPomodoroRuntime()
     }
 
     fun resumePomodoro() {
+        if (pomodoroState.phase == com.uplb.punla.ui.pomodoro.PomodoroPhase.IDLE || pomodoroState.remainingSeconds <= 0) return
         phaseDeadline = System.currentTimeMillis() + pomodoroState.remainingSeconds * 1000L
         pomodoroState = pomodoroState.copy(isRunning = true)
+        persistPomodoroRuntime()
+        PomodoroAlarmScheduler.schedule(getApplication<Application>(), phaseDeadline)
         tickPomodoro()
     }
 
@@ -984,7 +1138,12 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
      * accidental taps under a minute — not a meaningful session). */
     fun stopPomodoro() {
         pomodoroJob?.cancel()
-        if (pomodoroState.phase == com.uplb.punla.ui.pomodoro.PomodoroPhase.WORK) {
+        PomodoroAlarmScheduler.cancel(getApplication<Application>())
+        if (
+            pomodoroState.phase == com.uplb.punla.ui.pomodoro.PomodoroPhase.WORK &&
+            pomodoroState.totalSecondsForPhase > 0 &&
+            phaseStartedAt > 0L
+        ) {
             val actual = ((System.currentTimeMillis() - phaseStartedAt) / 1000).toInt()
             if (actual >= 60) {
                 logCompletedOrStoppedWork(actual, completed = false)
@@ -995,6 +1154,7 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         pomodoroState = com.uplb.punla.ui.pomodoro.PomodoroUiState()
+        repo.clearPomodoroRuntime()
     }
 
     private fun clearPendingSuggestionAsStopped() {
@@ -1016,44 +1176,34 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun onPhaseComplete() {
-        if (pomodoroState.phase == com.uplb.punla.ui.pomodoro.PomodoroPhase.WORK) {
-            logCompletedOrStoppedWork(pomodoroState.totalSecondsForPhase, completed = true)
-        }
-        notifyPomodoroPhaseComplete(pomodoroState.phase)
-
-        val nextCycle = if (pomodoroState.phase == com.uplb.punla.ui.pomodoro.PomodoroPhase.WORK) pomodoroState.cycleCount + 1 else pomodoroState.cycleCount
-        val nextPhase = when (pomodoroState.phase) {
-            com.uplb.punla.ui.pomodoro.PomodoroPhase.WORK ->
-                if (nextCycle % repo.pomodoroCyclesBeforeLongBreak == 0) com.uplb.punla.ui.pomodoro.PomodoroPhase.LONG_BREAK
-                else com.uplb.punla.ui.pomodoro.PomodoroPhase.SHORT_BREAK
-            else -> com.uplb.punla.ui.pomodoro.PomodoroPhase.WORK
-        }
-        pomodoroState = pomodoroState.copy(cycleCount = nextCycle, isRunning = false)
-
-        if (repo.pomodoroAutoStartNext) {
-            val seconds = when (nextPhase) {
-                com.uplb.punla.ui.pomodoro.PomodoroPhase.WORK -> repo.pomodoroWorkMinutes
-                com.uplb.punla.ui.pomodoro.PomodoroPhase.SHORT_BREAK -> repo.pomodoroShortBreakMinutes
-                com.uplb.punla.ui.pomodoro.PomodoroPhase.LONG_BREAK -> repo.pomodoroLongBreakMinutes
-                com.uplb.punla.ui.pomodoro.PomodoroPhase.IDLE -> 0
-            } * 60
-            beginPhase(nextPhase, seconds, pomodoroState.courseCode)
-        } else {
-            pomodoroState = pomodoroState.copy(phase = nextPhase, remainingSeconds = 0, totalSecondsForPhase = 0)
+        val expectedDeadline = phaseDeadline
+        pomodoroJob?.cancel()
+        viewModelScope.launch {
+            PomodoroCompletionCoordinator.complete(getApplication<Application>(), expectedDeadline)
+            // Whether this call won the race or the AlarmManager receiver did,
+            // the repository now contains the authoritative next phase.
+            restorePomodoroRuntime()
         }
     }
 
     private fun logCompletedOrStoppedWork(actualSeconds: Int, completed: Boolean) {
+        // Capture the phase values before launching. onPhaseComplete() may
+        // immediately stage or auto-start the next phase, which mutates these
+        // fields before the coroutine gets a chance to run.
+        val courseCode = pomodoroState.courseCode
+        val startedAt = phaseStartedAt
+        val plannedMinutes = repo.pomodoroWorkMinutes
+        val cyclesInSession = pomodoroState.cycleCount + 1
+        val suggestionId = repo.pendingStudySuggestionId
         viewModelScope.launch {
-            val suggestionId = repo.pendingStudySuggestionId
             val session = StudySession(
-                courseCode = pomodoroState.courseCode,
-                startedAt = phaseStartedAt,
+                courseCode = courseCode,
+                startedAt = startedAt,
                 endedAt = System.currentTimeMillis(),
-                plannedMinutes = repo.pomodoroWorkMinutes,
+                plannedMinutes = plannedMinutes,
                 actualSeconds = actualSeconds,
                 completed = completed,
-                cyclesInSession = pomodoroState.cycleCount + 1,
+                cyclesInSession = cyclesInSession,
                 endReason = if (completed) "COMPLETED" else "STOPPED_EARLY",
                 suggestionId = suggestionId
             )
@@ -1076,56 +1226,6 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Mirrors ClassReminderWorker's notification pattern (channel created
-     * lazily, POST_NOTIFICATIONS guarded on API 33+) but posted directly
-     * from here since this only ever fires while the app is foregrounded —
-     * the timer's tick loop lives in this ViewModel, not a Worker. */
-    private fun notifyPomodoroPhaseComplete(justFinishedPhase: com.uplb.punla.ui.pomodoro.PomodoroPhase) {
-        val (title, body) = when (justFinishedPhase) {
-            com.uplb.punla.ui.pomodoro.PomodoroPhase.WORK -> "Focus block done" to "Time for a break."
-            com.uplb.punla.ui.pomodoro.PomodoroPhase.SHORT_BREAK,
-            com.uplb.punla.ui.pomodoro.PomodoroPhase.LONG_BREAK -> "Break's over" to "Ready for another round?"
-            com.uplb.punla.ui.pomodoro.PomodoroPhase.IDLE -> return
-        }
-        if (!repo.notificationsEnabled) return
-
-        val context = getApplication<Application>()
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            if (androidx.core.content.ContextCompat.checkSelfPermission(
-                    context, android.Manifest.permission.POST_NOTIFICATIONS
-                ) != android.content.pm.PackageManager.PERMISSION_GRANTED
-            ) return
-        }
-
-        val channelId = "punla_pomodoro_channel"
-        val channel = android.app.NotificationChannel(
-            channelId, "Focus Timer", android.app.NotificationManager.IMPORTANCE_DEFAULT
-        ).apply { description = "Alerts when a focus or break interval finishes" }
-        val sysManager = context.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-        sysManager.createNotificationChannel(channel)
-
-        val intent = android.content.Intent(context, com.uplb.punla.MainActivity::class.java).apply {
-            flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK
-            putExtra(com.uplb.punla.MainActivity.EXTRA_START_ROUTE, "pomodoro")
-        }
-        val pendingIntent = android.app.PendingIntent.getActivity(
-            context, 9001, intent, android.app.PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val builder = androidx.core.app.NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(com.uplb.punla.R.mipmap.ic_launcher)
-            .setContentTitle(title)
-            .setContentText(body)
-            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_DEFAULT)
-            .setContentIntent(pendingIntent)
-            .setAutoCancel(true)
-
-        try {
-            androidx.core.app.NotificationManagerCompat.from(context).notify(9001, builder.build())
-        } catch (e: SecurityException) {
-            // Permission wasn't granted
-        }
-    }
 
     override fun onCleared() {
         pomodoroJob?.cancel()

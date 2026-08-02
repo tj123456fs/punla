@@ -1,5 +1,15 @@
 # Punla Android — Change Log
 
+## Session 17 — Pomodoro PiP, background alarm, and custom sounds
+
+- **Picture-in-Picture timer** — an optional compact countdown appears when a running Pomodoro leaves the foreground. Android 12+ uses smooth auto-enter; Android 8–11 enters PiP from the Home/app-switch gesture.
+- **Background-safe completion alarm** — every running phase schedules an `AlarmManager` deadline, so focus and break alerts still fire after the activity or process is removed. Pausing/stopping cancels it, resuming schedules a new deadline, and reboot/app-update recovery restores it.
+- **Exact-alarm fallback** — Settings shows whether Android's *Alarms & reminders* access is granted. Punla uses exact while-idle delivery when allowed and an inexact while-idle fallback otherwise.
+- **Custom sounds** — Focus-complete and Break-complete sounds can be selected independently from the device ringtone picker. Sound and vibration can also be disabled separately.
+- **Duplicate protection** — the visible clock and background receiver share one completion coordinator, preventing duplicate session rows or duplicate alerts when both wake together.
+- **Version** — bumped to `1.1` (`versionCode 2`) for install-over-update compatibility.
+
+---
 This build merges two parallel sessions that both started from the same
 base and independently implemented the same roadmap items. Rather than
 keep two divergent copies, this is one consolidated codebase: the newer
@@ -835,3 +845,9 @@ Implemented the staged personal-intelligence plan as a local-first extension of 
 - Added JUnit tests for pattern functions and the online predictor.
 
 A full Android build was not run because this editing environment lacks Gradle and Android SDK 34; the included GitHub Actions workflow remains the final compile check.
+
+## 2026-08-02 — Pomodoro background/resume fix
+- Persisted the active Pomodoro phase, wall-clock deadline, cycle count, and course locally.
+- Restored and resynchronized the countdown after app switching, notification-shade interruptions, or Android process recreation.
+- Showed the configured short/long-break duration while the next phase is waiting to be started instead of displaying `00:00`.
+- Captured completed-session values before auto-starting the next phase so history rows keep the correct start time and cycle number.

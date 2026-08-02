@@ -1,6 +1,11 @@
 package com.uplb.punla.ui.screens
 
+import android.app.Activity
+import android.content.Intent
+import android.media.RingtoneManager
 import android.net.Uri
+import android.os.Build
+import android.provider.Settings as AndroidSettings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -17,6 +22,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.font.FontWeight
@@ -38,6 +44,7 @@ import com.uplb.punla.data.FontChoice
 import com.uplb.punla.data.ThemePreset
 import com.uplb.punla.ui.PunlaViewModel
 import com.uplb.punla.ml.notificationEngagement
+import com.uplb.punla.pomodoro.PomodoroAlarmScheduler
 import com.uplb.punla.ui.theme.Palettes
 import com.uplb.punla.ui.theme.PunlaBody
 import com.uplb.punla.ui.theme.PunlaDisplay
@@ -77,6 +84,48 @@ fun SettingsScreen(
     var assistantModelInput by rememberSaveable { mutableStateOf(vm.assistantModel) }
     var assistantApiKeyInput by rememberSaveable { mutableStateOf("") }
     var intelligenceMessage by rememberSaveable { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    var exactAlarmAllowed by remember { mutableStateOf(PomodoroAlarmScheduler.exactAlarmAvailable(context)) }
+    var pickingWorkCompletionSound by remember { mutableStateOf(true) }
+
+    val exactAlarmSettingsLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        exactAlarmAllowed = PomodoroAlarmScheduler.exactAlarmAvailable(context)
+    }
+
+    val ringtonePickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode != Activity.RESULT_OK) return@rememberLauncherForActivityResult
+        val picked = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            result.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI, Uri::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            result.data?.getParcelableExtra<Uri>(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+        }
+        if (picked != null) {
+            if (pickingWorkCompletionSound) vm.updatePomodoroWorkSoundUri(picked.toString())
+            else vm.updatePomodoroBreakSoundUri(picked.toString())
+        }
+    }
+
+    fun openPomodoroSoundPicker(workCompletion: Boolean) {
+        pickingWorkCompletionSound = workCompletion
+        val stored = if (workCompletion) vm.pomodoroWorkSoundUri else vm.pomodoroBreakSoundUri
+        val current = stored?.let { Uri.parse(it) }
+            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+        val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+            putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
+            putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, if (workCompletion) "Focus complete sound" else "Break complete sound")
+            putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, current)
+            putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+            putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+        }
+        runCatching { ringtonePickerLauncher.launch(intent) }
+    }
+
+
 
     val archives by vm.archives.collectAsState()
     val notificationEvents by vm.notificationEvents.collectAsState()
@@ -648,23 +697,84 @@ fun SettingsScreen(
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
                     )
                     Spacer(Modifier.height(12.dp))
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Auto-start next phase", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium))
-                            Text(
-                                "Skip the tap between focus and break.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                    PomodoroToggleRow(
+                        title = "Auto-start next phase",
+                        description = "Skip the tap between focus and break.",
+                        checked = vm.pomodoroAutoStartNext,
+                        onCheckedChange = vm::updatePomodoroAutoStartNext
+                    )
+                    HorizontalDivider(Modifier.padding(vertical = 10.dp))
+                    PomodoroToggleRow(
+                        title = "Picture-in-Picture timer",
+                        description = "Keep a compact countdown visible while using PDFs, videos, or notes.",
+                        checked = vm.pomodoroPictureInPicture,
+                        onCheckedChange = vm::updatePomodoroPictureInPicture
+                    )
+                    HorizontalDivider(Modifier.padding(vertical = 10.dp))
+                    PomodoroToggleRow(
+                        title = "Alarm sound",
+                        description = "Play the selected sound when a focus block or break ends.",
+                        checked = vm.pomodoroAlarmSoundEnabled,
+                        onCheckedChange = vm::updatePomodoroAlarmSoundEnabled
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    PomodoroSoundRow(
+                        title = "Focus complete sound",
+                        soundUri = vm.pomodoroWorkSoundUri,
+                        enabled = vm.pomodoroAlarmSoundEnabled,
+                        onChoose = { openPomodoroSoundPicker(true) }
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    PomodoroSoundRow(
+                        title = "Break complete sound",
+                        soundUri = vm.pomodoroBreakSoundUri,
+                        enabled = vm.pomodoroAlarmSoundEnabled,
+                        onChoose = { openPomodoroSoundPicker(false) }
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    PomodoroToggleRow(
+                        title = "Vibrate",
+                        description = "Use a short vibration pattern with timer alarms.",
+                        checked = vm.pomodoroAlarmVibrationEnabled,
+                        onCheckedChange = vm::updatePomodoroAlarmVibrationEnabled
+                    )
+
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        HorizontalDivider(Modifier.padding(vertical = 10.dp))
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    "Precise background alarms",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
+                                )
+                                Text(
+                                    if (exactAlarmAllowed) "Allowed — timer alerts can fire at the exact deadline."
+                                    else "Allow Alarms & reminders so Android does not delay the timer under battery saving.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            if (exactAlarmAllowed) {
+                                AssistChip(onClick = {}, enabled = false, label = { Text("Allowed") })
+                            } else {
+                                OutlinedButton(
+                                    onClick = {
+                                        runCatching {
+                                            exactAlarmSettingsLauncher.launch(
+                                                Intent(
+                                                    AndroidSettings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                                                    Uri.parse("package:${context.packageName}")
+                                                )
+                                            )
+                                        }
+                                    }
+                                ) { Text("Allow") }
+                            }
                         }
-                        Switch(
-                            checked = vm.pomodoroAutoStartNext,
-                            onCheckedChange = { vm.updatePomodoroAutoStartNext(it) }
-                        )
                     }
                 }
             }
@@ -1184,6 +1294,62 @@ private fun FontOptionRow(
                 modifier = Modifier.size(20.dp)
             )
         }
+    }
+}
+
+@Composable
+private fun PomodoroToggleRow(
+    title: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium))
+            Text(
+                description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+@Composable
+private fun PomodoroSoundRow(
+    title: String,
+    soundUri: String?,
+    enabled: Boolean,
+    onChoose: () -> Unit
+) {
+    val context = LocalContext.current
+    val soundName = remember(soundUri) {
+        val uri = soundUri?.let { Uri.parse(it) } ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+        runCatching { RingtoneManager.getRingtone(context, uri)?.getTitle(context) }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() }
+            ?: "System alarm sound"
+    }
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium))
+            Text(
+                soundName,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        OutlinedButton(onClick = onChoose, enabled = enabled) { Text("Choose") }
     }
 }
 

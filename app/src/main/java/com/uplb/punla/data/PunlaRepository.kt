@@ -385,6 +385,125 @@ class PunlaRepository(context: Context) {
         get() = prefs.getBoolean("pomo_auto_start_next", false)
         set(value) = prefs.edit().putBoolean("pomo_auto_start_next", value).apply()
 
+    /** Keep the active timer visible in Android Picture-in-Picture when the
+     * user leaves Punla. Enabled by default because it is useful during PDFs,
+     * lecture videos, and note-taking, but remains fully optional. */
+    var pomodoroPictureInPicture: Boolean
+        get() = prefs.getBoolean("pomo_picture_in_picture", true)
+        set(value) = prefs.edit().putBoolean("pomo_picture_in_picture", value).apply()
+
+    var pomodoroAlarmSoundEnabled: Boolean
+        get() = prefs.getBoolean("pomo_alarm_sound_enabled", true)
+        set(value) = prefs.edit().putBoolean("pomo_alarm_sound_enabled", value).apply()
+
+    var pomodoroAlarmVibrationEnabled: Boolean
+        get() = prefs.getBoolean("pomo_alarm_vibration_enabled", true)
+        set(value) = prefs.edit().putBoolean("pomo_alarm_vibration_enabled", value).apply()
+
+    /** Null means the device's current default alarm sound. */
+    var pomodoroWorkSoundUri: String?
+        get() = prefs.getString("pomo_work_sound_uri", null)
+        set(value) {
+            if (value == null) prefs.edit().remove("pomo_work_sound_uri").apply()
+            else prefs.edit().putString("pomo_work_sound_uri", value).apply()
+        }
+
+    /** Null means the device's current default alarm sound. */
+    var pomodoroBreakSoundUri: String?
+        get() = prefs.getString("pomo_break_sound_uri", null)
+        set(value) {
+            if (value == null) prefs.edit().remove("pomo_break_sound_uri").apply()
+            else prefs.edit().putString("pomo_break_sound_uri", value).apply()
+        }
+
+    // ---- Pomodoro runtime snapshot ----
+    // Kept separate from the user-editable settings above. The countdown uses
+    // an absolute wall-clock deadline, so reopening the app after switching
+    // apps (or after Android recreates the process) can recover the correct
+    // remaining time instead of resetting to IDLE.
+    var pomodoroRuntimePhase: String?
+        get() = prefs.getString("pomo_runtime_phase", null)
+        set(value) {
+            if (value == null) prefs.edit().remove("pomo_runtime_phase").apply()
+            else prefs.edit().putString("pomo_runtime_phase", value).apply()
+        }
+
+    var pomodoroRuntimeDeadline: Long
+        get() = prefs.getLong("pomo_runtime_deadline", 0L)
+        set(value) = prefs.edit().putLong("pomo_runtime_deadline", value).apply()
+
+    var pomodoroRuntimeStartedAt: Long
+        get() = prefs.getLong("pomo_runtime_started_at", 0L)
+        set(value) = prefs.edit().putLong("pomo_runtime_started_at", value).apply()
+
+    var pomodoroRuntimeRemainingSeconds: Int
+        get() = prefs.getInt("pomo_runtime_remaining_seconds", 0)
+        set(value) = prefs.edit().putInt("pomo_runtime_remaining_seconds", value).apply()
+
+    var pomodoroRuntimeTotalSeconds: Int
+        get() = prefs.getInt("pomo_runtime_total_seconds", 0)
+        set(value) = prefs.edit().putInt("pomo_runtime_total_seconds", value).apply()
+
+    var pomodoroRuntimeRunning: Boolean
+        get() = prefs.getBoolean("pomo_runtime_running", false)
+        set(value) = prefs.edit().putBoolean("pomo_runtime_running", value).apply()
+
+    var pomodoroRuntimeCycleCount: Int
+        get() = prefs.getInt("pomo_runtime_cycle_count", 0)
+        set(value) = prefs.edit().putInt("pomo_runtime_cycle_count", value).apply()
+
+    var pomodoroRuntimeCourseCode: String?
+        get() = prefs.getString("pomo_runtime_course_code", null)
+        set(value) {
+            if (value == null) prefs.edit().remove("pomo_runtime_course_code").apply()
+            else prefs.edit().putString("pomo_runtime_course_code", value).apply()
+        }
+
+    /** Deadline most recently claimed by either the in-app clock or the
+     * AlarmManager receiver. This makes completion idempotent when both wake
+     * at nearly the same millisecond. */
+    var pomodoroLastHandledDeadline: Long
+        get() = prefs.getLong("pomo_last_handled_deadline", 0L)
+        set(value) = prefs.edit().putLong("pomo_last_handled_deadline", value).apply()
+
+    fun savePomodoroRuntime(
+        phase: String,
+        deadline: Long,
+        startedAt: Long,
+        remainingSeconds: Int,
+        totalSeconds: Int,
+        running: Boolean,
+        cycleCount: Int,
+        courseCode: String?
+    ) {
+        prefs.edit()
+            .putString("pomo_runtime_phase", phase)
+            .putLong("pomo_runtime_deadline", deadline)
+            .putLong("pomo_runtime_started_at", startedAt)
+            .putInt("pomo_runtime_remaining_seconds", remainingSeconds)
+            .putInt("pomo_runtime_total_seconds", totalSeconds)
+            .putBoolean("pomo_runtime_running", running)
+            .putInt("pomo_runtime_cycle_count", cycleCount)
+            .apply {
+                if (courseCode == null) remove("pomo_runtime_course_code")
+                else putString("pomo_runtime_course_code", courseCode)
+            }
+            .apply()
+    }
+
+    fun clearPomodoroRuntime() {
+        prefs.edit()
+            .remove("pomo_runtime_phase")
+            .remove("pomo_runtime_deadline")
+            .remove("pomo_runtime_started_at")
+            .remove("pomo_runtime_remaining_seconds")
+            .remove("pomo_runtime_total_seconds")
+            .remove("pomo_runtime_running")
+            .remove("pomo_runtime_cycle_count")
+            .remove("pomo_runtime_course_code")
+            .apply()
+    }
+
     // ---- Study session log ----
     fun observeStudySessions(): kotlinx.coroutines.flow.Flow<List<com.uplb.punla.data.entity.StudySession>> =
         db.studySessionDao().observeAll()

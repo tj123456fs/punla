@@ -1,10 +1,13 @@
 package com.uplb.punla
 
 import android.Manifest
+import android.app.PictureInPictureParams
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
+import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
@@ -83,6 +86,7 @@ import com.uplb.punla.data.entity.NotificationEvent
 import com.uplb.punla.notification.TrackedNotification
 import com.uplb.punla.ui.LogoIntroScreen
 import com.uplb.punla.ui.PunlaViewModel
+import com.uplb.punla.ui.pomodoro.PomodoroPhase
 import com.uplb.punla.ui.screens.BudgetScreen
 import com.uplb.punla.ui.screens.CampusMapScreen
 import com.uplb.punla.ui.screens.ChecklistScreen
@@ -110,6 +114,7 @@ import com.uplb.punla.ui.screens.CampusFullMapScreen
 
 class MainActivity : ComponentActivity() {
     private val vm: PunlaViewModel by viewModels()
+    private val pipModeState = mutableStateOf(false)
 
     companion object {
         /** Intent extra used by the home-screen widgets to jump straight to
@@ -168,6 +173,39 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun updatePomodoroPictureInPictureParams(shouldAutoEnter: Boolean) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val builder = PictureInPictureParams.Builder()
+            .setAspectRatio(Rational(1, 1))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            builder.setAutoEnterEnabled(shouldAutoEnter)
+            builder.setSeamlessResizeEnabled(true)
+        }
+        setPictureInPictureParams(builder.build())
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        // Android 12+ uses auto-enter for a smoother gesture transition.
+        if (Build.VERSION.SDK_INT in Build.VERSION_CODES.O until Build.VERSION_CODES.S &&
+            vm.pomodoroPictureInPicture && vm.pomodoroState.isRunning
+        ) {
+            runCatching {
+                enterPictureInPictureMode(
+                    PictureInPictureParams.Builder().setAspectRatio(Rational(1, 1)).build()
+                )
+            }
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        pipModeState.value = isInPictureInPictureMode
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -178,6 +216,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         notificationPermissionGrantedState.value = hasNotificationPermission()
+        vm.syncPomodoroClock()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -228,6 +267,13 @@ class MainActivity : ComponentActivity() {
             }
             val startRoute by startRouteState
             val notificationPermissionGranted by notificationPermissionGrantedState
+            val inPictureInPicture by pipModeState
+            val pomodoroRunning = vm.pomodoroState.isRunning
+            val pomodoroPiPEnabled = vm.pomodoroPictureInPicture
+
+            LaunchedEffect(pomodoroRunning, pomodoroPiPEnabled) {
+                updatePomodoroPictureInPictureParams(pomodoroRunning && pomodoroPiPEnabled)
+            }
             val permissionPrefs = remember { getSharedPreferences("punla_permissions", MODE_PRIVATE) }
             var showNotificationRationale by rememberSaveable {
                 mutableStateOf(
@@ -243,21 +289,25 @@ class MainActivity : ComponentActivity() {
             var showIntro by rememberSaveable { mutableStateOf(true) }
 
             PunlaTheme(darkTheme = isDark, preset = vm.themePreset, customSeedArgb = vm.customSeedColor, fontChoice = vm.fontChoice) {
-                Crossfade(targetState = showIntro, animationSpec = tween(350), label = "launch_intro") { intro ->
-                    if (intro) {
-                        LogoIntroScreen(userName = vm.userName, onFinished = { showIntro = false })
-                    } else {
-                        PunlaApp(
-                            vm = vm,
-                            startRoute = startRoute,
-                            darkTheme = isDark,
-                            notificationPermissionGranted = notificationPermissionGranted,
-                            onRequestNotificationPermission = { requestNotificationPermission() }
-                        )
+                if (inPictureInPicture) {
+                    PomodoroPictureInPictureContent(vm)
+                } else {
+                    Crossfade(targetState = showIntro, animationSpec = tween(350), label = "launch_intro") { intro ->
+                        if (intro) {
+                            LogoIntroScreen(userName = vm.userName, onFinished = { showIntro = false })
+                        } else {
+                            PunlaApp(
+                                vm = vm,
+                                startRoute = startRoute,
+                                darkTheme = isDark,
+                                notificationPermissionGranted = notificationPermissionGranted,
+                                onRequestNotificationPermission = { requestNotificationPermission() }
+                            )
+                        }
                     }
                 }
 
-                if (!showIntro && showNotificationRationale) {
+                if (!inPictureInPicture && !showIntro && showNotificationRationale) {
                     AlertDialog(
                         onDismissRequest = {
                             permissionPrefs.edit().putBoolean("notification_rationale_seen", true).apply()
@@ -284,6 +334,60 @@ class MainActivity : ComponentActivity() {
                         }
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PomodoroPictureInPictureContent(vm: PunlaViewModel) {
+    val state = vm.pomodoroState
+    val stagedSeconds = when (state.phase) {
+        PomodoroPhase.WORK -> vm.pomodoroWorkMinutes * 60
+        PomodoroPhase.SHORT_BREAK -> vm.pomodoroShortBreakMinutes * 60
+        PomodoroPhase.LONG_BREAK -> vm.pomodoroLongBreakMinutes * 60
+        PomodoroPhase.IDLE -> vm.pomodoroWorkMinutes * 60
+    }
+    val shownSeconds = if (!state.isRunning && state.remainingSeconds == 0 && state.phase != PomodoroPhase.IDLE) {
+        stagedSeconds
+    } else {
+        state.remainingSeconds
+    }.coerceAtLeast(0)
+    val label = when (state.phase) {
+        PomodoroPhase.WORK -> "FOCUS"
+        PomodoroPhase.SHORT_BREAK -> "SHORT BREAK"
+        PomodoroPhase.LONG_BREAK -> "LONG BREAK"
+        PomodoroPhase.IDLE -> "READY"
+    }
+    val progress = if (state.totalSecondsForPhase > 0) {
+        shownSeconds.toFloat() / state.totalSecondsForPhase.toFloat()
+    } else 1f
+
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.surface
+    ) {
+        Box(Modifier.fillMaxSize().padding(10.dp), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(
+                progress = { progress.coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxSize(),
+                strokeWidth = 6.dp,
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+            )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    "%02d:%02d".format(shownSeconds / 60, shownSeconds % 60),
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontFamily = PunlaMono,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                )
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
         }
     }

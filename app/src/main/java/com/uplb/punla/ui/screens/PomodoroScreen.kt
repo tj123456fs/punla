@@ -106,8 +106,19 @@ fun PomodoroScreen(vm: PunlaViewModel, preselectedCourse: String? = null, onOpen
 
         // Big countdown ring
         Box(contentAlignment = Alignment.Center, modifier = Modifier.size(240.dp)) {
+            val stagedSeconds = when (state.phase) {
+                PomodoroPhase.WORK -> vm.pomodoroWorkMinutes * 60
+                PomodoroPhase.SHORT_BREAK -> vm.pomodoroShortBreakMinutes * 60
+                PomodoroPhase.LONG_BREAK -> vm.pomodoroLongBreakMinutes * 60
+                PomodoroPhase.IDLE -> vm.pomodoroWorkMinutes * 60
+            }
+            val shownSeconds = if (!state.isRunning && state.remainingSeconds == 0 && state.phase != PomodoroPhase.IDLE) {
+                stagedSeconds
+            } else {
+                state.remainingSeconds
+            }
             val progress = if (state.totalSecondsForPhase > 0) {
-                state.remainingSeconds.toFloat() / state.totalSecondsForPhase.toFloat()
+                shownSeconds.toFloat() / state.totalSecondsForPhase.toFloat()
             } else 1f
             CircularProgressIndicator(
                 progress = { progress },
@@ -117,8 +128,8 @@ fun PomodoroScreen(vm: PunlaViewModel, preselectedCourse: String? = null, onOpen
                 trackColor = phaseColor.copy(alpha = 0.15f)
             )
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                val minutes = state.remainingSeconds / 60
-                val seconds = state.remainingSeconds % 60
+                val minutes = shownSeconds / 60
+                val seconds = shownSeconds % 60
                 val display = if (state.phase == PomodoroPhase.IDLE) {
                     "%02d:00".format(vm.pomodoroWorkMinutes)
                 } else {
