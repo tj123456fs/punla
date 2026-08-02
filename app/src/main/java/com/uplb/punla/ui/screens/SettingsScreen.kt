@@ -714,7 +714,7 @@ fun SettingsScreen(
                         TextButton(
                             onClick = {
                                 val pipIntent = Intent(
-                                    AndroidSettings.ACTION_PICTURE_IN_PICTURE_SETTINGS,
+                                    "android.settings.PICTURE_IN_PICTURE_SETTINGS",
                                     Uri.parse("package:${context.packageName}")
                                 )
                                 runCatching { context.startActivity(pipIntent) }
