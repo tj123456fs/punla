@@ -706,9 +706,36 @@ fun SettingsScreen(
                     HorizontalDivider(Modifier.padding(vertical = 10.dp))
                     PomodoroToggleRow(
                         title = "Picture-in-Picture timer",
-                        description = "Keep a compact countdown visible while using PDFs, videos, or notes.",
+                        description = "Automatically float the countdown when you press Home or open Recents.",
                         checked = vm.pomodoroPictureInPicture,
                         onCheckedChange = vm::updatePomodoroPictureInPicture
+                    )
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        TextButton(
+                            onClick = {
+                                val pipIntent = Intent(
+                                    AndroidSettings.ACTION_PICTURE_IN_PICTURE_SETTINGS,
+                                    Uri.parse("package:${context.packageName}")
+                                )
+                                runCatching { context.startActivity(pipIntent) }
+                                    .onFailure {
+                                        context.startActivity(
+                                            Intent(
+                                                AndroidSettings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                                Uri.parse("package:${context.packageName}")
+                                            )
+                                        )
+                                    }
+                            },
+                            contentPadding = PaddingValues(horizontal = 0.dp)
+                        ) { Text("Allow PiP in Android settings") }
+                    }
+                    HorizontalDivider(Modifier.padding(vertical = 10.dp))
+                    PomodoroToggleRow(
+                        title = "Live timer notification",
+                        description = "Show a silent countdown in the notification shade while a phase is running.",
+                        checked = vm.pomodoroTimerNotification,
+                        onCheckedChange = vm::updatePomodoroTimerNotification
                     )
                     HorizontalDivider(Modifier.padding(vertical = 10.dp))
                     PomodoroToggleRow(

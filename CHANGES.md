@@ -851,3 +851,13 @@ A full Android build was not run because this editing environment lacks Gradle a
 - Restored and resynchronized the countdown after app switching, notification-shade interruptions, or Android process recreation.
 - Showed the configured short/long-break duration while the next phase is waiting to be started instead of displaying `00:00`.
 - Captured completed-session values before auto-starting the next phase so history rows keep the correct start time and cycle number.
+
+
+## Session 18 — Reliable PiP and live timer notification
+
+- Added an ongoing, silent notification with a system-managed countdown while a Pomodoro phase is running.
+- Added a Pomodoro setting to enable or disable the live timer notification.
+- Added a direct shortcut to Android's per-app Picture-in-Picture permission screen.
+- Added `onPictureInPictureRequested()` fallback handling alongside Android 12+ auto-enter.
+- Restores the live timer notification after app/process recreation, device reboot, or app update.
+- Cancels the live notification when paused, stopped, or completed.

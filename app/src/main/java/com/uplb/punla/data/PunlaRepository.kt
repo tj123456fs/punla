@@ -392,6 +392,13 @@ class PunlaRepository(context: Context) {
         get() = prefs.getBoolean("pomo_picture_in_picture", true)
         set(value) = prefs.edit().putBoolean("pomo_picture_in_picture", value).apply()
 
+    /** Shows a silent, ongoing Android notification whose system chronometer
+     * counts down to the active phase deadline. This remains accurate without
+     * waking the app every second. */
+    var pomodoroTimerNotification: Boolean
+        get() = prefs.getBoolean("pomo_timer_notification", true)
+        set(value) = prefs.edit().putBoolean("pomo_timer_notification", value).apply()
+
     var pomodoroAlarmSoundEnabled: Boolean
         get() = prefs.getBoolean("pomo_alarm_sound_enabled", true)
         set(value) = prefs.edit().putBoolean("pomo_alarm_sound_enabled", value).apply()

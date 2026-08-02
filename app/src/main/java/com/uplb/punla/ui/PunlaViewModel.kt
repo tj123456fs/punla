@@ -31,6 +31,7 @@ import com.uplb.punla.ml.StudySlotFeatures
 import com.uplb.punla.ml.StudySlotPredictor
 import com.uplb.punla.ui.pomodoro.StudySuggestion
 import com.uplb.punla.pomodoro.PomodoroAlarmScheduler
+import com.uplb.punla.pomodoro.PomodoroRunningNotification
 import com.uplb.punla.pomodoro.PomodoroCompletionCoordinator
 import com.uplb.punla.assistant.AssistantSnapshot
 import com.uplb.punla.assistant.LocalAssistant
@@ -297,6 +298,11 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     fun toggleNotifications(enabled: Boolean) {
         repo.notificationsEnabled = enabled
         notificationsEnabled = enabled
+        if (enabled && repo.pomodoroTimerNotification && repo.pomodoroRuntimeRunning) {
+            PomodoroRunningNotification.showFromRepository(getApplication<Application>())
+        } else if (!enabled) {
+            PomodoroRunningNotification.cancel(getApplication<Application>())
+        }
     }
 
     fun updateBudgetPeriod(period: BudgetPeriod) {
@@ -880,6 +886,8 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var pomodoroPictureInPicture by mutableStateOf(repo.pomodoroPictureInPicture)
         private set
+    var pomodoroTimerNotification by mutableStateOf(repo.pomodoroTimerNotification)
+        private set
     var pomodoroAlarmSoundEnabled by mutableStateOf(repo.pomodoroAlarmSoundEnabled)
         private set
     var pomodoroAlarmVibrationEnabled by mutableStateOf(repo.pomodoroAlarmVibrationEnabled)
@@ -917,6 +925,16 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     fun updatePomodoroPictureInPicture(enabled: Boolean) {
         repo.pomodoroPictureInPicture = enabled
         pomodoroPictureInPicture = enabled
+    }
+
+    fun updatePomodoroTimerNotification(enabled: Boolean) {
+        repo.pomodoroTimerNotification = enabled
+        pomodoroTimerNotification = enabled
+        if (enabled && pomodoroState.isRunning) {
+            PomodoroRunningNotification.showFromRepository(getApplication<Application>())
+        } else if (!enabled) {
+            PomodoroRunningNotification.cancel(getApplication<Application>())
+        }
     }
 
     fun updatePomodoroAlarmSoundEnabled(enabled: Boolean) {
@@ -982,6 +1000,7 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         // Replacing the same PendingIntent is cheap and upgrades an inexact
         // fallback immediately if the user just granted exact-alarm access.
         PomodoroAlarmScheduler.schedule(getApplication<Application>(), phaseDeadline)
+        PomodoroRunningNotification.showFromRepository(getApplication<Application>())
         if (pomodoroJob?.isActive != true) tickPomodoro()
     }
 
@@ -1030,6 +1049,7 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
                 onPhaseComplete()
             } else {
                 PomodoroAlarmScheduler.schedule(getApplication<Application>(), phaseDeadline)
+                PomodoroRunningNotification.showFromRepository(getApplication<Application>())
                 tickPomodoro()
             }
         }
@@ -1096,6 +1116,7 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         )
         persistPomodoroRuntime()
         PomodoroAlarmScheduler.schedule(getApplication<Application>(), phaseDeadline)
+        PomodoroRunningNotification.showFromRepository(getApplication<Application>())
         tickPomodoro()
     }
 
@@ -1116,6 +1137,7 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     fun pausePomodoro() {
         pomodoroJob?.cancel()
         PomodoroAlarmScheduler.cancel(getApplication<Application>())
+        PomodoroRunningNotification.cancel(getApplication<Application>())
         if (pomodoroState.isRunning) {
             val remainingMs = phaseDeadline - System.currentTimeMillis()
             val remainingSeconds = (((remainingMs.coerceAtLeast(0L)) + 999L) / 1000L).toInt()
@@ -1130,6 +1152,7 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         pomodoroState = pomodoroState.copy(isRunning = true)
         persistPomodoroRuntime()
         PomodoroAlarmScheduler.schedule(getApplication<Application>(), phaseDeadline)
+        PomodoroRunningNotification.showFromRepository(getApplication<Application>())
         tickPomodoro()
     }
 
@@ -1139,6 +1162,7 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     fun stopPomodoro() {
         pomodoroJob?.cancel()
         PomodoroAlarmScheduler.cancel(getApplication<Application>())
+        PomodoroRunningNotification.cancel(getApplication<Application>())
         if (
             pomodoroState.phase == com.uplb.punla.ui.pomodoro.PomodoroPhase.WORK &&
             pomodoroState.totalSecondsForPhase > 0 &&

@@ -113,6 +113,7 @@ class PomodoroBootReceiver : BroadcastReceiver() {
 
         if (deadline > System.currentTimeMillis()) {
             PomodoroAlarmScheduler.schedule(context, deadline)
+            PomodoroRunningNotification.showFromRepository(context)
             return
         }
 
@@ -196,6 +197,7 @@ object PomodoroCompletionCoordinator {
                 }
             }
 
+            PomodoroRunningNotification.cancel(context)
             try {
                 PomodoroNotificationHelper.postCompletion(context, repo, finishedPhase)
             } catch (_: Exception) {
@@ -231,6 +233,7 @@ object PomodoroCompletionCoordinator {
                     courseCode = finishedCourse
                 )
                 PomodoroAlarmScheduler.schedule(context, deadline)
+                PomodoroRunningNotification.showFromRepository(context)
             } else {
                 repo.savePomodoroRuntime(
                     phase = nextPhase.name,
@@ -248,6 +251,106 @@ object PomodoroCompletionCoordinator {
         } finally {
             completionMutex.unlock()
         }
+    }
+}
+
+/**
+ * Silent ongoing countdown shown while a Pomodoro phase is running.
+ * Android's notification chronometer performs the visual countdown, so Punla
+ * does not need to wake up and repost a notification every second.
+ */
+object PomodoroRunningNotification {
+    private const val CHANNEL_ID = "punla_pomodoro_running"
+    private const val NOTIFICATION_ID = 9000
+
+    fun showFromRepository(context: Context) {
+        val appContext = context.applicationContext
+        val repo = PunlaRepository(appContext)
+        if (!repo.pomodoroTimerNotification || !repo.notificationsEnabled || !repo.pomodoroRuntimeRunning) {
+            cancel(appContext)
+            return
+        }
+        val deadline = repo.pomodoroRuntimeDeadline
+        if (deadline <= System.currentTimeMillis()) {
+            cancel(appContext)
+            return
+        }
+        val phase = runCatching {
+            PomodoroPhase.valueOf(repo.pomodoroRuntimePhase ?: "")
+        }.getOrNull() ?: run {
+            cancel(appContext)
+            return
+        }
+        post(appContext, phase, deadline, repo.pomodoroRuntimeCourseCode)
+    }
+
+    fun cancel(context: Context) {
+        NotificationManagerCompat.from(context.applicationContext).cancel(NOTIFICATION_ID)
+    }
+
+    private fun post(context: Context, phase: PomodoroPhase, deadline: Long, courseCode: String?) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) return
+        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
+
+        ensureChannel(context)
+        val openIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra(MainActivity.EXTRA_START_ROUTE, "pomodoro")
+        }
+        val contentIntent = PendingIntent.getActivity(
+            context,
+            NOTIFICATION_ID,
+            openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val title = when (phase) {
+            PomodoroPhase.WORK -> "Focus timer"
+            PomodoroPhase.SHORT_BREAK -> "Short break"
+            PomodoroPhase.LONG_BREAK -> "Long break"
+            PomodoroPhase.IDLE -> "Pomodoro"
+        }
+        val body = courseCode?.takeIf { it.isNotBlank() }?.let { "$it • Tap to open Punla" }
+            ?: "Tap to open Punla"
+
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setCategory(NotificationCompat.CATEGORY_PROGRESS)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setContentIntent(contentIntent)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setWhen(deadline)
+            .setShowWhen(true)
+            .setUsesChronometer(true)
+            .setChronometerCountDown(true)
+
+        try {
+            NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, builder.build())
+        } catch (_: SecurityException) {
+            // Notification permission changed between the check and the post.
+        }
+    }
+
+    private fun ensureChannel(context: Context) {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (manager.getNotificationChannel(CHANNEL_ID) != null) return
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            "Pomodoro live timer",
+            NotificationManager.IMPORTANCE_LOW
+        ).apply {
+            description = "Silent ongoing countdown for an active Punla Pomodoro"
+            setSound(null, null)
+            enableVibration(false)
+            setShowBadge(false)
+        }
+        manager.createNotificationChannel(channel)
     }
 }
 

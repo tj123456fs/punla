@@ -184,17 +184,35 @@ class MainActivity : ComponentActivity() {
         setPictureInPictureParams(builder.build())
     }
 
+    private fun pomodoroCanEnterPictureInPicture(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE) &&
+            vm.pomodoroPictureInPicture &&
+            vm.pomodoroState.isRunning
+
+    private fun enterPomodoroPictureInPicture(): Boolean {
+        if (!pomodoroCanEnterPictureInPicture() || isInPictureInPictureMode) return false
+        return runCatching {
+            enterPictureInPictureMode(
+                PictureInPictureParams.Builder()
+                    .setAspectRatio(Rational(1, 1))
+                    .build()
+            )
+        }.getOrDefault(false)
+    }
+
+    override fun onPictureInPictureRequested(): Boolean {
+        // Android 11+ can request PiP directly when this activity is being
+        // backgrounded. Android 12+ normally auto-enters first; this remains
+        // a fallback for launchers/OEMs that dispatch the callback instead.
+        return enterPomodoroPictureInPicture() || super.onPictureInPictureRequested()
+    }
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         // Android 12+ uses auto-enter for a smoother gesture transition.
-        if (Build.VERSION.SDK_INT in Build.VERSION_CODES.O until Build.VERSION_CODES.S &&
-            vm.pomodoroPictureInPicture && vm.pomodoroState.isRunning
-        ) {
-            runCatching {
-                enterPictureInPictureMode(
-                    PictureInPictureParams.Builder().setAspectRatio(Rational(1, 1)).build()
-                )
-            }
+        if (Build.VERSION.SDK_INT in Build.VERSION_CODES.O until Build.VERSION_CODES.S) {
+            enterPomodoroPictureInPicture()
         }
     }
 
