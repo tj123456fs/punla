@@ -9,47 +9,49 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import com.uplb.punla.data.FontChoice
 import com.uplb.punla.data.ThemePreset
 
-/**
- * Exposes the currently-resolved [PunlaPalette] to any composable under
- * [PunlaTheme] — not just the derived [androidx.compose.material3.ColorScheme]
- * roles. A handful of spots (the topbar's fixed "notebook cover" ink
- * gradient, card shadow tint) intentionally use raw palette roles rather
- * than roles that flip with light/dark mode, and previously did so by
- * importing hardcoded `Color.kt` constants directly — which meant they never
- * reacted to a preset or custom accent color change. Reading from this
- * CompositionLocal instead keeps them theme-aware without swapping with
- * light/dark mode.
- */
+/** Exposes the resolved Punla roles to backgrounds, shadows, and widgets. */
 val LocalPunlaPalette = staticCompositionLocalOf { Palettes.FieldNotebook }
 
-/** Lightens a color toward white — used to derive dark-mode-appropriate
- * variants of roles that only have a single (light-mode) value in
- * [PunlaPalette], the same way `leafLight` is a pre-picked lighter sibling
- * of `leaf`. */
-private fun Color.lightenedForDark(fraction: Float = 0.45f): Color = lerp(this, Color.White, fraction)
+private fun Color.lightenedForDark(fraction: Float = 0.45f): Color =
+    lerp(this, Color.White, fraction)
+
+/**
+ * Accent colors in the three pastel themes are intentionally soft. Choosing
+ * the label color from luminance keeps buttons, chips, and icons readable
+ * without darkening the collection's actual palette.
+ */
+private fun readableOn(accent: Color, lightText: Color, darkText: Color): Color {
+    fun contrast(a: Color, b: Color): Float {
+        val lighter = maxOf(a.luminance(), b.luminance())
+        val darker = minOf(a.luminance(), b.luminance())
+        return (lighter + 0.05f) / (darker + 0.05f)
+    }
+    return if (contrast(accent, lightText) >= contrast(accent, darkText)) lightText else darkText
+}
 
 private fun lightColorsFor(p: PunlaPalette) = lightColorScheme(
     primary = p.leaf,
-    onPrimary = p.onPrimaryLight,
+    onPrimary = readableOn(p.leaf, p.paper, p.ink),
     primaryContainer = p.leafBgLight,
-    onPrimaryContainer = p.inkSoft,
+    onPrimaryContainer = p.ink,
 
     secondary = p.maroon,
-    onSecondary = p.onSecondaryLight,
+    onSecondary = readableOn(p.maroon, p.paper, p.ink),
     secondaryContainer = p.maroonBgLight,
-    onSecondaryContainer = p.maroon,
+    onSecondaryContainer = p.ink,
 
     tertiary = p.mango,
-    onTertiary = p.onTertiaryLight,
+    onTertiary = readableOn(p.mango, p.paper, p.ink),
     tertiaryContainer = p.mangoBgLight,
-    onTertiaryContainer = p.bark,
+    onTertiaryContainer = p.ink,
 
     background = p.paper,
     onBackground = p.ink,
-    surface = p.cardLight,
+    surface = p.paper,
     onSurface = p.ink,
     surfaceVariant = p.cardLight,
     onSurfaceVariant = p.bark,
@@ -57,28 +59,28 @@ private fun lightColorsFor(p: PunlaPalette) = lightColorScheme(
     outline = p.lineLight,
     outlineVariant = p.lineLight,
     error = p.danger,
-    onError = p.paper,
+    onError = readableOn(p.danger, p.paper, p.ink),
 )
 
 private fun darkColorsFor(p: PunlaPalette) = darkColorScheme(
     primary = p.leafLight,
-    onPrimary = p.onPrimaryDark,
+    onPrimary = readableOn(p.leafLight, p.textDark, p.darkBg),
     primaryContainer = p.leafBgDark,
-    onPrimaryContainer = p.textDark,
+    onPrimaryContainer = readableOn(p.leafBgDark, p.textDark, p.darkBg),
 
-    secondary = p.secondaryDark,
-    onSecondary = p.onSecondaryDark,
+    secondary = p.maroonDark,
+    onSecondary = readableOn(p.maroonDark, p.textDark, p.darkBg),
     secondaryContainer = p.maroonBgDark,
-    onSecondaryContainer = p.textDark,
+    onSecondaryContainer = readableOn(p.maroonBgDark, p.textDark, p.darkBg),
 
-    tertiary = p.tertiaryDark,
-    onTertiary = p.onTertiaryDark,
+    tertiary = p.mangoDark,
+    onTertiary = readableOn(p.mangoDark, p.textDark, p.darkBg),
     tertiaryContainer = p.mangoBgDark,
-    onTertiaryContainer = p.textDark,
+    onTertiaryContainer = readableOn(p.mangoBgDark, p.textDark, p.darkBg),
 
     background = p.darkBg,
     onBackground = p.textDark,
-    surface = p.cardDark,
+    surface = p.darkBg,
     onSurface = p.textDark,
     surfaceVariant = p.cardDark,
     onSurfaceVariant = p.barkDark,
@@ -86,7 +88,7 @@ private fun darkColorsFor(p: PunlaPalette) = darkColorScheme(
     outline = p.lineDark,
     outlineVariant = p.lineDark,
     error = p.danger.lightenedForDark(),
-    onError = p.darkBg,
+    onError = readableOn(p.danger.lightenedForDark(), p.textDark, p.darkBg),
 )
 
 @Composable

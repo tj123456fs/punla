@@ -4,34 +4,30 @@ import androidx.compose.ui.graphics.Color
 import com.materialkolor.dynamicColorScheme
 import com.uplb.punla.data.ThemePreset
 
-/**
- * Resolves a [ThemePreset] (+ optional custom seed color) down to a concrete
- * [PunlaPalette]. Pure Kotlin, no Context/ViewModel dependency, so it's
- * callable from both `Theme.kt` (Compose) and — once step 5 lands — the
- * three Glance widgets, without either side duplicating this logic.
- */
+/** Resolves a saved preset (+ optional custom seed) to one concrete palette. */
 fun resolvePalette(preset: ThemePreset, customSeedArgb: Int?): PunlaPalette = when (preset) {
     ThemePreset.FIELD_NOTEBOOK -> Palettes.FieldNotebook
     ThemePreset.AURORA_BOREALIS -> Palettes.AuroraBorealis
     ThemePreset.SUNSET_SKY -> Palettes.SunsetSky
     ThemePreset.OCEAN_DEPTHS -> Palettes.OceanDepths
+    ThemePreset.FOREST_MIST -> Palettes.ForestMist
+    ThemePreset.LAVENDER_NIGHT -> Palettes.LavenderNight
+    ThemePreset.GOLDEN_DAWN -> Palettes.GoldenDawn
     ThemePreset.COFFEE_SHOP -> Palettes.CoffeeShop
     ThemePreset.LOFI_NIGHT -> Palettes.LofiNight
     ThemePreset.PAPER_INK -> Palettes.PaperInk
+    ThemePreset.LIBRARY_MODE -> Palettes.LibraryMode
+    ThemePreset.CYBER_NEON -> Palettes.CyberNeon
+    ThemePreset.PASTEL_BLOOM -> Palettes.PastelBloom
+    ThemePreset.FROST_GLASS -> Palettes.FrostGlass
+    ThemePreset.GALAXY -> Palettes.Galaxy
     ThemePreset.CUSTOM -> customSeedArgb?.let { buildFromSeed(it) } ?: Palettes.FieldNotebook
 }
 
 /**
- * Derives a full [PunlaPalette] from a single seed color using materialkolor's
- * HCT-based scheme generator, which produces a contrast-safe light+dark
- * Material 3 [androidx.compose.material3.ColorScheme] pair. Each Punla color
- * *role* is then mapped onto the closest matching Material role.
- *
- * `catSupplies`/`catOrg` are category-only accents that don't correspond to
- * any single Material role (Field Notebook hand-picks a blue and an amber
- * for them independent of the core leaf/maroon/mango hues) — deriving them
- * from a single seed would just be guessing, so they're kept fixed across
- * all custom seed colors rather than invented from nothing.
+ * Derives a full light + dark palette from a single seed with materialkolor.
+ * The extra explicit dark secondary/tertiary roles keep custom themes aligned
+ * with the curated collection and avoid altering those colors in Theme.kt.
  */
 private fun buildFromSeed(seedArgb: Int): PunlaPalette {
     val seed = Color(seedArgb)
@@ -60,6 +56,8 @@ private fun buildFromSeed(seedArgb: Int): PunlaPalette {
         textDark = dark.onBackground,
         lineDark = dark.outlineVariant,
         barkDark = dark.onSurfaceVariant,
+        maroonDark = dark.secondary,
+        mangoDark = dark.tertiary,
         leafBgDark = dark.primaryContainer,
         maroonBgDark = dark.secondaryContainer,
         mangoBgDark = dark.tertiaryContainer,
@@ -67,23 +65,12 @@ private fun buildFromSeed(seedArgb: Int): PunlaPalette {
         topbarSubtle = dark.onSurfaceVariant,
         tabInactive = dark.outline,
         shadowInk = light.onBackground,
-        // Category accents — core three follow the seed, the other three
-        // stay fixed (see kdoc above).
+        // Category accents
         catFood = light.primary,
         catTranspo = light.tertiary,
         catLoad = light.secondary,
         catSupplies = Palettes.FieldNotebook.catSupplies,
         catOrg = Palettes.FieldNotebook.catOrg,
         catMisc = light.onSurfaceVariant,
-        secondaryDark = dark.secondary,
-        tertiaryDark = dark.tertiary,
-        onPrimaryLight = light.onPrimary,
-        onSecondaryLight = light.onSecondary,
-        onTertiaryLight = light.onTertiary,
-        onPrimaryDark = dark.onPrimary,
-        onSecondaryDark = dark.onSecondary,
-        onTertiaryDark = dark.onTertiary,
-        success = light.primary,
-        warning = light.tertiary,
     )
 }

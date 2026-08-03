@@ -33,7 +33,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -41,12 +40,12 @@ import com.uplb.punla.data.BackgroundStyle
 import com.uplb.punla.data.BackupManager
 import com.uplb.punla.data.BudgetPeriod
 import com.uplb.punla.data.FontChoice
-import com.uplb.punla.data.ThemeMode
 import com.uplb.punla.data.ThemePreset
 import com.uplb.punla.ui.PunlaViewModel
 import com.uplb.punla.ml.notificationEngagement
 import com.uplb.punla.pomodoro.PomodoroAlarmScheduler
-import com.uplb.punla.ui.theme.Palettes
+import com.uplb.punla.ui.theme.PunlaThemeCatalog
+import com.uplb.punla.ui.theme.ThemeDescriptor
 import com.uplb.punla.ui.theme.PunlaBody
 import com.uplb.punla.ui.theme.PunlaDisplay
 import com.uplb.punla.ui.theme.PunlaMono
@@ -445,13 +444,13 @@ fun SettingsScreen(
             ) {
                 Column(Modifier.padding(16.dp)) {
                     Text(
-                        "THEMES",
+                        "APPEARANCE",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "Choose a study atmosphere. Layout and navigation stay consistent across every theme.",
+                        "Choose a complete visual theme. The Light/Dark label shows its intended mode; the top-bar mode control can still override it.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -462,109 +461,20 @@ fun SettingsScreen(
                             .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        ThemePreviewCard(
-                            name = "Aurora Borealis",
-                            mode = "Dark · Nature",
-                            description = "Calm teal and emerald for focused night study.",
-                            backgroundColor = Palettes.AuroraBorealis.darkBg,
-                            surfaceColor = Palettes.AuroraBorealis.cardDark,
-                            primaryColor = Palettes.AuroraBorealis.leafLight,
-                            secondaryColor = Palettes.AuroraBorealis.secondaryDark,
-                            tertiaryColor = Palettes.AuroraBorealis.tertiaryDark,
-                            selected = vm.themePreset == ThemePreset.AURORA_BOREALIS,
-                            onClick = { vm.applyThemePreset(ThemePreset.AURORA_BOREALIS, ThemeMode.DARK) }
-                        )
-                        ThemePreviewCard(
-                            name = "Sunset Sky",
-                            mode = "Dark · Nature",
-                            description = "Warm coral, pink, and violet for creative planning.",
-                            backgroundColor = Palettes.SunsetSky.darkBg,
-                            surfaceColor = Palettes.SunsetSky.cardDark,
-                            primaryColor = Palettes.SunsetSky.leafLight,
-                            secondaryColor = Palettes.SunsetSky.secondaryDark,
-                            tertiaryColor = Palettes.SunsetSky.tertiaryDark,
-                            selected = vm.themePreset == ThemePreset.SUNSET_SKY,
-                            onClick = { vm.applyThemePreset(ThemePreset.SUNSET_SKY, ThemeMode.DARK) }
-                        )
-                        ThemePreviewCard(
-                            name = "Ocean Depths",
-                            mode = "Dark · Nature",
-                            description = "Cool deep blues and aqua for long study sessions.",
-                            backgroundColor = Palettes.OceanDepths.darkBg,
-                            surfaceColor = Palettes.OceanDepths.cardDark,
-                            primaryColor = Palettes.OceanDepths.leafLight,
-                            secondaryColor = Palettes.OceanDepths.secondaryDark,
-                            tertiaryColor = Palettes.OceanDepths.tertiaryDark,
-                            selected = vm.themePreset == ThemePreset.OCEAN_DEPTHS,
-                            onClick = { vm.applyThemePreset(ThemePreset.OCEAN_DEPTHS, ThemeMode.DARK) }
-                        )
-                        ThemePreviewCard(
-                            name = "Coffee Shop",
-                            mode = "Dark · Cozy",
-                            description = "Mocha surfaces and caramel accents for relaxed work.",
-                            backgroundColor = Palettes.CoffeeShop.darkBg,
-                            surfaceColor = Palettes.CoffeeShop.cardDark,
-                            primaryColor = Palettes.CoffeeShop.leafLight,
-                            secondaryColor = Palettes.CoffeeShop.secondaryDark,
-                            tertiaryColor = Palettes.CoffeeShop.tertiaryDark,
-                            selected = vm.themePreset == ThemePreset.COFFEE_SHOP,
-                            onClick = { vm.applyThemePreset(ThemePreset.COFFEE_SHOP, ThemeMode.DARK) }
-                        )
-                        ThemePreviewCard(
-                            name = "Lo-fi Night",
-                            mode = "Dark · Cozy",
-                            description = "Muted neon colors for Pomodoro and late-night review.",
-                            backgroundColor = Palettes.LofiNight.darkBg,
-                            surfaceColor = Palettes.LofiNight.cardDark,
-                            primaryColor = Palettes.LofiNight.leafLight,
-                            secondaryColor = Palettes.LofiNight.secondaryDark,
-                            tertiaryColor = Palettes.LofiNight.tertiaryDark,
-                            selected = vm.themePreset == ThemePreset.LOFI_NIGHT,
-                            onClick = { vm.applyThemePreset(ThemePreset.LOFI_NIGHT, ThemeMode.DARK) }
-                        )
-                        ThemePreviewCard(
-                            name = "Paper & Ink",
-                            mode = "Light · Minimal",
-                            description = "Notebook-inspired neutrals for reading and schedules.",
-                            backgroundColor = Palettes.PaperInk.paper,
-                            surfaceColor = Palettes.PaperInk.cardLight,
-                            primaryColor = Palettes.PaperInk.leaf,
-                            secondaryColor = Palettes.PaperInk.maroon,
-                            tertiaryColor = Palettes.PaperInk.mango,
-                            selected = vm.themePreset == ThemePreset.PAPER_INK,
-                            onClick = { vm.applyThemePreset(ThemePreset.PAPER_INK, ThemeMode.LIGHT) }
-                        )
-                        ThemePreviewCard(
-                            name = "Punla Classic",
-                            mode = "Adaptive · Original",
-                            description = "The original field-notebook palette.",
-                            backgroundColor = Palettes.FieldNotebook.paper,
-                            surfaceColor = Palettes.FieldNotebook.cardLight,
-                            primaryColor = Palettes.FieldNotebook.leaf,
-                            secondaryColor = Palettes.FieldNotebook.maroon,
-                            tertiaryColor = Palettes.FieldNotebook.mango,
-                            selected = vm.themePreset == ThemePreset.FIELD_NOTEBOOK,
-                            onClick = { vm.updateThemePreset(ThemePreset.FIELD_NOTEBOOK) }
-                        )
-                        ThemePreviewCard(
-                            name = "Custom",
-                            mode = "Adaptive · Personal",
-                            description = "Build a full palette from your own accent color.",
-                            backgroundColor = MaterialTheme.colorScheme.background,
-                            surfaceColor = MaterialTheme.colorScheme.surfaceVariant,
-                            primaryColor = vm.customSeedColor?.let { Color(it) } ?: MaterialTheme.colorScheme.primary,
-                            secondaryColor = MaterialTheme.colorScheme.secondary,
-                            tertiaryColor = MaterialTheme.colorScheme.tertiary,
+                        PunlaThemeCatalog.forEach { theme ->
+                            ThemePresetCard(
+                                theme = theme,
+                                selected = vm.themePreset == theme.preset,
+                                onClick = { vm.updateThemePreset(theme.preset) }
+                            )
+                        }
+                        CustomThemeCard(
+                            swatchColor = vm.customSeedColor?.let { Color(it) }
+                                ?: MaterialTheme.colorScheme.primary,
                             selected = vm.themePreset == ThemePreset.CUSTOM,
                             onClick = { showCustomColorDialog = true }
                         )
                     }
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        "Applying a curated theme also switches to its intended light or dark mode. You can override it anytime from the top bar.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
             }
         }
@@ -1342,7 +1252,7 @@ private fun BackgroundStyleOptionRow(
 
 /** A selectable row for one [FontChoice] — shows the option's label previewed
  * in its own font (so the picker doubles as a live sample) plus a short
- * description, mirroring [PresetSwatch]'s selected/unselected treatment. */
+ * description, mirroring the theme card's selected/unselected treatment. */
 @Composable
 private fun FontOptionRow(
     label: String,
@@ -1447,107 +1357,165 @@ private fun PomodoroSoundRow(
 }
 
 @Composable
-private fun ThemePreviewCard(
-    name: String,
-    mode: String,
-    description: String,
-    backgroundColor: Color,
-    surfaceColor: Color,
-    primaryColor: Color,
-    secondaryColor: Color,
-    tertiaryColor: Color,
+private fun ThemePresetCard(
+    theme: ThemeDescriptor,
     selected: Boolean,
     onClick: () -> Unit
 ) {
+    val palette = theme.palette
+    val background = if (theme.designedForDark) palette.darkBg else palette.paper
+    val surface = if (theme.designedForDark) palette.cardDark else palette.cardLight
+    val text = if (theme.designedForDark) palette.textDark else palette.ink
+    val mutedText = if (theme.designedForDark) palette.barkDark else palette.bark
+    val primary = if (theme.designedForDark) palette.leafLight else palette.leaf
+    val secondary = if (theme.designedForDark) palette.maroonDark else palette.maroon
+    val tertiary = if (theme.designedForDark) palette.mangoDark else palette.mango
+    val outline = if (theme.designedForDark) palette.lineDark else palette.lineLight
+
     Card(
         modifier = Modifier
-            .width(230.dp)
-            .heightIn(min = 206.dp)
+            .width(190.dp)
+            .heightIn(min = 184.dp)
             .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(
-            containerColor = if (selected) MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.surface
-        ),
-        border = BorderStroke(
-            width = if (selected) 2.dp else 1.dp,
-            color = if (selected) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.outline
-        )
+        colors = CardDefaults.cardColors(containerColor = background),
+        border = BorderStroke(if (selected) 2.dp else 1.dp, if (selected) primary else outline)
     ) {
         Column(Modifier.padding(12.dp)) {
-            Box(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(74.dp)
+                    .height(34.dp)
                     .clip(MaterialTheme.shapes.small)
-                    .background(backgroundColor)
-                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f), MaterialTheme.shapes.small)
+                    .background(surface)
             ) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .width(144.dp)
-                        .height(46.dp)
-                        .clip(MaterialTheme.shapes.small)
-                        .background(surfaceColor)
-                        .padding(horizontal = 12.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                        listOf(primaryColor, secondaryColor, tertiaryColor).forEach { previewColor ->
-                            Box(
-                                Modifier
-                                    .size(18.dp)
-                                    .clip(CircleShape)
-                                    .background(previewColor)
-                            )
-                        }
-                    }
-                }
-                if (selected) {
-                    Surface(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(6.dp),
-                        shape = CircleShape,
-                        color = primaryColor
-                    ) {
-                        Icon(
-                            Icons.Default.Check,
-                            contentDescription = "Selected theme",
-                            tint = if (primaryColor.luminance() > 0.5f) Color.Black else Color.White,
-                            modifier = Modifier.padding(4.dp).size(14.dp)
-                        )
-                    }
-                }
+                Box(Modifier.weight(1f).fillMaxHeight().background(primary))
+                Box(Modifier.weight(1f).fillMaxHeight().background(secondary))
+                Box(Modifier.weight(1f).fillMaxHeight().background(tertiary))
             }
             Spacer(Modifier.height(10.dp))
-            Text(
-                name,
-                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                maxLines = 1
-            )
-            Text(
-                mode,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                minLines = 2,
-                maxLines = 2
-            )
-            Spacer(Modifier.height(4.dp))
-            TextButton(
-                onClick = onClick,
-                enabled = !selected,
-                contentPadding = PaddingValues(horizontal = 0.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(if (selected) "Applied" else "Apply")
+                Text(
+                    theme.name,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = text
+                )
+                if (selected) {
+                    Icon(
+                        Icons.Default.Check,
+                        contentDescription = "Selected",
+                        tint = primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
+            Spacer(Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                ThemePreviewLabel(theme.modeLabel, surface, text, outline)
+                Text(
+                    theme.category,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = mutedText,
+                    maxLines = 1
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                theme.description,
+                style = MaterialTheme.typography.bodySmall,
+                color = mutedText,
+                maxLines = 3
+            )
+        }
+    }
+}
+
+@Composable
+private fun ThemePreviewLabel(
+    label: String,
+    background: Color,
+    contentColor: Color,
+    outline: Color,
+) {
+    Box(
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(background)
+            .border(1.dp, outline, CircleShape)
+            .padding(horizontal = 7.dp, vertical = 3.dp)
+    ) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = contentColor)
+    }
+}
+
+@Composable
+private fun CustomThemeCard(
+    swatchColor: Color,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val surface = MaterialTheme.colorScheme.surface
+    val text = MaterialTheme.colorScheme.onSurface
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val outline = if (selected) swatchColor else MaterialTheme.colorScheme.outline
+
+    Card(
+        modifier = Modifier
+            .width(190.dp)
+            .heightIn(min = 184.dp)
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = surface),
+        border = BorderStroke(if (selected) 2.dp else 1.dp, outline)
+    ) {
+        Column(Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(34.dp)
+                    .clip(MaterialTheme.shapes.small)
+            ) {
+                Box(Modifier.weight(1f).fillMaxHeight().background(swatchColor))
+                Box(Modifier.weight(1f).fillMaxHeight().background(swatchColor.copy(alpha = 0.68f)))
+                Box(Modifier.weight(1f).fillMaxHeight().background(swatchColor.copy(alpha = 0.38f)))
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Custom Color",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = text
+                )
+                if (selected) {
+                    Icon(
+                        Icons.Default.Check,
+                        contentDescription = "Selected",
+                        tint = swatchColor,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+            ThemePreviewLabel("Light + Dark", surface, text, MaterialTheme.colorScheme.outline)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Build a full contrast-aware palette from your chosen accent color.",
+                style = MaterialTheme.typography.bodySmall,
+                color = muted,
+                maxLines = 3
+            )
         }
     }
 }

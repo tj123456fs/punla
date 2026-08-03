@@ -281,7 +281,7 @@ fun DashboardScreen(vm: PunlaViewModel, onOpenNextClassOnMap: () -> Unit = {}, o
                 contentPadding = PaddingValues(14.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Timer, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Icon(Icons.Default.Timer, contentDescription = null, tint = LocalPunlaPalette.current.leaf)
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
                         if (activeSuggestion != null) {
@@ -323,7 +323,7 @@ fun DashboardScreen(vm: PunlaViewModel, onOpenNextClassOnMap: () -> Unit = {}, o
                     LinearProgressIndicator(
                         progress = { goalProgress },
                         modifier = Modifier.fillMaxWidth().height(6.dp),
-                        color = MaterialTheme.colorScheme.primary,
+                        color = LocalPunlaPalette.current.leaf,
                         trackColor = MaterialTheme.colorScheme.outline,
                     )
                     Spacer(Modifier.height(6.dp))

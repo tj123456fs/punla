@@ -20,9 +20,17 @@ enum class ThemePreset {
     AURORA_BOREALIS,
     SUNSET_SKY,
     OCEAN_DEPTHS,
+    FOREST_MIST,
+    LAVENDER_NIGHT,
+    GOLDEN_DAWN,
     COFFEE_SHOP,
     LOFI_NIGHT,
     PAPER_INK,
+    LIBRARY_MODE,
+    CYBER_NEON,
+    PASTEL_BLOOM,
+    FROST_GLASS,
+    GALAXY,
     CUSTOM
 }
 
@@ -92,17 +100,20 @@ class PunlaRepository(context: Context) {
     var themePreset: ThemePreset
         get() = when (prefs.getString("theme_preset", null)) {
             "aurora_borealis" -> ThemePreset.AURORA_BOREALIS
-            "sunset_sky" -> ThemePreset.SUNSET_SKY
-            "ocean_depths" -> ThemePreset.OCEAN_DEPTHS
+            "sunset_sky", "sunset" -> ThemePreset.SUNSET_SKY
+            "ocean_depths", "ocean" -> ThemePreset.OCEAN_DEPTHS
+            "forest_mist" -> ThemePreset.FOREST_MIST
+            "lavender_night", "orchid" -> ThemePreset.LAVENDER_NIGHT
+            "golden_dawn" -> ThemePreset.GOLDEN_DAWN
             "coffee_shop" -> ThemePreset.COFFEE_SHOP
             "lofi_night" -> ThemePreset.LOFI_NIGHT
-            "paper_ink" -> ThemePreset.PAPER_INK
+            "paper_ink", "slate" -> ThemePreset.PAPER_INK
+            "library_mode" -> ThemePreset.LIBRARY_MODE
+            "cyber_neon" -> ThemePreset.CYBER_NEON
+            "pastel_bloom" -> ThemePreset.PASTEL_BLOOM
+            "frost_glass" -> ThemePreset.FROST_GLASS
+            "galaxy" -> ThemePreset.GALAXY
             "custom" -> ThemePreset.CUSTOM
-            // Migrate the previous palette names to their closest theme-collection match.
-            "ocean" -> ThemePreset.OCEAN_DEPTHS
-            "sunset" -> ThemePreset.SUNSET_SKY
-            "orchid" -> ThemePreset.LOFI_NIGHT
-            "slate" -> ThemePreset.PAPER_INK
             else -> ThemePreset.FIELD_NOTEBOOK
         }
         set(value) = prefs.edit().putString("theme_preset", value.name.lowercase()).apply()

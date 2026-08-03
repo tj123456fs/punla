@@ -1,43 +1,43 @@
-# Punla Theme Collection — Implementation Progress
+# Punla Theme Collection Implementation
 
-This build begins the theme-system update described in `PUNLA_THEME_COLLECTION.md`.
+This build implements all 14 palettes from `PUNLA_THEME_COLLECTION.md` while retaining the original **Field Notebook** theme and the existing **Custom Color** generator.
 
-## Implemented in this build
+## Included curated themes
 
-- Added the six presets recommended for the initial release:
-  - Aurora Borealis
-  - Sunset Sky
-  - Ocean Depths
-  - Coffee Shop
-  - Lo-fi Night
-  - Paper & Ink
-- Preserved **Punla Classic** and the existing **Custom** seed-color option.
-- Added exact intended-mode background, surface, primary, secondary, tertiary, and text colors from the theme collection.
-- Added explicit light/dark foreground roles so filled buttons and chips remain readable.
-- Added success and warning roles to each palette alongside the existing error color.
-- Rebuilt Settings → Themes as scrollable preview cards showing:
-  - theme name
-  - intended mode/category
-  - miniature background, surface, and accent preview
-  - mood description
-  - selected state
-  - Apply action
-- Curated dark themes now switch Punla to dark mode when applied; Paper & Ink switches to light mode. The top-bar appearance control can still override the mode afterward.
-- Existing saved Ocean, Sunset, Orchid, and Slate preferences migrate to the closest new theme.
-- App widgets continue resolving their colors and backgrounds through the shared palette resolver.
-- Backups now preserve the selected theme, custom seed color, background style, and font choice.
-
-## Still planned from the collection
-
+- Aurora Borealis
+- Sunset Sky
+- Ocean Depths
 - Forest Mist
 - Lavender Night
 - Golden Dawn
+- Coffee Shop
+- Lo-fi Night
+- Paper & Ink
 - Library Mode
 - Cyber Neon
 - Pastel Bloom
 - Frost Glass
 - Galaxy
-- Optional theme filters
-- Automatic time-of-day switching
-- Theme preview without immediately applying
-- Reduced-motion and accessibility-contrast controls
+
+## Behavior
+
+- Each theme's documented mode uses the exact background, surface, primary, secondary, tertiary, and text colors from the collection.
+- A readable companion palette is derived for the opposite mode so Punla's System/Light/Dark override remains usable.
+- Accent labels choose the higher-contrast text role automatically. This preserves the pastel palettes while keeping buttons, chips, and icons readable.
+- Widgets and animated/static background styles use the same resolved palette as the app.
+- Existing saved values migrate automatically: `ocean`, `sunset`, `orchid`, and `slate` map to their closest collection replacements.
+
+## Settings UI
+
+Settings → Appearance now presents full preview cards containing:
+
+- Theme name
+- Three-color preview
+- Designed mode
+- Category
+- Mood description
+- Selected indicator
+
+## Regression coverage
+
+`ThemeCollectionTest.kt` verifies that the catalog contains all themes and that every documented color remains exact.

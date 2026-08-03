@@ -29,7 +29,7 @@ fun renderBackgroundBitmap(
             canvas, widthPx.toFloat(), heightPx.toFloat(),
             t = FIXED_WIDGET_PHASE,
             starColorArgb = (if (isDark) palette.textDark else palette.ink).toArgb(),
-            accentColorArgb = (if (isDark) palette.tertiaryDark else palette.mango).toArgb(),
+            accentColorArgb = (if (isDark) palette.mangoDark else palette.mango).toArgb(),
             baseColorArgb = base,
         )
         BackgroundStyle.AMBIENT -> paintAmbientWash(canvas, widthPx.toFloat(), heightPx.toFloat(), palette, isDark)

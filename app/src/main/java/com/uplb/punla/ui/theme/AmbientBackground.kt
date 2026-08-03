@@ -85,7 +85,7 @@ fun Modifier.starfieldBackground(darkTheme: Boolean = false): Modifier = compose
                 paintStarfield(
                     canvas.nativeCanvas, size.width, size.height, t,
                     starColorArgb = (if (darkTheme) palette.textDark else palette.ink).toArgb(),
-                    accentColorArgb = (if (darkTheme) palette.tertiaryDark else palette.mango).toArgb(),
+                    accentColorArgb = (if (darkTheme) palette.mangoDark else palette.mango).toArgb(),
                     baseColorArgb = (if (darkTheme) palette.darkBg else palette.paper).toArgb(),
                 )
             }

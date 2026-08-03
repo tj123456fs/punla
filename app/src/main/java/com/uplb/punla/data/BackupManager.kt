@@ -82,10 +82,6 @@ object BackupManager {
             put("userName", repo.userName)
             put("chedTarget", repo.chedTarget)
             put("theme", repo.themeMode.name.lowercase())
-            put("themePreset", repo.themePreset.name.lowercase())
-            put("customSeedColor", repo.customSeedColor ?: JSONObject.NULL)
-            put("backgroundStyle", repo.backgroundStyle.name.lowercase())
-            put("fontChoice", repo.fontChoice.name.lowercase())
             put("notificationsEnabled", repo.notificationsEnabled)
             put("dailyStudyGoalMinutes", repo.dailyStudyGoalMinutes)
             put("weeklyStudyGoalMinutes", repo.weeklyStudyGoalMinutes)
@@ -204,43 +200,6 @@ object BackupManager {
             "light" -> ThemeMode.LIGHT
             "dark" -> ThemeMode.DARK
             else -> ThemeMode.SYSTEM
-        }
-        repo.themePreset = when (root.optString("themePreset", "")) {
-            "aurora_borealis" -> ThemePreset.AURORA_BOREALIS
-            "sunset_sky" -> ThemePreset.SUNSET_SKY
-            "ocean_depths" -> ThemePreset.OCEAN_DEPTHS
-            "coffee_shop" -> ThemePreset.COFFEE_SHOP
-            "lofi_night" -> ThemePreset.LOFI_NIGHT
-            "paper_ink" -> ThemePreset.PAPER_INK
-            "custom" -> ThemePreset.CUSTOM
-            // Backward-compatible names from the earlier palette picker.
-            "ocean" -> ThemePreset.OCEAN_DEPTHS
-            "sunset" -> ThemePreset.SUNSET_SKY
-            "orchid" -> ThemePreset.LOFI_NIGHT
-            "slate" -> ThemePreset.PAPER_INK
-            "field_notebook" -> ThemePreset.FIELD_NOTEBOOK
-            else -> repo.themePreset
-        }
-        repo.customSeedColor = if (!root.has("customSeedColor") || root.isNull("customSeedColor")) {
-            repo.customSeedColor
-        } else {
-            root.optInt("customSeedColor")
-        }
-        repo.backgroundStyle = when (root.optString("backgroundStyle", "")) {
-            "minimal" -> BackgroundStyle.MINIMAL
-            "starfield" -> BackgroundStyle.STARFIELD
-            "paper_grain" -> BackgroundStyle.PAPER_GRAIN
-            "rain" -> BackgroundStyle.RAIN
-            "ambient" -> BackgroundStyle.AMBIENT
-            else -> repo.backgroundStyle
-        }
-        repo.fontChoice = when (root.optString("fontChoice", "")) {
-            "sans" -> FontChoice.SANS
-            "serif" -> FontChoice.SERIF
-            "mono" -> FontChoice.MONO
-            "system" -> FontChoice.SYSTEM
-            "default" -> FontChoice.DEFAULT
-            else -> repo.fontChoice
         }
         repo.notificationsEnabled = root.optBoolean("notificationsEnabled", true)
         repo.dailyStudyGoalMinutes = root.optInt("dailyStudyGoalMinutes", repo.dailyStudyGoalMinutes)

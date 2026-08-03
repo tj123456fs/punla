@@ -1,15 +1,18 @@
 # Punla Android — Change Log
 
-## Session 18c — Theme Collection foundation
+## Session 19 — Full theme collection
 
-- Added the six recommended launch themes from `PUNLA_THEME_COLLECTION.md`: Aurora Borealis, Sunset Sky, Ocean Depths, Coffee Shop, Lo-fi Night, and Paper & Ink.
-- Replaced the compact color swatches in Settings with detailed theme preview cards showing intended mode, mood, palette preview, selected state, and an Apply action.
-- Added explicit dark accent and foreground roles to `PunlaPalette` so theme colors remain faithful to the specification without sacrificing filled-control contrast.
-- Curated themes apply their intended dark/light mode in the same action; Punla Classic and Custom continue to respect the current mode.
-- Added preference migration from the former Ocean, Sunset, Orchid, and Slate presets to their closest new collection equivalents.
-- Kept app and widget theme resolution on the same shared palette path.
-- Backups now include the theme preset, custom seed, background style, and font choice.
-- Version bumped to `1.3` (`versionCode 4`) for install-over-update testing.
+- **All 14 documented themes** — added Aurora Borealis, Sunset Sky, Ocean Depths, Forest Mist, Lavender Night, Golden Dawn, Coffee Shop, Lo-fi Night, Paper & Ink, Library Mode, Cyber Neon, Pastel Bloom, Frost Glass, and Galaxy using the exact colors in `PUNLA_THEME_COLLECTION.md`.
+- **Richer Appearance picker** — replaced the small legacy swatches with theme preview cards showing the palette, intended mode, category, description, and selected state.
+- **Accessible accent labels** — buttons, chips, and other filled accents choose the higher-contrast theme text role, preserving soft pastel palettes without sacrificing readability.
+- **Light/dark override support** — every curated theme keeps its exact intended-mode palette and receives a derived readable companion palette for the opposite mode.
+- **Widget/background integration** — home-screen widgets, Ambient, Starfield, Paper Grain, and Rain continue resolving from the same selected palette.
+- **Saved-theme migration** — legacy `ocean`, `sunset`, `orchid`, and `slate` preferences map to Ocean Depths, Sunset Sky, Lavender Night, and Paper & Ink.
+- **Regression tests** — added `ThemeCollectionTest.kt` to verify catalog completeness and all 84 documented color values.
+- **Version** — bumped to `1.3` (`versionCode 4`).
+
+---
+
 
 ## Session 17 — Pomodoro PiP, background alarm, and custom sounds
 
