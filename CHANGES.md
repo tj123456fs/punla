@@ -1,5 +1,32 @@
 # Punla Android — Change Log
 
+## Session 21 — Procedural background engine
+
+- **Shared renderer** — introduced `paintBackgroundFrame()` as the single drawing dispatcher used by the live Compose app, Settings previews, and frozen Glance widget frames.
+- **Seven new choices** — added Theme Match, Aurora, Ocean Waves, Fireflies, Sakura, Snow, and Bubbles alongside the existing Minimal, Ambient, Rain, Starfield, and Paper Grain styles.
+- **Theme Match** — added intentional signature mappings for all 16 curated/custom themes without changing the previous Ambient default for existing installs.
+- **Rain upgrade** — replaced uniform streaks with depth-based speed, alpha, width, length, brighter heads, wind drift, and tiny bottom-edge splashes.
+- **Static picker previews** — every Settings option now shows a representative frozen thumbnail without running twelve animations at once.
+- **Performance discipline** — no new runtime dependency, video, WebView, or game engine; only the selected animated style owns an animation clock, while Minimal and Paper Grain remain static.
+- **Widget parity** — widgets now resolve Theme Match with the active theme and render the same effect code as the app.
+- **Tests and attribution** — added `BackgroundEngineTest.kt`, implementation notes, and Apache-2.0 third-party notices for the reviewed `skydoves/compose-animations` rain sample.
+- **Version** — bumped to `1.5` (`versionCode 6`).
+
+---
+
+## Session 20 — Canonical room and building locations
+
+- **Complete canonical map snapshot** — replaced the 39-marker legacy directory with all 52 current buildings from `uplbtools/room-tba`.
+- **Coordinate corrections** — updated every retained marker to the reviewed canonical coordinates, including PTCF, LHKCB, Hydraulics, IABE, ASI, IE, Graduate School, AFBED, ICropS, IRNR, CEM, CHE, Physical Sciences, and the remaining lower-drift locations.
+- **Room overrides** — moved ABC rooms to AMPED, PSLH rooms to Physical Sciences, ASR/ASLH rooms to Animal Husbandry, MB rooms to New Math, HL rooms to Hydraulics, Fronda rooms to Fronda Hall, and split veterinary and Forestry rooms into their specific buildings.
+- **CHE/ChE resolver fix** — numbered Chemical Engineering room aliases now resolve to Chemical Engineering while Human Ecology rooms such as `CHE MPH` remain at CHE.
+- **Conservative matching** — removed unsafe prefix guessing. Exact aliases are preferred, punctuation-tolerant matching is used only when unambiguous, and `TBA`, `Online`, and incomplete room codes remain unresolved.
+- **Source traceability** — bundled the repository/blob metadata and the reviewed audit date in `CampusDirectory`.
+- **Regression tests** — added `CampusDirectoryTest.kt` for canonical marker count, coordinates, reviewed overrides, collision prevention, and unresolved-room behavior.
+- **Version** — bumped to `1.4` (`versionCode 5`).
+
+---
+
 ## Session 19 — Full theme collection
 
 - **All 14 documented themes** — added Aurora Borealis, Sunset Sky, Ocean Depths, Forest Mist, Lavender Night, Golden Dawn, Coffee Shop, Lo-fi Night, Paper & Ink, Library Mode, Cyber Neon, Pastel Bloom, Frost Glass, and Galaxy using the exact colors in `PUNLA_THEME_COLLECTION.md`.

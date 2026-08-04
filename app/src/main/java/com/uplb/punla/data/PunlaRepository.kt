@@ -34,13 +34,58 @@ enum class ThemePreset {
     CUSTOM
 }
 
-/** How the app's ambient background renders. MINIMAL is a flat theme-color
- * fill, AMBIENT is the drifting-blob wash, STARFIELD is a twinkling star
- * field, PAPER_GRAIN is a static notebook-grain dot texture, RAIN is
- * falling diagonal streaks. Widgets mirror whichever style is picked by
- * rendering one frozen frame of it as a bitmap — see WIDGET_BACKGROUNDS.md,
+/** How the app's procedural background renders. THEME_MATCHED chooses a
+ * signature effect from the active color theme; every other value pins one
+ * effect explicitly. Widgets mirror the selection with a frozen frame because
  * Glance has no live animation surface. */
-enum class BackgroundStyle { MINIMAL, AMBIENT, STARFIELD, PAPER_GRAIN, RAIN }
+enum class BackgroundStyle {
+    THEME_MATCHED,
+    MINIMAL,
+    AMBIENT,
+    STARFIELD,
+    PAPER_GRAIN,
+    RAIN,
+    AURORA,
+    OCEAN_WAVES,
+    FIREFLIES,
+    SAKURA,
+    SNOW,
+    BUBBLES;
+
+    val storageKey: String get() = name.lowercase()
+
+    companion object {
+        fun fromStorage(value: String?): BackgroundStyle =
+            entries.firstOrNull { it.storageKey == value } ?: AMBIENT
+    }
+}
+
+/** Resolve the automatic option without changing the value stored in settings. */
+fun BackgroundStyle.resolveForTheme(theme: ThemePreset): BackgroundStyle {
+    if (this != BackgroundStyle.THEME_MATCHED) return this
+    return when (theme) {
+        ThemePreset.FIELD_NOTEBOOK,
+        ThemePreset.PAPER_INK,
+        ThemePreset.LIBRARY_MODE -> BackgroundStyle.PAPER_GRAIN
+
+        ThemePreset.AURORA_BOREALIS,
+        ThemePreset.CYBER_NEON -> BackgroundStyle.AURORA
+
+        ThemePreset.OCEAN_DEPTHS -> BackgroundStyle.OCEAN_WAVES
+        ThemePreset.FOREST_MIST,
+        ThemePreset.LAVENDER_NIGHT -> BackgroundStyle.FIREFLIES
+
+        ThemePreset.PASTEL_BLOOM -> BackgroundStyle.SAKURA
+        ThemePreset.FROST_GLASS -> BackgroundStyle.SNOW
+        ThemePreset.GALAXY -> BackgroundStyle.STARFIELD
+        ThemePreset.COFFEE_SHOP,
+        ThemePreset.LOFI_NIGHT -> BackgroundStyle.RAIN
+
+        ThemePreset.SUNSET_SKY,
+        ThemePreset.GOLDEN_DAWN,
+        ThemePreset.CUSTOM -> BackgroundStyle.AMBIENT
+    }
+}
 
 /** Which bundled font family(ies) drive the app's whole type ramp.
  * DEFAULT keeps the original look (Fraunces serif for headings, Inter sans
@@ -130,14 +175,8 @@ class PunlaRepository(context: Context) {
      * before this setting existed, so an upgrading install sees no visual
      * change until they actually open Settings and pick something else. */
     var backgroundStyle: BackgroundStyle
-        get() = when (prefs.getString("background_style", null)) {
-            "minimal" -> BackgroundStyle.MINIMAL
-            "starfield" -> BackgroundStyle.STARFIELD
-            "paper_grain" -> BackgroundStyle.PAPER_GRAIN
-            "rain" -> BackgroundStyle.RAIN
-            else -> BackgroundStyle.AMBIENT
-        }
-        set(value) = prefs.edit().putString("background_style", value.name.lowercase()).apply()
+        get() = BackgroundStyle.fromStorage(prefs.getString("background_style", null))
+        set(value) = prefs.edit().putString("background_style", value.storageKey).apply()
 
     var fontChoice: FontChoice
         get() = when (prefs.getString("font_choice", null)) {

@@ -34,6 +34,9 @@ local-first personal intelligence layer and an optional private assistant.
 - **Approximate + precise campus location** — all location entry points request the
   Android permissions together, retain approximate fallback, and expose an
   `Enable precise` upgrade action for better walking-route origins.
+- **Reviewed campus room directory** — 52 canonical UPLB building markers, explicit room-to-building overrides for known upstream contradictions, and conservative unresolved handling instead of risky prefix guesses.
+
+- **Procedural background engine** — twelve selectable styles rendered natively with one shared Canvas pipeline across the app, Settings thumbnails, and frozen widget frames. New effects include Aurora, Ocean Waves, Fireflies, Sakura, Snow, and Bubbles; Theme Match automatically pairs every curated theme with a signature effect.
 
 - **Room database** (`data/entity`, `data/dao`, `PunlaDatabase.kt`) mirroring your
   original state shape: class sessions, expenses + recurring rules, deadlines +
@@ -123,9 +126,9 @@ resize mode) is controlled by the matching XML in `res/xml/*_widget_info.xml`.
 
 ## A note on testing
 
-This project was written in a sandbox without an Android SDK, so it hasn't been
-compiled here — I've been careful with imports and Glance/Room APIs, but treat
-the first Gradle sync/build in Android Studio as the real correctness check,
-and expect to fix a small error or two (missing import, a Glance API surface
-that shifted slightly between versions, etc.) rather than a guaranteed
-zero-error first build.
+This project was edited in a sandbox without Android SDK 34, so the final Android
+assembly remains the GitHub Actions/Android Studio check. The procedural
+background core, dispatcher, automatic mapping, and catalog were compiled with
+local Kotlin stubs; runtime catalog checks passed for all 12 styles and 16
+themes. Treat the first real `assembleDebug` as the authoritative integration
+check for Compose and Android APIs.

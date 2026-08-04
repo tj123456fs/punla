@@ -595,7 +595,7 @@ fun PunlaApp(
             }
         }
     ) {
-      Box(Modifier.fillMaxSize().appBackground(vm.backgroundStyle, darkTheme = darkTheme)) {
+      Box(Modifier.fillMaxSize().appBackground(vm.backgroundStyle, vm.themePreset, darkTheme = darkTheme)) {
         Row(Modifier.fillMaxSize()) {
             if (useNavigationRail) {
                 NavigationRail(

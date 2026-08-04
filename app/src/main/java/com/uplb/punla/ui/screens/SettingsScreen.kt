@@ -9,6 +9,7 @@ import android.provider.Settings as AndroidSettings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -33,6 +34,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -45,6 +49,8 @@ import com.uplb.punla.ui.PunlaViewModel
 import com.uplb.punla.ml.notificationEngagement
 import com.uplb.punla.pomodoro.PomodoroAlarmScheduler
 import com.uplb.punla.ui.theme.PunlaThemeCatalog
+import com.uplb.punla.ui.theme.PunlaBackgroundCatalog
+import com.uplb.punla.ui.theme.paintBackgroundFrame
 import com.uplb.punla.ui.theme.ThemeDescriptor
 import com.uplb.punla.ui.theme.PunlaBody
 import com.uplb.punla.ui.theme.PunlaDisplay
@@ -508,36 +514,16 @@ fun SettingsScreen(
                     )
                     Spacer(Modifier.height(12.dp))
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        BackgroundStyleOptionRow(
-                            label = "Minimal",
-                            description = "A flat, distraction-free fill.",
-                            selected = vm.backgroundStyle == BackgroundStyle.MINIMAL,
-                            onClick = { vm.updateBackgroundStyle(BackgroundStyle.MINIMAL) }
-                        )
-                        BackgroundStyleOptionRow(
-                            label = "Ambient",
-                            description = "Soft tinted blobs, slowly drifting.",
-                            selected = vm.backgroundStyle == BackgroundStyle.AMBIENT,
-                            onClick = { vm.updateBackgroundStyle(BackgroundStyle.AMBIENT) }
-                        )
-                        BackgroundStyleOptionRow(
-                            label = "Starfield",
-                            description = "A quiet field of twinkling stars.",
-                            selected = vm.backgroundStyle == BackgroundStyle.STARFIELD,
-                            onClick = { vm.updateBackgroundStyle(BackgroundStyle.STARFIELD) }
-                        )
-                        BackgroundStyleOptionRow(
-                            label = "Paper Grain",
-                            description = "A static notebook-paper texture. No animation.",
-                            selected = vm.backgroundStyle == BackgroundStyle.PAPER_GRAIN,
-                            onClick = { vm.updateBackgroundStyle(BackgroundStyle.PAPER_GRAIN) }
-                        )
-                        BackgroundStyleOptionRow(
-                            label = "Rain",
-                            description = "Thin streaks falling at a steady rate.",
-                            selected = vm.backgroundStyle == BackgroundStyle.RAIN,
-                            onClick = { vm.updateBackgroundStyle(BackgroundStyle.RAIN) }
-                        )
+                        PunlaBackgroundCatalog.forEach { background ->
+                            BackgroundStyleOptionRow(
+                                label = background.label,
+                                description = background.description,
+                                selected = vm.backgroundStyle == background.style,
+                                onClick = { vm.updateBackgroundStyle(background.style) },
+                                previewStyle = background.style,
+                                themePreset = vm.themePreset,
+                            )
+                        }
                     }
                 }
             }
@@ -1204,16 +1190,19 @@ private val WEEK_START_DAY_OPTIONS = listOf(
     DayOfWeek.SATURDAY to "Saturday"
 )
 
-/** A selectable row for one [BackgroundStyle] — same selected/unselected
- * treatment as [FontOptionRow], minus the font-family preview since
- * background style has no typeface of its own to show. */
+/** Shared selectable row. Background choices pass [previewStyle] to show a
+ * frozen frame; budget-period rows reuse the same treatment without one. */
 @Composable
 private fun BackgroundStyleOptionRow(
     label: String,
     description: String,
     selected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    previewStyle: BackgroundStyle? = null,
+    themePreset: ThemePreset = ThemePreset.FIELD_NOTEBOOK,
 ) {
+    val palette = LocalPunlaPalette.current
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1231,6 +1220,28 @@ private fun BackgroundStyleOptionRow(
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (previewStyle != null) {
+            Canvas(
+                modifier = Modifier
+                    .size(width = 64.dp, height = 48.dp)
+                    .clip(MaterialTheme.shapes.extraSmall)
+                    .border(1.dp, MaterialTheme.colorScheme.outline, MaterialTheme.shapes.extraSmall)
+            ) {
+                drawIntoCanvas { canvas ->
+                    paintBackgroundFrame(
+                        canvas = canvas.nativeCanvas,
+                        style = previewStyle,
+                        widthPx = size.width,
+                        heightPx = size.height,
+                        palette = palette,
+                        isDark = isDark,
+                        themePreset = themePreset,
+                        tSeconds = 7.3f,
+                    )
+                }
+            }
+            Spacer(Modifier.width(12.dp))
+        }
         Column(Modifier.weight(1f)) {
             Text(label, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold))
             Text(

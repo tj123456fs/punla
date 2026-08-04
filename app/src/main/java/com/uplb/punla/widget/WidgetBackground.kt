@@ -24,7 +24,7 @@ fun widgetBackgroundImageProvider(
     // Same pure function Theme.kt already calls — not a second
     // palette-resolution path.
     val isDark = repo.isDarkModeActive(context)
-    val bitmap = renderBackgroundBitmap(repo.backgroundStyle, widthPx, heightPx, palette, isDark)
+    val bitmap = renderBackgroundBitmap(repo.backgroundStyle, widthPx, heightPx, palette, isDark, repo.themePreset)
         ?: return null
     return ImageProvider(bitmap)
 }
