@@ -105,6 +105,7 @@ import com.uplb.punla.ui.theme.PunlaMono
 import com.uplb.punla.ui.theme.PunlaTheme
 import com.uplb.punla.worker.BackupNudgeWorker
 import com.uplb.punla.worker.ClassReminderWorker
+import com.uplb.punla.worker.ClassDayNotificationScheduler
 import com.uplb.punla.worker.ReminderScheduler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -121,6 +122,8 @@ class MainActivity : ComponentActivity() {
          * a tab (e.g. "budget", "schedule", "deadlines") instead of always
          * opening on the dashboard. */
         const val EXTRA_START_ROUTE = "start_route"
+        /** Optional room/building query used by notification navigation. */
+        const val EXTRA_MAP_QUERY = "map_query"
     }
 
     private val notificationPermissionGrantedState = mutableStateOf(true)
@@ -228,6 +231,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         startRouteState.value = intent.getStringExtra(EXTRA_START_ROUTE)
+        intent.getStringExtra(EXTRA_MAP_QUERY)?.let(vm::searchOnMap)
         recordNotificationOpen(intent)
     }
 
@@ -235,6 +239,9 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         notificationPermissionGrantedState.value = hasNotificationPermission()
         vm.syncPomodoroClock()
+        if (vm.notificationsEnabled && vm.classDayNotificationEnabled) {
+            ClassDayNotificationScheduler.refresh(this)
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -246,6 +253,7 @@ class MainActivity : ComponentActivity() {
         // targetSdk moves to 35.
         enableEdgeToEdge()
         startRouteState.value = intent?.getStringExtra(EXTRA_START_ROUTE)
+        intent?.getStringExtra(EXTRA_MAP_QUERY)?.let(vm::searchOnMap)
         notificationPermissionGrantedState.value = hasNotificationPermission()
         
         // Daily deadline, budget, and checklist checks share one
@@ -262,6 +270,15 @@ class MainActivity : ComponentActivity() {
             ExistingPeriodicWorkPolicy.KEEP,
             classReminderRequest
         )
+
+        // One low-priority card evolves from "leave soon" to current class,
+        // free time, and end-of-day. A system chronometer renders the live
+        // countdown without waking Punla every minute.
+        if (vm.notificationsEnabled && vm.classDayNotificationEnabled) {
+            ClassDayNotificationScheduler.ensureScheduled(this)
+        } else {
+            ClassDayNotificationScheduler.cancel(this)
+        }
 
         // Roadmap #6 — weekly check for whether it's time to nudge a backup
         // (the worker itself decides whether a nudge is actually due).
@@ -334,7 +351,7 @@ class MainActivity : ComponentActivity() {
                         },
                         title = { Text("Stay ahead of classes and deadlines") },
                         text = {
-                            Text("Punla can remind you before a class starts, when a deadline is near, and when your budget needs attention. You can change this anytime in Settings.")
+                            Text("Punla can remind you before class, keep a silent current-class card, alert you about deadlines, and flag budget items that need attention. You can change this anytime in Settings.")
                         },
                         confirmButton = {
                             TextButton(onClick = {
@@ -855,7 +872,11 @@ fun PunlaApp(
                     GradesScreen(vm, openFormOnStart = backEntry.arguments?.getBoolean("quickAdd") ?: false)
                 }
                 composable("campus") {
-                    CampusMapScreen(vm = vm, onOpenFullMap = { navController.navigate("campus/fullmap") })
+                    CampusMapScreen(
+                        vm = vm,
+                        initialSearch = vm.mapSearchQuery,
+                        onOpenFullMap = { navController.navigate("campus/fullmap") }
+                    )
                 }
                 composable("campus/fullmap") {
                     CampusFullMapScreen(vm = vm)

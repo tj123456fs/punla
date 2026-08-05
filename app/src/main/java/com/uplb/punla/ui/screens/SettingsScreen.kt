@@ -241,7 +241,7 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Deadline Reminders", style = MaterialTheme.typography.bodyMedium)
+                        Text("All reminders", style = MaterialTheme.typography.bodyMedium)
                         Switch(
                             checked = vm.notificationsEnabled && notificationPermissionGranted,
                             onCheckedChange = { enabled ->
@@ -269,6 +269,31 @@ fun SettingsScreen(
                             contentPadding = PaddingValues(0.dp)
                         ) { Text("Allow notifications") }
                     }
+
+                    Spacer(Modifier.height(12.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Ongoing class card", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                "Shows leave-soon, current class, free-time, and end-of-day states in one silent notification.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Switch(
+                            checked = vm.classDayNotificationEnabled && vm.notificationsEnabled && notificationPermissionGranted,
+                            enabled = vm.notificationsEnabled && notificationPermissionGranted,
+                            onCheckedChange = vm::updateClassDayNotificationEnabled
+                        )
+                    }
+
                     if (bestReminderHour != null) {
                         Spacer(Modifier.height(10.dp))
                         Text(

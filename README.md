@@ -38,8 +38,12 @@ local-first personal intelligence layer and an optional private assistant.
 
 - **Procedural background engine** — twelve selectable styles rendered natively with one shared Canvas pipeline across the app, Settings thumbnails, and frozen widget frames. New effects include Aurora, Ocean Waves, Fireflies, Sakura, Snow, and Bubbles; Theme Match automatically pairs every curated theme with a signature effect.
 
+- **Ongoing class-day notification** — one silent card evolves from leave-soon to current class, free time, and end-of-day. Android's chronometer supplies live start/end countdowns, while Attended/Absent check-in, Navigate, Schedule, Start focus, and Hide today actions keep the notification useful without stacking alerts.
+
+- **Per-occurrence attendance history** — each class meeting can be logged as Attended or Absent from the notification, Schedule, or Dashboard. Repeated taps are idempotent, corrections update the same dated row, and the legacy absence-risk tally remains synchronized.
+
 - **Room database** (`data/entity`, `data/dao`, `PunlaDatabase.kt`) mirroring your
-  original state shape: class sessions, expenses + recurring rules, deadlines +
+  original state shape: class sessions, dated attendance records, expenses + recurring rules, deadlines +
   recurring rules, semesters/grade courses, and archives.
 - **PunlaRepository** — the "next class", "budget remaining", and "next deadline"
   logic, shared by both the app UI and the widgets (no duplication, no bridge —
@@ -127,8 +131,8 @@ resize mode) is controlled by the matching XML in `res/xml/*_widget_info.xml`.
 ## A note on testing
 
 This project was edited in a sandbox without Android SDK 34, so the final Android
-assembly remains the GitHub Actions/Android Studio check. The procedural
-background core, dispatcher, automatic mapping, and catalog were compiled with
-local Kotlin stubs; runtime catalog checks passed for all 12 styles and 16
-themes. Treat the first real `assembleDebug` as the authoritative integration
+assembly remains the GitHub Actions/Android Studio check. The procedural background core, dispatcher, automatic mapping, class-day timeline,
+and attendance occurrence model were compiled with local Kotlin stubs; runtime checks
+passed for all 12 background styles, all 16 themes, class-notification boundaries,
+and attendance-key/idempotency rules. Treat the first real `assembleDebug` as the authoritative integration
 check for Compose and Android APIs.

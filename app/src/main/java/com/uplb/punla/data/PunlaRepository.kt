@@ -1,6 +1,9 @@
 package com.uplb.punla.data
 
 import android.content.Context
+import androidx.room.withTransaction
+import com.uplb.punla.data.entity.AttendanceRecord
+import com.uplb.punla.data.entity.AttendanceStatus
 import com.uplb.punla.data.entity.ClassSession
 import com.uplb.punla.data.entity.Deadline
 import com.uplb.punla.data.entity.Expense
@@ -191,6 +194,15 @@ class PunlaRepository(context: Context) {
     var notificationsEnabled: Boolean
         get() = prefs.getBoolean("notifications_enabled", true)
         set(value) = prefs.edit().putBoolean("notifications_enabled", value).apply()
+
+    /**
+     * Shows one silent notification that evolves through the current class
+     * day. Separate from the master notification switch so a user can keep
+     * deadline alerts while hiding the persistent schedule card.
+     */
+    var classDayNotificationEnabled: Boolean
+        get() = prefs.getBoolean("class_day_notification_enabled", true)
+        set(value) = prefs.edit().putBoolean("class_day_notification_enabled", value).apply()
 
     // ---- Weekly budget (Weekly Budgeting feature) ----
 
@@ -658,6 +670,49 @@ class PunlaRepository(context: Context) {
         java.time.Instant.ofEpochMilli(epochMillis).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
 
     // ---- Schedule ----
+    fun observeAttendanceRecords(): kotlinx.coroutines.flow.Flow<List<AttendanceRecord>> =
+        db.attendanceDao().observeAll()
+
+    suspend fun allAttendanceRecords(): List<AttendanceRecord> =
+        db.attendanceDao().getAll()
+
+    suspend fun attendanceForOccurrence(occurrenceKey: String): AttendanceRecord? =
+        db.attendanceDao().getByOccurrenceKey(occurrenceKey)
+
+    /**
+     * Upserts one concrete class occurrence. If the user changes an existing
+     * record between ATTENDED and ABSENT, the legacy absence tally is adjusted
+     * exactly once so the existing risk projection stays accurate.
+     */
+    suspend fun setAttendance(record: AttendanceRecord) {
+        require(AttendanceStatus.isValid(record.status))
+        db.withTransaction {
+            val previous = db.attendanceDao().getByOccurrenceKey(record.occurrenceKey)
+            when (com.uplb.punla.data.entity.AttendanceLog.absenceDelta(previous?.status, record.status)) {
+                1 -> db.classSessionDao().incrementAbsence(record.sessionId)
+                -1 -> db.classSessionDao().decrementAbsence(record.sessionId)
+            }
+            db.attendanceDao().upsert(record)
+        }
+    }
+
+    suspend fun clearAttendance(occurrenceKey: String) {
+        db.withTransaction {
+            val previous = db.attendanceDao().getByOccurrenceKey(occurrenceKey) ?: return@withTransaction
+            if (previous.status == AttendanceStatus.ABSENT) {
+                db.classSessionDao().decrementAbsence(previous.sessionId)
+            }
+            db.attendanceDao().deleteByOccurrenceKey(occurrenceKey)
+        }
+    }
+
+    suspend fun deleteClassWithAttendance(session: ClassSession) {
+        db.withTransaction {
+            db.attendanceDao().deleteForSession(session.id)
+            db.classSessionDao().delete(session)
+        }
+    }
+
     suspend fun allClasses(): List<ClassSession> = db.classSessionDao().getAll()
 
     suspend fun nextClass(now: LocalDateTime = LocalDateTime.now()): ClassSession? {

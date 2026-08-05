@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EventBusy
@@ -28,6 +29,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.uplb.punla.data.entity.AttendanceRecord
+import com.uplb.punla.data.entity.AttendanceStatus
 import com.uplb.punla.data.entity.ClassSession
 import com.uplb.punla.data.entity.allowedAbsences
 import com.uplb.punla.ml.projectAttendanceRisk
@@ -112,6 +115,7 @@ internal fun fmtTime(t: String): String {
 fun ScheduleScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false, onStudyHere: (String?) -> Unit = {}) {
     val classes by vm.classes.collectAsState()
     val deadlines by vm.deadlines.collectAsState()
+    val attendanceRecords by vm.attendanceRecords.collectAsState()
     // Roadmap C — withhold the "No classes scheduled" empty state until
     // Room's first real emission, so it doesn't flash on cold launch.
     val dataReady by vm.isDataReady.collectAsState()
@@ -234,8 +238,10 @@ fun ScheduleScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false, onStudy
                             deadlines = deadlines,
                             onEdit = { editingClassId = it.id; showForm = true },
                             onDelete = { pendingDeleteClassId = it.id },
-                            onMarkAbsent = { vm.incrementAbsence(it) },
-                            onUndoAbsence = { vm.decrementAbsence(it) },
+                            attendanceRecords = attendanceRecords.filter { it.sessionId == c.id },
+                            onLogAttended = { vm.logAttendance(it, AttendanceStatus.ATTENDED, source = "schedule") },
+                            onLogAbsent = { vm.logAttendance(it, AttendanceStatus.ABSENT, source = "schedule") },
+                            onClearAttendance = vm::clearAttendance,
                             termStart = vm.termStartDate,
                             termEnd = vm.termEndDate
                         )
@@ -324,8 +330,10 @@ private fun ClassCard(
     deadlines: List<com.uplb.punla.data.entity.Deadline>,
     onEdit: (ClassSession) -> Unit,
     onDelete: (ClassSession) -> Unit,
-    onMarkAbsent: (ClassSession) -> Unit = {},
-    onUndoAbsence: (ClassSession) -> Unit = {},
+    attendanceRecords: List<AttendanceRecord> = emptyList(),
+    onLogAttended: (ClassSession) -> Unit = {},
+    onLogAbsent: (ClassSession) -> Unit = {},
+    onClearAttendance: (AttendanceRecord) -> Unit = {},
     termStart: java.time.LocalDate,
     termEnd: java.time.LocalDate
 ) {
@@ -409,6 +417,22 @@ private fun ClassCard(
                     nearLimit -> MaterialTheme.colorScheme.tertiary
                     else -> MaterialTheme.colorScheme.onSurfaceVariant
                 }
+                val attendedLogged = attendanceRecords.count { it.status == AttendanceStatus.ATTENDED }
+                val absentLogged = attendanceRecords.count { it.status == AttendanceStatus.ABSENT }
+                val today = java.time.LocalDate.now()
+                val todayDay = when (today.dayOfWeek) {
+                    java.time.DayOfWeek.MONDAY -> "Mon"
+                    java.time.DayOfWeek.TUESDAY -> "Tue"
+                    java.time.DayOfWeek.WEDNESDAY -> "Wed"
+                    java.time.DayOfWeek.THURSDAY -> "Thu"
+                    java.time.DayOfWeek.FRIDAY -> "Fri"
+                    java.time.DayOfWeek.SATURDAY -> "Sat"
+                    java.time.DayOfWeek.SUNDAY -> "Sun"
+                }
+                val todayRecord = attendanceRecords.firstOrNull {
+                    it.occurrenceDate == today.toString() && it.scheduledStart == c.start
+                }
+
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     Icon(
                         Icons.Default.EventBusy,
@@ -423,21 +447,42 @@ private fun ClassCard(
                         color = attendanceColor,
                         modifier = Modifier.weight(1f)
                     )
-                    IconButton(onClick = { onUndoAbsence(c) }, modifier = Modifier.size(24.dp), enabled = c.absences > 0) {
-                        Icon(
-                            Icons.Default.Remove,
-                            "Undo one absence",
-                            modifier = Modifier.size(14.dp),
-                            tint = if (c.absences > 0) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.outline
+                    Text(
+                        "$attendedLogged attended · $absentLogged absent logged",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                if (c.day == todayDay) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Today's attendance",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        FilterChip(
+                            selected = todayRecord?.status == AttendanceStatus.ATTENDED,
+                            onClick = { onLogAttended(c) },
+                            label = { Text(if (todayRecord?.status == AttendanceStatus.ATTENDED) "Attended ✓" else "Attended") },
+                            leadingIcon = { Icon(Icons.Default.CheckCircle, null, modifier = Modifier.size(16.dp)) },
+                            modifier = Modifier.weight(1f)
                         )
-                    }
-                    IconButton(onClick = { onMarkAbsent(c) }, modifier = Modifier.size(24.dp)) {
-                        Icon(
-                            Icons.Default.Add,
-                            "Mark absent",
-                            modifier = Modifier.size(14.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        FilterChip(
+                            selected = todayRecord?.status == AttendanceStatus.ABSENT,
+                            onClick = { onLogAbsent(c) },
+                            label = { Text(if (todayRecord?.status == AttendanceStatus.ABSENT) "Absent ✓" else "Absent") },
+                            leadingIcon = { Icon(Icons.Default.EventBusy, null, modifier = Modifier.size(16.dp)) },
+                            modifier = Modifier.weight(1f)
                         )
+                        if (todayRecord != null) {
+                            TextButton(onClick = { onClearAttendance(todayRecord) }) { Text("Clear") }
+                        }
                     }
                 }
                 if (!overLimit && projection.risk != "LOW") {

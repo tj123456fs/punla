@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.room.withTransaction
 import com.uplb.punla.data.entity.Archive
+import com.uplb.punla.data.entity.AttendanceRecord
 import com.uplb.punla.data.entity.ClassSession
 import com.uplb.punla.data.entity.Deadline
 import com.uplb.punla.data.entity.DeadlineRule
@@ -31,7 +32,7 @@ import java.util.Locale
  */
 object BackupManager {
 
-    const val CURRENT_VERSION = 2
+    const val CURRENT_VERSION = 3
 
     /** Suggested filename, mirrors the web app's punla-backup-YYYY-MM-DD.json. */
     fun suggestedFileName(): String {
@@ -58,6 +59,7 @@ object BackupManager {
         val studySessions = db.studySessionDao().getAll()
         val studySuggestionEvents = db.intelligenceDao().getStudySuggestionEvents()
         val notificationEvents = db.intelligenceDao().getNotificationEvents()
+        val attendanceRecords = db.attendanceDao().getAll()
 
         val root = JSONObject().apply {
             put("version", CURRENT_VERSION)
@@ -78,11 +80,13 @@ object BackupManager {
             put("studySessions", JSONArray(studySessions.map(::studySessionToJson)))
             put("studySuggestionEvents", JSONArray(studySuggestionEvents.map(::studySuggestionEventToJson)))
             put("notificationEvents", JSONArray(notificationEvents.map(::notificationEventToJson)))
+            put("attendanceRecords", JSONArray(attendanceRecords.map(::attendanceRecordToJson)))
             put("budget", repo.monthlyBudget)
             put("userName", repo.userName)
             put("chedTarget", repo.chedTarget)
             put("theme", repo.themeMode.name.lowercase())
             put("notificationsEnabled", repo.notificationsEnabled)
+            put("classDayNotificationEnabled", repo.classDayNotificationEnabled)
             put("dailyStudyGoalMinutes", repo.dailyStudyGoalMinutes)
             put("weeklyStudyGoalMinutes", repo.weeklyStudyGoalMinutes)
             put("budgetPeriod", repo.budgetPeriod.name.lowercase())
@@ -160,6 +164,7 @@ object BackupManager {
         val studySessions = root.optJSONArray("studySessions")?.mapObjects(::studySessionFromJson) ?: emptyList()
         val studySuggestionEvents = root.optJSONArray("studySuggestionEvents")?.mapObjects(::studySuggestionEventFromJson) ?: emptyList()
         val notificationEvents = root.optJSONArray("notificationEvents")?.mapObjects(::notificationEventFromJson) ?: emptyList()
+        val attendanceRecords = root.optJSONArray("attendanceRecords")?.mapObjects(::attendanceRecordFromJson) ?: emptyList()
 
         db.withTransaction {
             db.classSessionDao().clearAll()
@@ -190,6 +195,9 @@ object BackupManager {
             studySuggestionEvents.forEach { db.intelligenceDao().insertStudySuggestionEvent(it) }
             db.intelligenceDao().clearNotificationEvents()
             notificationEvents.forEach { db.intelligenceDao().insertNotificationEvent(it) }
+
+            db.attendanceDao().clearAll()
+            attendanceRecords.forEach { db.attendanceDao().upsert(it) }
         }
 
         // Prefs live outside Room, so they're written after the DB transaction commits.
@@ -202,6 +210,7 @@ object BackupManager {
             else -> ThemeMode.SYSTEM
         }
         repo.notificationsEnabled = root.optBoolean("notificationsEnabled", true)
+        repo.classDayNotificationEnabled = root.optBoolean("classDayNotificationEnabled", true)
         repo.dailyStudyGoalMinutes = root.optInt("dailyStudyGoalMinutes", repo.dailyStudyGoalMinutes)
         repo.weeklyStudyGoalMinutes = root.optInt("weeklyStudyGoalMinutes", repo.weeklyStudyGoalMinutes)
         repo.budgetPeriod = when (root.optString("budgetPeriod", "monthly")) {
@@ -265,6 +274,23 @@ private fun classSessionFromJson(o: JSONObject) = ClassSession(
     instructor = o.optStringOrNull("instructor"),
     // Older backups (pre-roadmap #4) won't have this key — default to 0.
     absences = o.optInt("absences", 0)
+)
+
+private fun attendanceRecordToJson(a: AttendanceRecord) = JSONObject().apply {
+    put("occurrenceKey", a.occurrenceKey); put("sessionId", a.sessionId); put("classCode", a.classCode)
+    put("occurrenceDate", a.occurrenceDate); put("scheduledStart", a.scheduledStart)
+    put("status", a.status); put("loggedAt", a.loggedAt); put("source", a.source)
+}
+
+private fun attendanceRecordFromJson(o: JSONObject) = AttendanceRecord(
+    occurrenceKey = o.getString("occurrenceKey"),
+    sessionId = o.getString("sessionId"),
+    classCode = o.optString("classCode", "Class"),
+    occurrenceDate = o.getString("occurrenceDate"),
+    scheduledStart = o.optString("scheduledStart", "00:00"),
+    status = o.getString("status"),
+    loggedAt = o.optLong("loggedAt", System.currentTimeMillis()),
+    source = o.optString("source", "restore")
 )
 
 private fun expenseToJson(e: Expense) = JSONObject().apply {

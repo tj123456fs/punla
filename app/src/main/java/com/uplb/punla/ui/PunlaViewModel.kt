@@ -16,6 +16,9 @@ import com.uplb.punla.data.RecurrenceEngine
 import com.uplb.punla.data.RoutePlan
 import com.uplb.punla.data.ThemeMode
 import com.uplb.punla.data.ThemePreset
+import com.uplb.punla.data.entity.AttendanceLog
+import com.uplb.punla.data.entity.AttendanceRecord
+import com.uplb.punla.data.entity.AttendanceStatus
 import com.uplb.punla.data.entity.ChecklistItem
 import com.uplb.punla.data.entity.ClassSession
 import com.uplb.punla.data.entity.Deadline
@@ -27,6 +30,7 @@ import com.uplb.punla.data.entity.Semester
 import com.uplb.punla.data.entity.StudySession
 import com.uplb.punla.data.entity.StudySuggestionEvent
 import com.uplb.punla.widget.WidgetRefresher
+import com.uplb.punla.worker.ClassDayNotificationScheduler
 import com.uplb.punla.ml.StudySlotFeatures
 import com.uplb.punla.ml.StudySlotPredictor
 import com.uplb.punla.ui.pomodoro.StudySuggestion
@@ -62,6 +66,9 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     private val _deadlinesLoaded = MutableStateFlow(false)
 
     val classes: StateFlow<List<ClassSession>> = db.classSessionDao().observeAll()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val attendanceRecords: StateFlow<List<AttendanceRecord>> = repo.observeAttendanceRecords()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val expenses: StateFlow<List<Expense>> = db.expenseDao().observeAll()
@@ -239,6 +246,9 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     var notificationsEnabled by mutableStateOf(repo.notificationsEnabled)
         private set
 
+    var classDayNotificationEnabled by mutableStateOf(repo.classDayNotificationEnabled)
+        private set
+
     var termStartDate by mutableStateOf(repo.termStartDate)
         private set
     var termEndDate by mutableStateOf(repo.termEndDate)
@@ -302,6 +312,22 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
             PomodoroRunningNotification.showFromRepository(getApplication<Application>())
         } else if (!enabled) {
             PomodoroRunningNotification.cancel(getApplication<Application>())
+        }
+
+        if (enabled && repo.classDayNotificationEnabled) {
+            ClassDayNotificationScheduler.ensureScheduled(getApplication())
+        } else {
+            ClassDayNotificationScheduler.cancel(getApplication())
+        }
+    }
+
+    fun updateClassDayNotificationEnabled(enabled: Boolean) {
+        repo.classDayNotificationEnabled = enabled
+        classDayNotificationEnabled = enabled
+        if (enabled && repo.notificationsEnabled) {
+            ClassDayNotificationScheduler.ensureScheduled(getApplication())
+        } else {
+            ClassDayNotificationScheduler.cancel(getApplication())
         }
     }
 
@@ -368,14 +394,37 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     fun addOrUpdateClass(session: ClassSession) = viewModelScope.launch {
         db.classSessionDao().upsert(session)
         WidgetRefresher.refreshAll(getApplication())
+        ClassDayNotificationScheduler.refresh(getApplication())
     }
 
     fun deleteClass(session: ClassSession) = viewModelScope.launch {
-        db.classSessionDao().delete(session)
+        repo.deleteClassWithAttendance(session)
         WidgetRefresher.refreshAll(getApplication())
+        ClassDayNotificationScheduler.refresh(getApplication())
     }
 
-    // Roadmap #4 — attendance tracking.
+    // Per-occurrence attendance history. ATTENDED and ABSENT overwrite the
+    // same deterministic row, so users can correct a mistaken tap safely.
+    fun logAttendance(
+        session: ClassSession,
+        status: String,
+        date: java.time.LocalDate = java.time.LocalDate.now(),
+        source: String = "app"
+    ) = viewModelScope.launch {
+        if (!AttendanceStatus.isValid(status)) return@launch
+        repo.setAttendance(AttendanceLog.forOccurrence(session, date, status, source))
+        WidgetRefresher.refreshAll(getApplication())
+        ClassDayNotificationScheduler.refresh(getApplication())
+    }
+
+    fun clearAttendance(record: AttendanceRecord) = viewModelScope.launch {
+        repo.clearAttendance(record.occurrenceKey)
+        WidgetRefresher.refreshAll(getApplication())
+        ClassDayNotificationScheduler.refresh(getApplication())
+    }
+
+    // Retained for old UI/data compatibility. New attendance controls should
+    // prefer [logAttendance] so there is an auditable dated record.
     fun incrementAbsence(session: ClassSession) = viewModelScope.launch {
         db.classSessionDao().incrementAbsence(session.id)
         WidgetRefresher.refreshAll(getApplication())
@@ -577,6 +626,7 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         db.deadlineDao().clearAllRules()
 
         WidgetRefresher.refreshAll(getApplication())
+        ClassDayNotificationScheduler.refresh(getApplication())
     }
 
     var mapSearchQuery by mutableStateOf("")
@@ -631,6 +681,7 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
             chedTarget = repo.chedTarget
             userName = repo.userName
             notificationsEnabled = repo.notificationsEnabled
+            classDayNotificationEnabled = repo.classDayNotificationEnabled
             termStartDate = repo.termStartDate
             termEndDate = repo.termEndDate
             cloudAssistantEnabled = repo.cloudAssistantEnabled
@@ -639,6 +690,11 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
             preferredReminderHour = repo.preferredReminderHour
             dismissedExpensePatternKeys = repo.dismissedExpensePatternKeys
             WidgetRefresher.refreshAll(getApplication())
+            if (repo.notificationsEnabled && repo.classDayNotificationEnabled) {
+                ClassDayNotificationScheduler.ensureScheduled(getApplication())
+            } else {
+                ClassDayNotificationScheduler.cancel(getApplication())
+            }
             backupResult = BackupResult.Success("Backup restored.")
         }.onFailure { e ->
             backupResult = BackupResult.Failure(e.message ?: "Couldn't restore that backup.")

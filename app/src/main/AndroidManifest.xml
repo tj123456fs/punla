@@ -87,6 +87,10 @@
             android:exported="false" />
 
         <receiver
+            android:name=".worker.ClassDayNotificationActionReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".pomodoro.PomodoroAlarmReceiver"
             android:exported="false" />
 

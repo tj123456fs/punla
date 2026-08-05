@@ -6,6 +6,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.uplb.punla.data.dao.AttendanceDao
 import com.uplb.punla.data.dao.ChecklistDao
 import com.uplb.punla.data.dao.ClassSessionDao
 import com.uplb.punla.data.dao.DeadlineDao
@@ -14,6 +15,7 @@ import com.uplb.punla.data.dao.GradesDao
 import com.uplb.punla.data.dao.StudySessionDao
 import com.uplb.punla.data.dao.IntelligenceDao
 import com.uplb.punla.data.entity.Archive
+import com.uplb.punla.data.entity.AttendanceRecord
 import com.uplb.punla.data.entity.ChecklistItem
 import com.uplb.punla.data.entity.ClassSession
 import com.uplb.punla.data.entity.Deadline
@@ -39,15 +41,17 @@ import com.uplb.punla.data.entity.NotificationEvent
         ChecklistItem::class,
         StudySession::class,
         StudySuggestionEvent::class,
-        NotificationEvent::class
+        NotificationEvent::class,
+        AttendanceRecord::class
     ],
-    // v6 -> v7: local-intelligence event tables plus StudySession end reason
-    // and suggestion linkage. This is the first data-preserving migration.
-    version = 7,
+    // v7 -> v8: per-occurrence attendance history used by the ongoing
+    // class notification and the schedule/dashboard attendance controls.
+    version = 8,
     exportSchema = false
 )
 abstract class PunlaDatabase : RoomDatabase() {
     abstract fun classSessionDao(): ClassSessionDao
+    abstract fun attendanceDao(): AttendanceDao
     abstract fun expenseDao(): ExpenseDao
     abstract fun deadlineDao(): DeadlineDao
     abstract fun gradesDao(): GradesDao
@@ -101,6 +105,28 @@ abstract class PunlaDatabase : RoomDatabase() {
             }
         }
 
+
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS `attendance_records` (
+                        `occurrenceKey` TEXT NOT NULL,
+                        `sessionId` TEXT NOT NULL,
+                        `classCode` TEXT NOT NULL,
+                        `occurrenceDate` TEXT NOT NULL,
+                        `scheduledStart` TEXT NOT NULL,
+                        `status` TEXT NOT NULL,
+                        `loggedAt` INTEGER NOT NULL,
+                        `source` TEXT NOT NULL,
+                        PRIMARY KEY(`occurrenceKey`)
+                    )""".trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_attendance_records_sessionId` ON `attendance_records` (`sessionId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_attendance_records_occurrenceDate` ON `attendance_records` (`occurrenceDate`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_attendance_records_sessionId_occurrenceDate_scheduledStart` ON `attendance_records` (`sessionId`, `occurrenceDate`, `scheduledStart`)")
+            }
+        }
+
         fun get(context: Context): PunlaDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -108,7 +134,7 @@ abstract class PunlaDatabase : RoomDatabase() {
                     PunlaDatabase::class.java,
                     "punla.db"
                 )
-                    .addMigrations(MIGRATION_6_7)
+                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8)
                     // Very old development installs never had migration specs.
                     // Preserve current v6+ personal data; only pre-v6 schemas
                     // may still be recreated rather than crashing at launch.

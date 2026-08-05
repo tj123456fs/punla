@@ -1,3 +1,25 @@
+# Version 1.7 — Attendance Check-In
+
+- Added **Attended** and **Absent** actions to the ongoing class notification.
+- Attendance remains available for the class that just ended during break and end-of-day states.
+- Added deterministic per-occurrence attendance records, preventing duplicate rows from repeated notification taps.
+- Switching Absent -> Attended automatically reverses the class absence tally; switching Attended -> Absent increments it once.
+- Added today's attendance controls and per-class attended/absent totals to Schedule.
+- Replaced Dashboard's one-way “Mark absent” shortcut with Attended and Absent choices.
+- Added Room database migration 7 -> 8 and backup format v3 support for attendance history.
+- Deleting a class also deletes its linked attendance history.
+
+# Version 1.6 — Ongoing Class-Day Notification
+
+- Added one silent notification that evolves through pre-class, ongoing class, between-class break, and end-of-day states.
+- Added Android chronometer countdowns for class start/end without minute-by-minute background work.
+- Added Navigate, Schedule, Start focus, and Hide today actions.
+- Added a dedicated Settings toggle and backup support.
+- Added WorkManager boundary scheduling plus 15-minute recovery checks.
+- Added pure timeline regression tests.
+
+---
+
 # Punla Android — Change Log
 
 ## Session 21 — Procedural background engine

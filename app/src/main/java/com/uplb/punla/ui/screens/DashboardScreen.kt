@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Celebration
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Close
@@ -31,6 +32,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.uplb.punla.data.CampusDirectory
+import com.uplb.punla.data.entity.AttendanceStatus
 import com.uplb.punla.data.entity.ClassSession
 import com.uplb.punla.data.entity.Deadline
 import com.uplb.punla.data.entity.allowedAbsences
@@ -59,6 +61,7 @@ import java.time.temporal.ChronoUnit
 fun DashboardScreen(vm: PunlaViewModel, onOpenNextClassOnMap: () -> Unit = {}, onOpenChecklist: () -> Unit = {}, onOpenPomodoro: (String?) -> Unit = {}) {
     val classes by vm.classes.collectAsState()
     val deadlines by vm.deadlines.collectAsState()
+    val attendanceRecords by vm.attendanceRecords.collectAsState()
     val expenses by vm.expenses.collectAsState()
     val checklistItems by vm.checklistItems.collectAsState()
     val studySessions by vm.studySessions.collectAsState()
@@ -519,20 +522,60 @@ fun DashboardScreen(vm: PunlaViewModel, onOpenNextClassOnMap: () -> Unit = {}, o
                                     }
                                 }
 
-                                // Roadmap #4 — quick tap to log an absence for
-                                // the class shown here, without needing to go
-                                // find the same row on the Schedule tab.
-                                Spacer(Modifier.height(4.dp))
-                                TextButton(
-                                    onClick = {
-                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        vm.incrementAbsence(c)
-                                    },
-                                    contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
-                                ) {
-                                    Icon(Icons.Default.EventBusy, contentDescription = null, modifier = Modifier.size(14.dp))
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("Mark absent (${c.absences}/${c.allowedAbsences()})", style = MaterialTheme.typography.bodySmall)
+                                // Quick per-occurrence attendance logging. Only show
+                                // this for a class occurring today; future weekly rows
+                                // should not be marked early by accident.
+                                val todayDay = when (LocalDate.now().dayOfWeek) {
+                                    java.time.DayOfWeek.MONDAY -> "Mon"
+                                    java.time.DayOfWeek.TUESDAY -> "Tue"
+                                    java.time.DayOfWeek.WEDNESDAY -> "Wed"
+                                    java.time.DayOfWeek.THURSDAY -> "Thu"
+                                    java.time.DayOfWeek.FRIDAY -> "Fri"
+                                    java.time.DayOfWeek.SATURDAY -> "Sat"
+                                    java.time.DayOfWeek.SUNDAY -> "Sun"
+                                }
+                                if (c.day == todayDay) {
+                                    val todayRecord = attendanceRecords.firstOrNull {
+                                        it.sessionId == c.id &&
+                                            it.occurrenceDate == LocalDate.now().toString() &&
+                                            it.scheduledStart == c.start
+                                    }
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(
+                                        "Attendance · ${c.absences}/${c.allowedAbsences()} absences used",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        TextButton(
+                                            onClick = {
+                                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                vm.logAttendance(c, AttendanceStatus.ATTENDED, source = "dashboard")
+                                            },
+                                            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
+                                        ) {
+                                            Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(14.dp))
+                                            Spacer(Modifier.width(4.dp))
+                                            Text(
+                                                if (todayRecord?.status == AttendanceStatus.ATTENDED) "Attended ✓" else "Attended",
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                        TextButton(
+                                            onClick = {
+                                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                vm.logAttendance(c, AttendanceStatus.ABSENT, source = "dashboard")
+                                            },
+                                            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
+                                        ) {
+                                            Icon(Icons.Default.EventBusy, contentDescription = null, modifier = Modifier.size(14.dp))
+                                            Spacer(Modifier.width(4.dp))
+                                            Text(
+                                                if (todayRecord?.status == AttendanceStatus.ABSENT) "Absent ✓" else "Absent",
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
