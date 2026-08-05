@@ -42,6 +42,8 @@ local-first personal intelligence layer and an optional private assistant.
 
 - **Per-occurrence attendance history** — each class meeting can be logged as Attended or Absent from the notification, Schedule, or Dashboard. Repeated taps are idempotent, corrections update the same dated row, and the legacy absence-risk tally remains synchronized.
 
+- **Today-aware Schedule list** — reopening Schedule automatically selects the current weekday and scrolls to the class happening now, the next upcoming block during a gap, or the final class after the day is complete.
+
 - **Room database** (`data/entity`, `data/dao`, `PunlaDatabase.kt`) mirroring your
   original state shape: class sessions, dated attendance records, expenses + recurring rules, deadlines +
   recurring rules, semesters/grade courses, and archives.

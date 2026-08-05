@@ -9,6 +9,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -26,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -38,6 +40,10 @@ import com.uplb.punla.ui.PunlaViewModel
 import com.uplb.punla.ui.theme.LocalPunlaPalette
 import com.uplb.punla.ui.theme.PunlaDisplay
 import com.uplb.punla.ui.theme.PunlaMono
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import kotlinx.coroutines.flow.first
+import java.time.LocalDateTime
 
 private val DAYS = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
 private val DAY_FULL = mapOf(
@@ -120,9 +126,18 @@ fun ScheduleScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false, onStudy
     // Room's first real emission, so it doesn't flash on cold launch.
     val dataReady by vm.isDataReady.collectAsState()
 
-    var scheduleDay by rememberSaveable { mutableStateOf(DAYS[0]) }
+    val initialDay = remember {
+        scheduleDayCode(LocalDateTime.now().dayOfWeek) ?: DAYS[0]
+    }
+    var scheduleDay by rememberSaveable { mutableStateOf(initialDay) }
     var viewMode by rememberSaveable { mutableStateOf(0) } // 0 = list, 1 = weekly grid
     var showForm by rememberSaveable { mutableStateOf(false) }
+    val scheduleListState = rememberLazyListState()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var focusRequest by remember { mutableIntStateOf(1) }
+    var handledFocusRequest by remember { mutableIntStateOf(0) }
+    var focusedClassId by remember { mutableStateOf<String?>(null) }
+    var focusedClassKind by remember { mutableStateOf<ScheduleFocusKind?>(null) }
     var editingClassId by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingDeleteClassId by rememberSaveable { mutableStateOf<String?>(null) }
     val editingClass = remember(editingClassId, classes) { classes.firstOrNull { it.id == editingClassId } }
@@ -130,6 +145,49 @@ fun ScheduleScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false, onStudy
 
     LaunchedEffect(openFormOnStart) {
         if (openFormOnStart) { editingClassId = null; showForm = true }
+    }
+
+    // Bottom-tab navigation restores each destination's Compose state. That is
+    // useful elsewhere, but for Schedule it meant reopening the tab could show
+    // yesterday (and yesterday's old scroll position). Treat every RESUME as a
+    // fresh focus request, then select today and reveal the class that matters
+    // now. The request is handled only once, so attendance edits or database
+    // emissions do not unexpectedly yank the user back while they are browsing.
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) focusRequest += 1
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(focusRequest, dataReady, viewMode) {
+        if (!dataReady || viewMode != 0 || focusRequest == handledFocusRequest) return@LaunchedEffect
+        handledFocusRequest = focusRequest
+
+        val focus = findScheduleFocus(classes, LocalDateTime.now())
+        val targetDay = focus.day
+            ?: DAYS.firstOrNull { day -> classes.any { it.day == day } }
+            ?: DAYS[0]
+
+        scheduleDay = targetDay
+        focusedClassId = focus.sessionId
+        focusedClassKind = focus.kind
+
+        val targetIndex = classes
+            .filter { it.day == targetDay }
+            .sortedBy { it.start }
+            .indexOfFirst { it.id == focus.sessionId }
+
+        if (targetIndex >= 0) {
+            // Wait until LazyColumn has recomposed for the newly-selected day
+            // before overriding its restored scroll position.
+            snapshotFlow { scheduleListState.layoutInfo.totalItemsCount }
+                .first { count -> count > targetIndex }
+            scheduleListState.scrollToItem(targetIndex)
+        } else {
+            scheduleListState.scrollToItem(0)
+        }
     }
 
     fun openAdd() {
@@ -184,7 +242,13 @@ fun ScheduleScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false, onStudy
                         label = d,
                         active = scheduleDay == d,
                         hasDot = classes.any { it.day == d },
-                        onClick = { scheduleDay = d }
+                        onClick = {
+                            scheduleDay = d
+                            if (d != scheduleDayCode(LocalDateTime.now().dayOfWeek)) {
+                                focusedClassId = null
+                                focusedClassKind = null
+                            }
+                        }
                     )
                 }
             }
@@ -231,7 +295,10 @@ fun ScheduleScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false, onStudy
                     )
                 }
             } else {
-                LazyColumn(Modifier.weight(1f, fill = false)) {
+                LazyColumn(
+                    modifier = Modifier.weight(1f, fill = false),
+                    state = scheduleListState
+                ) {
                     items(items, key = { it.id }) { c ->
                         ClassCard(
                             c = c,
@@ -243,7 +310,8 @@ fun ScheduleScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false, onStudy
                             onLogAbsent = { vm.logAttendance(it, AttendanceStatus.ABSENT, source = "schedule") },
                             onClearAttendance = vm::clearAttendance,
                             termStart = vm.termStartDate,
-                            termEnd = vm.termEndDate
+                            termEnd = vm.termEndDate,
+                            focusKind = if (c.id == focusedClassId) focusedClassKind else null
                         )
                     }
                     item { Spacer(Modifier.height(24.dp)) }
@@ -335,7 +403,8 @@ private fun ClassCard(
     onLogAbsent: (ClassSession) -> Unit = {},
     onClearAttendance: (AttendanceRecord) -> Unit = {},
     termStart: java.time.LocalDate,
-    termEnd: java.time.LocalDate
+    termEnd: java.time.LocalDate,
+    focusKind: ScheduleFocusKind? = null
 ) {
     val isLab = c.type == "lab"
     val accent = if (isLab) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary
@@ -352,14 +421,37 @@ private fun ClassCard(
             .fillMaxWidth()
             .padding(vertical = 5.dp)
             .shadow(1.dp, MaterialTheme.shapes.medium, ambientColor = LocalPunlaPalette.current.shadowInk.copy(alpha = 0.05f), spotColor = LocalPunlaPalette.current.shadowInk.copy(alpha = 0.05f)),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        colors = CardDefaults.cardColors(
+            containerColor = if (focusKind == ScheduleFocusKind.CURRENT)
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f)
+            else MaterialTheme.colorScheme.surfaceVariant
+        ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         shape = MaterialTheme.shapes.medium,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+        border = BorderStroke(
+            if (focusKind != null) 2.dp else 1.dp,
+            if (focusKind != null) accent else MaterialTheme.colorScheme.outline
+        )
     ) {
         Row(Modifier.height(IntrinsicSize.Min)) {
             AccentBar(accent)
             Column(Modifier.padding(14.dp).fillMaxWidth()) {
+                if (focusKind != null) {
+                    Text(
+                        when (focusKind) {
+                            ScheduleFocusKind.CURRENT -> "HAPPENING NOW"
+                            ScheduleFocusKind.NEXT -> "UP NEXT"
+                            ScheduleFocusKind.LAST -> "DAY COMPLETE"
+                        },
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = PunlaMono,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.8.sp
+                        ),
+                        color = accent,
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    )
+                }
                 // .class-row-top
                 Row(horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
                     Column {

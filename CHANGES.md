@@ -1,3 +1,13 @@
+# Version 1.8 — Schedule Today Auto-Focus
+
+- Schedule List now resets to the current weekday whenever the destination is reopened, even when bottom-navigation state restoration retained an older day.
+- Automatically scrolls to the class happening now.
+- Before or between classes, automatically scrolls to the next class today.
+- After the final class, opens at the last class and labels the day complete.
+- Adds clear `HAPPENING NOW`, `UP NEXT`, and `DAY COMPLETE` emphasis without changing the user's saved schedule.
+- Manual browsing remains stable: attendance changes and Room emissions no longer pull the list away after the initial focus request.
+- Added pure schedule-focus regression tests for boundaries, empty days, adjacent classes, and Sunday fallback behavior.
+
 # Version 1.7 — Attendance Check-In
 
 - Added **Attended** and **Absent** actions to the ongoing class notification.
