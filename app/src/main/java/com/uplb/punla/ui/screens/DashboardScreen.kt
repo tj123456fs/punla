@@ -58,11 +58,20 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
 @Composable
-fun DashboardScreen(vm: PunlaViewModel, onOpenNextClassOnMap: () -> Unit = {}, onOpenChecklist: () -> Unit = {}, onOpenPomodoro: (String?) -> Unit = {}) {
+fun DashboardScreen(
+    vm: PunlaViewModel,
+    onOpenNextClassOnMap: () -> Unit = {},
+    onOpenSchedule: () -> Unit = {},
+    onOpenBudget: () -> Unit = {},
+    onOpenDeadlines: () -> Unit = {},
+    onOpenChecklist: () -> Unit = {},
+    onOpenPomodoro: (String?) -> Unit = {}
+) {
     val classes by vm.classes.collectAsState()
     val deadlines by vm.deadlines.collectAsState()
     val attendanceRecords by vm.attendanceRecords.collectAsState()
     val expenses by vm.expenses.collectAsState()
+    val expenseRules by vm.expenseRules.collectAsState()
     val checklistItems by vm.checklistItems.collectAsState()
     val studySessions by vm.studySessions.collectAsState()
     val studyStreak by vm.currentStudyStreak.collectAsState()
@@ -74,6 +83,7 @@ fun DashboardScreen(vm: PunlaViewModel, onOpenNextClassOnMap: () -> Unit = {}, o
     val nextClass by vm.nextClassFlow.collectAsState(initial = null)
     val nextDeadline by vm.nextDeadlineFlow.collectAsState(initial = null)
     val haptics = LocalHapticFeedback.current
+    val screenGutter = punlaScreenHorizontalPadding()
 
     // ---- GPS \u2194 next class correlation ----
     val context = LocalContext.current
@@ -146,6 +156,12 @@ fun DashboardScreen(vm: PunlaViewModel, onOpenNextClassOnMap: () -> Unit = {}, o
     val dailyAvg = if (now.dayOfMonth > 0) spent / now.dayOfMonth else 0.0
     val budgetDailyLimit = if (daysInMonth > 0) budget / daysInMonth else 0.0
     val isOverPace = dailyAvg > budgetDailyLimit
+    val monthEnd = java.time.YearMonth.from(now).atEndOfMonth()
+    val upcomingFixedCommitments = remember(expenseRules, now) {
+        vm.repo.projectedFixedCommitmentsFromRules(expenseRules, now, monthEnd)
+    }
+    val budgetDaysRemaining = (ChronoUnit.DAYS.between(now, monthEnd) + 1).coerceAtLeast(1)
+    val safeToday = if (budget > 0.0) (remaining - upcomingFixedCommitments) / budgetDaysRemaining else 0.0
 
     // Roadmap - Dashboard Redesign #1: quick-glance stat row derived counts.
     // All sourced from state already collected above - no new queries.
@@ -205,7 +221,7 @@ fun DashboardScreen(vm: PunlaViewModel, onOpenNextClassOnMap: () -> Unit = {}, o
     LazyColumn(
         Modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .padding(horizontal = screenGutter, vertical = 12.dp)
     ) {
         // Welcome Header & Greeting
         item {
@@ -417,7 +433,7 @@ fun DashboardScreen(vm: PunlaViewModel, onOpenNextClassOnMap: () -> Unit = {}, o
 
             // Next Class Card
             item {
-                SectionLabel("Next Class", icon = Icons.Default.CalendarMonth)
+                SectionLabel("Next class", icon = Icons.Default.CalendarMonth, actionLabel = "Schedule", onAction = onOpenSchedule)
                 val isLab = nextClass?.type == "lab"
                 Card(
                     modifier = Modifier
@@ -585,7 +601,7 @@ fun DashboardScreen(vm: PunlaViewModel, onOpenNextClassOnMap: () -> Unit = {}, o
 
             // Budget Remaining Card
             item {
-                SectionLabel("Budget Remaining", icon = Icons.Default.AttachMoney)
+                SectionLabel("Budget", icon = Icons.Default.AttachMoney, actionLabel = "Open", onAction = onOpenBudget)
                 val overBudget = remaining < 0
                 Card(
                     modifier = Modifier
@@ -626,6 +642,20 @@ fun DashboardScreen(vm: PunlaViewModel, onOpenNextClassOnMap: () -> Unit = {}, o
                                 )
                                 Spacer(Modifier.height(2.dp))
                                 Text(
+                                    if (safeToday >= 0.0) "Safe today: ₱${"%,.0f".format(safeToday)}"
+                                    else "Safe today: pause discretionary spending",
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                    color = if (safeToday < 0.0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                                )
+                                if (upcomingFixedCommitments > 0.0) {
+                                    Text(
+                                        "₱${"%,.0f".format(upcomingFixedCommitments)} reserved for upcoming fixed bills",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Spacer(Modifier.height(2.dp))
+                                Text(
                                     "Pace: ₱${"%,.0f".format(dailyAvg)}/day (₱${"%,.0f".format(budgetDailyLimit)}/day budgeted)",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = if (isOverPace) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
@@ -638,7 +668,7 @@ fun DashboardScreen(vm: PunlaViewModel, onOpenNextClassOnMap: () -> Unit = {}, o
 
             // Next Deadline Card
             item {
-                SectionLabel("Next Deadline", icon = Icons.Default.Flag)
+                SectionLabel("Next deadline", icon = Icons.Default.Flag, actionLabel = "View all", onAction = onOpenDeadlines)
                 val days = nextDeadline?.let { runCatching { ChronoUnit.DAYS.between(LocalDate.now(), LocalDate.parse(it.due)) }.getOrNull() }
                 val fillContainer = when {
                     days == null -> MaterialTheme.colorScheme.primaryContainer

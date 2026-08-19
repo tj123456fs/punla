@@ -14,6 +14,7 @@ import androidx.work.WorkerParameters
 import com.uplb.punla.R
 import com.uplb.punla.data.PunlaRepository
 import com.uplb.punla.notification.TrackedNotification
+import com.uplb.punla.notification.PunlaNotifications
 
 /**
  * Daily check for whether it's time to nudge about unfinished pre-enrollment
@@ -33,6 +34,7 @@ class ChecklistReminderWorker(
     override suspend fun doWork(): Result {
         val repo = PunlaRepository(context)
         if (!repo.notificationsEnabled) return Result.success()
+        if (PunlaNotifications.isRoutineQuietHours(repo.quietHoursEnabled)) return Result.success()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -67,30 +69,21 @@ class ChecklistReminderWorker(
     }
 
     private suspend fun showNotification(title: String, content: String) {
-        val channelId = "punla_checklist_channel"
+        PunlaNotifications.ensureChannels(context)
+        val channelId = PunlaNotifications.CHANNEL_ROUTINE
         val notificationManager = NotificationManagerCompat.from(context)
 
-        val name = "Pre-Enrollment Reminders"
-        val descriptionText = "Reminders about unfinished before-classes-start requirements"
-        val importance = NotificationManager.IMPORTANCE_DEFAULT
-        val channel = NotificationChannel(channelId, name, importance).apply {
-            description = descriptionText
-        }
-        val sysManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        sysManager.createNotificationChannel(channel)
-
-        val builder = NotificationCompat.Builder(context, channelId)
+        val builder = PunlaNotifications.routine(NotificationCompat.Builder(context, channelId))
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(content)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                         .setAutoCancel(true)
 
         try {
             TrackedNotification.post(
                 context = context,
                 manager = notificationManager,
-                notificationId = 4,
+                notificationId = PunlaNotifications.ID_CHECKLIST,
                 builder = builder,
                 workerName = "ChecklistReminderWorker",
                 notificationType = "checklist",

@@ -125,6 +125,7 @@ fun ScheduleScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false, onStudy
     // Roadmap C — withhold the "No classes scheduled" empty state until
     // Room's first real emission, so it doesn't flash on cold launch.
     val dataReady by vm.isDataReady.collectAsState()
+    val screenGutter = punlaScreenHorizontalPadding()
 
     val initialDay = remember {
         scheduleDayCode(LocalDateTime.now().dayOfWeek) ?: DAYS[0]
@@ -199,7 +200,7 @@ fun ScheduleScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false, onStudy
     Column(
         Modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .padding(horizontal = screenGutter, vertical = 12.dp)
     ) {
         // web: .seg — List / Weekly grid switcher
         SegmentedControl(
@@ -291,7 +292,9 @@ fun ScheduleScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false, onStudy
                     EmptyState(
                         icon = Icons.Default.CalendarMonth,
                         message = "No classes scheduled for ${DAY_FULL[scheduleDay]}.",
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        actionLabel = "Add class",
+                        onAction = { openAdd() }
                     )
                 }
             } else {

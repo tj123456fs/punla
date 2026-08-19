@@ -1,9 +1,9 @@
 package com.uplb.punla.worker
 
 import android.Manifest
-import android.app.NotificationChannel
-import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
@@ -11,9 +11,11 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.uplb.punla.MainActivity
 import com.uplb.punla.R
 import com.uplb.punla.data.PunlaRepository
 import com.uplb.punla.notification.TrackedNotification
+import com.uplb.punla.notification.PunlaNotifications
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -32,9 +34,11 @@ class ClassReminderWorker(
     override suspend fun doWork(): Result {
         val repo = PunlaRepository(context)
 
-        if (!repo.notificationsEnabled) {
-            return Result.success()
-        }
+        if (!repo.notificationsEnabled) return Result.success()
+
+        // The ongoing class-day card is intentionally silent. This worker is
+        // the single attention-grabbing alert before class, so it remains
+        // enabled even when the class-day card is visible.
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -55,7 +59,7 @@ class ClassReminderWorker(
             val key = "class:${c.id}:$today:${c.start}"
             if (key in notifiedKeys) continue
 
-            showNotification(c.code, formatBody(c))
+            showNotification(c.id, c.code, formatBody(c), c.room)
             notifiedKeys += key
             didNotify = true
         }
@@ -79,33 +83,31 @@ class ClassReminderWorker(
         return "$time \u00B7 ${c.room ?: "TBA"}"
     }
 
-    private suspend fun showNotification(code: String, body: String) {
-        val channelId = "punla_class_channel"
+    private suspend fun showNotification(sessionId: String, code: String, body: String, room: String?) {
+        PunlaNotifications.ensureChannels(context)
+        val channelId = PunlaNotifications.CHANNEL_CLASS
         val notificationManager = NotificationManagerCompat.from(context)
 
         // minSdk is 26 (O), so notification channels always exist here — no SDK_INT guard needed.
-        val channel = NotificationChannel(
-            channelId,
-            "Class Reminders",
-            NotificationManager.IMPORTANCE_DEFAULT
-        ).apply {
-            description = "Reminders when a class is about to start"
-        }
-        val sysManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        sysManager.createNotificationChannel(channel)
-
-        val builder = NotificationCompat.Builder(context, channelId)
+        val builder = PunlaNotifications.academic(NotificationCompat.Builder(context, channelId))
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("$code starts soon")
+            .setContentTitle("$code starts in 15 min")
             .setContentText(body)
+            .setCategory(NotificationCompat.CATEGORY_EVENT)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-                        .setAutoCancel(true)
+            .setAutoCancel(true)
+            .setTimeoutAfter(20L * 60L * 1000L)
+            .addAction(R.mipmap.ic_launcher, "Schedule", activityIntent("schedule", null, "$code:schedule"))
+
+        room?.takeIf { it.isNotBlank() }?.let {
+            builder.addAction(R.mipmap.ic_launcher, "Navigate", activityIntent("campus", it, "$code:navigate"))
+        }
 
         try {
             TrackedNotification.post(
                 context = context,
                 manager = notificationManager,
-                notificationId = code.hashCode(),
+                notificationId = PunlaNotifications.classReminderId(sessionId),
                 builder = builder,
                 workerName = "ClassReminderWorker",
                 notificationType = "class",
@@ -115,4 +117,19 @@ class ClassReminderWorker(
             // Permission wasn't granted
         }
     }
+    private fun activityIntent(route: String, mapQuery: String?, key: String): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            action = "com.uplb.punla.CLASS_REMINDER_ACTION:$key"
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra(MainActivity.EXTRA_START_ROUTE, route)
+            mapQuery?.let { putExtra(MainActivity.EXTRA_MAP_QUERY, it) }
+        }
+        return PendingIntent.getActivity(
+            context,
+            key.hashCode(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
 }

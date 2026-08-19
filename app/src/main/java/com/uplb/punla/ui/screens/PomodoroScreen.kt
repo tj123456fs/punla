@@ -72,10 +72,12 @@ fun PomodoroScreen(vm: PunlaViewModel, preselectedCourse: String? = null, onOpen
         PomodoroPhase.IDLE -> "Ready when you are"
     }
 
+    val screenGutter = punlaScreenHorizontalPadding(maxContentWidth = 680.dp, compactPadding = 20.dp)
+
     Column(
         Modifier
             .fillMaxSize()
-            .padding(horizontal = 20.dp, vertical = 16.dp),
+            .padding(horizontal = screenGutter, vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // History icon — drills into Study Analysis (roadmap 3).

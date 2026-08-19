@@ -1,3 +1,47 @@
+# Punla Changes
+
+## Session 27 — UI/UX 2.1
+
+- Added responsive, centered content gutters across primary screens so tablet/foldable and landscape layouts no longer stretch cards edge-to-edge.
+- Navigation rail now activates at 600 dp, while compact phones retain the floating bottom navigation.
+- Switched the root app bar from centered to left-aligned for better title/action balance.
+- Redesigned shared section headers with clearer sentence-case hierarchy and optional contextual actions.
+- Dashboard section headers now link directly to Schedule, Budget, and Deadlines.
+- Added actionable empty states for Schedule, Budget, Deadlines, Grades, and Checklist.
+- Replaced ambiguous plus-only FABs with labeled extended FABs on Budget, Deadlines, Grades, and Checklist.
+- Removed duplicate in-screen titles from Settings, Checklist, Study Analysis, Assistant, and Campus.
+- Added animated segmented-control and day-pill selection transitions.
+- Normalized Dashboard stat-tile heights for cleaner scanning.
+- Version bumped to `2.1` (`versionCode 12`).
+
+## Session 26 — Budgeting System Upgrade (v2.0)
+
+- Added a **Safe to Spend Today** planner that uses the tighter active weekly/monthly limit and spreads the remaining discretionary budget across the days left in the period.
+- Monthly safe-spend calculations now reserve upcoming **fixed recurring commitments** before treating money as discretionary.
+- Added optional **monthly category limits** for Food / Allowance, Transportation, Mobile Load / Internet, Supplies, Org / Activities, and Miscellaneous. Category cards now show amount left or amount over the configured cap.
+- Added **expense editing** for amount, category, note, date, and fixed status.
+- Added **backdated expense logging** with Today/Yesterday shortcuts and future-date validation.
+- Editing a generated recurring occurrence changes only that occurrence; the future recurrence rule is preserved.
+- Backdated recurring rules now catch up immediately after creation instead of waiting for the next app launch.
+- Home and the tall Budget widget now surface the safe-to-spend figure.
+- Budget threshold notifications now include actionable daily-pace guidance and expanded text.
+- Category limits are preference-backed (no Room migration) and are included in backup/restore. Backup format version is now 4.
+
+
+## v1.9 — Notification system upgrade
+
+- Centralized notification channels, groups, stable IDs, and routine quiet-hour policy.
+- Fixed cross-feature notification ID collisions and moved push notifications into the shared ID/channel policy.
+- Kept the ongoing class-day card silent while restoring one intentional 15-minute class-start alert with Schedule/Navigate actions and 20-minute expiry.
+- Added a quiet 7:15 AM Morning agenda with today's class count, first room/time, and deadlines due today; it is deduplicated once per date.
+- Added Settings controls for Morning agenda and 10 PM–7 AM Quiet hours, plus a shortcut to Android's per-category notification controls.
+- Quiet hours suppress routine checklist, budget, backup, and daily-brief nudges while preserving class, Pomodoro, and deadline alerts.
+- Learned routine reminder hours are kept outside quiet hours.
+- Deadline alerts remain deduplicated until the urgent deadline snapshot changes.
+- Ongoing class cards prioritize at most three useful actions for the current state.
+- Backup/restore now preserves Morning agenda and Quiet hours preferences.
+- Validation: 85 Kotlin files parsed with zero syntax errors; notification policy compiled against local stubs and passed quiet-hour/ID tests.
+
 # Version 1.8 — Schedule Today Auto-Focus
 
 - Schedule List now resets to the current weekday whenever the destination is reopened, even when bottom-navigation state restoration retained an older day.

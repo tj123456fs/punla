@@ -191,17 +191,13 @@ fun CampusMapScreen(vm: PunlaViewModel, initialSearch: String = "", onOpenFullMa
         }
     }
 
+    val screenGutter = punlaScreenHorizontalPadding(maxContentWidth = 900.dp)
+
     Column(
         Modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .padding(horizontal = screenGutter, vertical = 12.dp)
     ) {
-        Text(
-            "Campus Map & Directory",
-            style = MaterialTheme.typography.headlineLarge.copy(fontFamily = PunlaDisplay),
-            color = MaterialTheme.colorScheme.onBackground
-        )
-        Spacer(Modifier.height(12.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(

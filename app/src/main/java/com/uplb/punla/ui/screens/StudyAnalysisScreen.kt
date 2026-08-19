@@ -81,18 +81,14 @@ fun StudyAnalysisScreen(vm: PunlaViewModel) {
         else allSessions.filter { !it.localDate().isBefore(rangeStart) }
     }
 
+    val screenGutter = punlaScreenHorizontalPadding()
+
     LazyColumn(
         Modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .padding(horizontal = screenGutter, vertical = 12.dp)
     ) {
         item {
-            Text(
-                "Study Analysis",
-                style = MaterialTheme.typography.headlineLarge.copy(fontFamily = PunlaDisplay),
-                color = MaterialTheme.colorScheme.onBackground
-            )
-            Spacer(Modifier.height(4.dp))
             Text(
                 "What your logged focus sessions add up to.",
                 style = MaterialTheme.typography.bodySmall,

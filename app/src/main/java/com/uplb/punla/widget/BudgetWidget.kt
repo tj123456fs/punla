@@ -64,6 +64,7 @@ class BudgetWidget : GlanceAppWidget() {
         val weeklySpent = if (period != BudgetPeriod.MONTHLY) repo.weeklyBudgetSpent() else 0.0
         val weeklyRemaining = weeklyBudgetAmt - weeklySpent
         val dailySpend = repo.spendingLast7Days()
+        val safeToday = if (budget > 0.0 || weeklyBudgetAmt > 0.0) repo.safeToSpendToday() else 0.0
         val peso = NumberFormat.getNumberInstance(Locale("en", "PH")).apply { maximumFractionDigits = 0 }
 
         val openBudgetIntent = Intent(context, MainActivity::class.java).apply {
@@ -189,6 +190,17 @@ class BudgetWidget : GlanceAppWidget() {
                                 )
                             )
                         }
+                    }
+                    if (size.height >= 150.dp && (budget > 0.0 || weeklyBudgetAmt > 0.0)) {
+                        Spacer(modifier = GlanceModifier.height(3.dp))
+                        Text(
+                            text = if (safeToday >= 0.0) "Safe today · ₱${peso.format(safeToday)}" else "Safe today · pause discretionary spend",
+                            style = TextStyle(
+                                color = ColorProvider(day = if (safeToday >= 0.0) wc.accent else wc.urgent, night = if (safeToday >= 0.0) wc.accent else wc.urgent),
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 11.sp
+                            )
+                        )
                     }
                 }
                 if (size.height >= 150.dp) {

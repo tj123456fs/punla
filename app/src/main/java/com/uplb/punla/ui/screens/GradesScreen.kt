@@ -88,16 +88,19 @@ fun GradesScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
     // selected tab — this is usually the number a scholarship/CHED target
     // actually tracks.
     val allCourses by vm.allCourses.collectAsState()
+    val screenGutter = punlaScreenHorizontalPadding()
     val (cumulativeGwa, cumulativeUnits) = computeGwa(allCourses)
 
     Scaffold(
         floatingActionButton = {
             if (selectedSemester != null) {
-                FloatingActionButton(
+                ExtendedFloatingActionButton(
                     onClick = { editingCourseId = null; showCourseDialog = true },
+                    icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                    text = { Text("Course") },
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary
-                ) { Icon(Icons.Default.Add, "Add course") }
+                )
             }
         },
         containerColor = Color.Transparent
@@ -107,15 +110,13 @@ fun GradesScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
                 EmptyState(
                     icon = Icons.Default.Grade,
                     message = "No semesters yet. Add one to start tracking your GWA.",
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    actionLabel = "Add semester",
+                    onAction = { showSemesterDialog = true }
                 )
-                Button(
-                    onClick = { showSemesterDialog = true },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp)
-                ) { Text("Add first semester") }
             }
         } else {
-            LazyColumn(modifier = Modifier.padding(padding).padding(horizontal = 16.dp)) {
+            LazyColumn(modifier = Modifier.padding(padding).padding(horizontal = screenGutter)) {
                 item {
                     Spacer(Modifier.height(8.dp))
                     SemesterTabs(
@@ -149,7 +150,9 @@ fun GradesScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
                     item {
                         EmptyState(
                             icon = Icons.Default.Grade,
-                            message = "No courses added for this semester yet. Tap + to add one."
+                            message = "No courses added for this semester yet.",
+                            actionLabel = "Add course",
+                            onAction = { editingCourseId = null; showCourseDialog = true }
                         )
                     }
                 }

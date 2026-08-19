@@ -40,9 +40,13 @@ local-first personal intelligence layer and an optional private assistant.
 
 - **Ongoing class-day notification** — one silent card evolves from leave-soon to current class, free time, and end-of-day. Android's chronometer supplies live start/end countdowns, while Attended/Absent check-in, Navigate, Schedule, Start focus, and Hide today actions keep the notification useful without stacking alerts.
 
+- **Smarter notification system** — stable per-feature IDs prevent unrelated reminders from overwriting each other; one quiet 7:15 AM Morning agenda summarizes today's classes and due work; routine nudges respect optional 10 PM–7 AM quiet hours; the ongoing class card stays silent while the separate 15-minute class alert is the deliberate attention notification and expires automatically. Settings links directly to Android's per-category controls.
+
 - **Per-occurrence attendance history** — each class meeting can be logged as Attended or Absent from the notification, Schedule, or Dashboard. Repeated taps are idempotent, corrections update the same dated row, and the legacy absence-risk tally remains synchronized.
 
 - **Today-aware Schedule list** — reopening Schedule automatically selects the current weekday and scrolls to the class happening now, the next upcoming block during a gap, or the final class after the day is complete.
+
+- **Responsive UI/UX 2.1** — medium-width devices switch to a navigation rail at 600 dp; core screens use centered readable content widths; shared section headers, empty states, FABs, and selector motion were refreshed for clearer hierarchy and faster next-step actions.
 
 - **Room database** (`data/entity`, `data/dao`, `PunlaDatabase.kt`) mirroring your
   original state shape: class sessions, dated attendance records, expenses + recurring rules, deadlines +
@@ -51,7 +55,7 @@ local-first personal intelligence layer and an optional private assistant.
   logic, shared by both the app UI and the widgets (no duplication, no bridge —
   since this is fully native, widgets query Room directly in-process).
 - **Compose screens**: Schedule (weekly list + add/delete), Budget (set monthly
-  budget, log/delete expenses, running remaining balance), Deadlines (list,
+  budget, weekly/monthly planning, safe-to-spend guidance, category limits, edit/backdate expenses, running remaining balance), Deadlines (list,
   mark done, add/delete). Bottom navigation ties them together.
 - **Three Glance widgets** (`widget/`): `NextClassWidget`, `BudgetWidget`,
   `NextDeadlineWidget`, each with its own `AppWidgetProvider` XML and receiver,
@@ -111,10 +115,10 @@ from here:
   parity with the web app.
 - `ui/theme/Shape.kt` — consistent rounded-corner radii used by cards, chips,
   and dialogs.
-- `ui/screens/PunlaWidgets.kt` — small shared composables (`Tag`, `AccentBar`,
-  `SectionLabel`, `EmptyState`, `PesoText`) reused across all four screens so
-  peso amounts, priority/type pills, and empty states look identical
-  everywhere instead of each screen rolling its own.
+- `ui/screens/PunlaWidgets.kt` — shared UI primitives (`Tag`, `AccentBar`,
+  `SectionLabel`, `EmptyState`, `PesoText`) plus responsive screen gutters,
+  animated selectors, and actionable empty states reused across the app so
+  hierarchy and spacing stay consistent instead of each screen rolling its own.
 - Screens now use a top app bar, colored left-edge accent bars per card
   (leaf = lecture/low priority, mango = lab/medium priority, maroon = high
   priority), a `LinearProgressIndicator` on the Budget screen showing
@@ -134,7 +138,12 @@ resize mode) is controlled by the matching XML in `res/xml/*_widget_info.xml`.
 
 This project was edited in a sandbox without Android SDK 34, so the final Android
 assembly remains the GitHub Actions/Android Studio check. The procedural background core, dispatcher, automatic mapping, class-day timeline,
-and attendance occurrence model were compiled with local Kotlin stubs; runtime checks
-passed for all 12 background styles, all 16 themes, class-notification boundaries,
-and attendance-key/idempotency rules. Treat the first real `assembleDebug` as the authoritative integration
+attendance occurrence model, and notification policy were compiled with local Kotlin stubs; runtime checks
+passed for all 12 background styles, all 16 themes, class-notification boundaries, attendance-key/idempotency rules,
+and notification quiet-hour/stable-ID boundaries. Treat the first real `assembleDebug` as the authoritative integration
 check for Compose and Android APIs.
+
+
+## Budgeting 2.0
+
+Punla's budget flow now goes beyond a spent-vs-budget meter. It estimates a safe daily discretionary amount, reserves upcoming fixed recurring commitments, supports optional monthly category limits, and lets expenses be corrected or backdated. The tall Budget widget and Home card surface the same safe-spend guidance.

@@ -1,5 +1,8 @@
 package com.uplb.punla.ui.screens
 
+import androidx.compose.animation.core.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -21,6 +24,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -40,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -48,6 +53,25 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.uplb.punla.ui.theme.LocalPunlaPalette
 import com.uplb.punla.ui.theme.PunlaMono
+
+/**
+ * App-wide responsive gutter. On phones this stays at 16dp; on tablets and
+ * landscape windows it grows until the actual content column tops out around
+ * [maxContentWidth]. This keeps cards/forms readable instead of stretching
+ * edge-to-edge once Punla switches to the navigation rail.
+ */
+@Composable
+fun punlaScreenHorizontalPadding(
+    maxContentWidth: Dp = 760.dp,
+    compactPadding: Dp = 16.dp
+): Dp {
+    val config = LocalConfiguration.current
+    val windowWidth = config.screenWidthDp.dp
+    val railWidth = if (config.screenWidthDp >= 600) 80.dp else 0.dp
+    val availableWidth = if (windowWidth > railWidth) windowWidth - railWidth else windowWidth
+    val centeredPadding = (availableWidth - maxContentWidth) / 2
+    return if (centeredPadding > compactPadding) centeredPadding else compactPadding
+}
 
 /**
  * Small rounded pill used for course type/lecture-lab tags (web: .badge —
@@ -92,41 +116,61 @@ fun AccentBar(color: Color, modifier: Modifier = Modifier) {
 }
 
 /**
- * Section header used above grouped lists (day name, "Recent expenses",
- * "Completed", etc). Matches the web app's .week-day-label: Inter 11.5px/700,
- * uppercase, letter-spacing 0.4px.
- *
- * When [icon] is supplied (Dashboard Redesign #4), it replaces the plain dot
- * with a small leading icon so the label doubles as a quick visual index —
- * e.g. a calendar glyph above "Next Class". Sections that don't pass one
- * (day-of-week headers, etc.) keep the original dot.
+ * App-wide section header for grouped lists and dashboard modules. The 2.1
+ * refresh deliberately moves away from the tiny all-caps web-port treatment:
+ * sentence-case headings are easier to scan on a phone, icons receive a small
+ * themed container, and an optional trailing action provides a clear path to
+ * the full destination without making the entire section look tappable.
  */
 @Composable
-fun SectionLabel(text: String, modifier: Modifier = Modifier, icon: ImageVector? = null) {
+fun SectionLabel(
+    text: String,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null
+) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier.padding(top = 16.dp, bottom = 6.dp, start = 2.dp)
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 24.dp, bottom = 10.dp)
     ) {
         if (icon != null) {
-            Icon(
-                icon,
-                contentDescription = null,
-                modifier = Modifier.size(14.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
+            Surface(
+                modifier = Modifier.size(30.dp),
+                shape = RoundedCornerShape(9.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.primary
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp))
+                }
+            }
+            Spacer(Modifier.width(10.dp))
         } else {
             Box(
                 Modifier
-                    .size(6.dp)
-                    .background(MaterialTheme.colorScheme.primary, CircleShape)
+                    .width(3.dp)
+                    .height(18.dp)
+                    .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(50))
             )
+            Spacer(Modifier.width(9.dp))
         }
-        Spacer(Modifier.width(8.dp))
         Text(
-            text.uppercase(),
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            text,
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f)
         )
+        if (actionLabel != null && onAction != null) {
+            TextButton(
+                onClick = onAction,
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+            ) {
+                Text(actionLabel, style = MaterialTheme.typography.labelMedium)
+            }
+        }
     }
 }
 
@@ -183,6 +227,7 @@ private fun StatTile(
 ) {
     Box(
         modifier
+            .heightIn(min = 78.dp)
             .background(container, RoundedCornerShape(12.dp))
             .padding(horizontal = 10.dp, vertical = 10.dp)
     ) {
@@ -203,32 +248,45 @@ private fun StatTile(
 }
 
 /**
- * Friendly empty state with an icon, used instead of a lone line of gray text.
- * The web app's .empty state has no colored icon container — just a bare
- * 34x34 icon at 0.6 opacity above the message — so this drops the circular
- * tinted background in favor of a plain, muted icon at the same size.
+ * Friendly empty state with a themed icon and an optional next-step action.
+ * Giving dead ends a concrete action (Add class, Add expense, etc.) keeps the
+ * user in flow instead of forcing them to hunt for the floating action button.
  */
 @Composable
-fun EmptyState(icon: ImageVector, message: String, modifier: Modifier = Modifier) {
+fun EmptyState(
+    icon: ImageVector,
+    message: String,
+    modifier: Modifier = Modifier,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null
+) {
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = 30.dp, horizontal = 24.dp),
+            .padding(vertical = 28.dp, horizontal = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Icon(
-            icon,
-            contentDescription = null,
-            modifier = Modifier.size(34.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-        )
-        Spacer(Modifier.height(8.dp))
+        Surface(
+            modifier = Modifier.size(46.dp),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.primary
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp))
+            }
+        }
+        Spacer(Modifier.height(12.dp))
         Text(
             message,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
         )
+        if (actionLabel != null && onAction != null) {
+            Spacer(Modifier.height(12.dp))
+            Button(onClick = onAction) { Text(actionLabel) }
+        }
     }
 }
 
@@ -249,11 +307,21 @@ fun SegmentedControl(options: List<String>, selected: Int, onSelect: (Int) -> Un
     ) {
         options.forEachIndexed { i, label ->
             val active = i == selected
+            val segmentColor by animateColorAsState(
+                targetValue = if (active) MaterialTheme.colorScheme.primary else Color.Transparent,
+                animationSpec = tween(180),
+                label = "segmentBackground"
+            )
+            val contentColor by animateColorAsState(
+                targetValue = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                animationSpec = tween(180),
+                label = "segmentContent"
+            )
             Box(
                 Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(if (active) MaterialTheme.colorScheme.primary else Color.Transparent)
+                    .background(segmentColor)
                     .clickable { onSelect(i) }
                     .heightIn(min = 48.dp)
                     .padding(vertical = 7.dp),
@@ -262,7 +330,7 @@ fun SegmentedControl(options: List<String>, selected: Int, onSelect: (Int) -> Un
                 Text(
                     label,
                     style = MaterialTheme.typography.titleSmall.copy(fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold),
-                    color = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                    color = contentColor
                 )
             }
         }
@@ -278,12 +346,28 @@ fun SegmentedControl(options: List<String>, selected: Int, onSelect: (Int) -> Un
  */
 @Composable
 fun DayPill(label: String, active: Boolean, hasDot: Boolean = false, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val pillScale by animateFloatAsState(
+        targetValue = if (active) 1.04f else 1f,
+        animationSpec = tween(180),
+        label = "dayPillScale"
+    )
+    val pillColor by animateColorAsState(
+        targetValue = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+        animationSpec = tween(180),
+        label = "dayPillColor"
+    )
+    val pillTextColor by animateColorAsState(
+        targetValue = if (active) Color.White else MaterialTheme.colorScheme.onSurface,
+        animationSpec = tween(180),
+        label = "dayPillText"
+    )
+
     Box(modifier, contentAlignment = Alignment.TopEnd) {
         Box(
             Modifier
-                .scale(if (active) 1.04f else 1f)
+                .scale(pillScale)
                 .clip(RoundedCornerShape(20.dp))
-                .background(if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
+                .background(pillColor)
                 .border(
                     1.dp,
                     if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
@@ -296,7 +380,7 @@ fun DayPill(label: String, active: Boolean, hasDot: Boolean = false, onClick: ()
             Text(
                 label,
                 style = MaterialTheme.typography.titleSmall.copy(fontSize = 12.5.sp, fontWeight = FontWeight.Medium),
-                color = if (active) Color.White else MaterialTheme.colorScheme.onSurface
+                color = pillTextColor
             )
         }
         if (hasDot) {

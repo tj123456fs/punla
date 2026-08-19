@@ -511,7 +511,7 @@ fun PunlaApp(
     val currentTitle = BOTTOM_TABS.firstOrNull { it.route == currentRoute }?.label
         ?: when (currentRoute) {
             "settings" -> "Settings"
-            "checklist" -> "Before Classes Start"
+            "checklist" -> "Checklist"
             "campus" -> "Campus"
             "campus/fullmap" -> "Campus Map"
             "pomodoro" -> "Focus"
@@ -534,7 +534,7 @@ fun PunlaApp(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var quickAddOpen by rememberSaveable { mutableStateOf(false) }
-    val useNavigationRail = LocalConfiguration.current.screenWidthDp >= 840
+    val useNavigationRail = LocalConfiguration.current.screenWidthDp >= 600
 
     // Navigates to a base route (drawer/bottom-nav taps) without triggering
     // any quick-add form.
@@ -647,7 +647,7 @@ fun PunlaApp(
             Scaffold(
             modifier = Modifier.weight(1f),
             topBar = {
-                CenterAlignedTopAppBar(
+                TopAppBar(
                     title = {
                         Text(
                             currentTitle,
@@ -691,7 +691,7 @@ fun PunlaApp(
                             }
                         }
                     },
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = Color.Transparent,
                         titleContentColor = MaterialTheme.colorScheme.onBackground
                     )
@@ -827,6 +827,9 @@ fun PunlaApp(
                     DashboardScreen(
                         vm,
                         onOpenNextClassOnMap = { navController.navigate("campus/fullmap") },
+                        onOpenSchedule = { navigateTo("schedule") },
+                        onOpenBudget = { navigateTo("budget") },
+                        onOpenDeadlines = { navigateTo("deadlines") },
                         onOpenChecklist = { navController.navigate("checklist") },
                         onOpenPomodoro = { course ->
                             if (course != null) {

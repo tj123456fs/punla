@@ -32,7 +32,7 @@ import java.util.Locale
  */
 object BackupManager {
 
-    const val CURRENT_VERSION = 3
+    const val CURRENT_VERSION = 4
 
     /** Suggested filename, mirrors the web app's punla-backup-YYYY-MM-DD.json. */
     fun suggestedFileName(): String {
@@ -87,12 +87,17 @@ object BackupManager {
             put("theme", repo.themeMode.name.lowercase())
             put("notificationsEnabled", repo.notificationsEnabled)
             put("classDayNotificationEnabled", repo.classDayNotificationEnabled)
+            put("morningAgendaEnabled", repo.morningAgendaEnabled)
+            put("quietHoursEnabled", repo.quietHoursEnabled)
             put("dailyStudyGoalMinutes", repo.dailyStudyGoalMinutes)
             put("weeklyStudyGoalMinutes", repo.weeklyStudyGoalMinutes)
             put("budgetPeriod", repo.budgetPeriod.name.lowercase())
             put("weekStartDay", repo.weekStartDay.name)
             put("weeklyBudgetOverride", repo.weeklyBudgetOverride)
             put("weeklyRolloverEnabled", repo.weeklyRolloverEnabled)
+            put("categoryBudgetLimits", JSONObject().apply {
+                repo.categoryBudgetLimits.forEach { (category, amount) -> put(category, amount) }
+            })
             put("termStartDate", repo.termStartDate.toString())
             put("termEndDate", repo.termEndDate.toString())
             put("cloudAssistantEnabled", repo.cloudAssistantEnabled)
@@ -211,6 +216,8 @@ object BackupManager {
         }
         repo.notificationsEnabled = root.optBoolean("notificationsEnabled", true)
         repo.classDayNotificationEnabled = root.optBoolean("classDayNotificationEnabled", true)
+        repo.morningAgendaEnabled = root.optBoolean("morningAgendaEnabled", true)
+        repo.quietHoursEnabled = root.optBoolean("quietHoursEnabled", true)
         repo.dailyStudyGoalMinutes = root.optInt("dailyStudyGoalMinutes", repo.dailyStudyGoalMinutes)
         repo.weeklyStudyGoalMinutes = root.optInt("weeklyStudyGoalMinutes", repo.weeklyStudyGoalMinutes)
         repo.budgetPeriod = when (root.optString("budgetPeriod", "monthly")) {
@@ -223,6 +230,16 @@ object BackupManager {
         }.getOrDefault(java.time.DayOfWeek.MONDAY)
         repo.weeklyBudgetOverride = if (!root.has("weeklyBudgetOverride") || root.isNull("weeklyBudgetOverride")) null else root.optDouble("weeklyBudgetOverride")
         repo.weeklyRolloverEnabled = root.optBoolean("weeklyRolloverEnabled", false)
+        repo.categoryBudgetLimits = root.optJSONObject("categoryBudgetLimits")?.let { obj ->
+            buildMap {
+                val keys = obj.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    val value = obj.optDouble(key, 0.0)
+                    if (key.isNotBlank() && value > 0.0 && value.isFinite()) put(key, value)
+                }
+            }
+        } ?: emptyMap()
         root.optStringOrNull("termStartDate")?.let { raw ->
             runCatching { java.time.LocalDate.parse(raw) }.getOrNull()?.let { repo.termStartDate = it }
         }

@@ -47,25 +47,23 @@ fun ChecklistScreen(vm: PunlaViewModel) {
     val checkedCount = items.count { it.checked }
     val progress = if (items.isNotEmpty()) checkedCount.toFloat() / items.size else 0f
     val allDone = items.isNotEmpty() && checkedCount == items.size
+    val screenGutter = punlaScreenHorizontalPadding()
 
     Scaffold(
         floatingActionButton = {
-            FloatingActionButton(
+            ExtendedFloatingActionButton(
                 onClick = { showAddDialog = true },
+                icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                text = { Text("Item") },
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary
-            ) { Icon(Icons.Default.Add, "Add item") }
+            )
         },
         containerColor = Color.Transparent
     ) { padding ->
-        LazyColumn(modifier = Modifier.padding(padding).padding(horizontal = 16.dp)) {
+        LazyColumn(modifier = Modifier.padding(padding).padding(horizontal = screenGutter)) {
             item {
                 Spacer(Modifier.height(8.dp))
-                Text(
-                    "Before Classes Start",
-                    style = MaterialTheme.typography.headlineSmall.copy(fontFamily = PunlaDisplay)
-                )
-                Spacer(Modifier.height(10.dp))
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -123,7 +121,9 @@ fun ChecklistScreen(vm: PunlaViewModel) {
                 item {
                     EmptyState(
                         icon = Icons.Default.CheckCircle,
-                        message = "Nothing on your checklist yet. Tap + to add a requirement."
+                        message = "Nothing on your checklist yet.",
+                        actionLabel = "Add requirement",
+                        onAction = { showAddDialog = true }
                     )
                 }
             }

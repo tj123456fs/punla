@@ -15,10 +15,7 @@ package com.uplb.punla.push
  * regardless — this is additive, not a replacement.
  */
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.PendingIntent
-import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -27,6 +24,7 @@ import com.google.firebase.messaging.RemoteMessage
 import com.uplb.punla.MainActivity
 import com.uplb.punla.R
 import com.uplb.punla.data.PunlaRepository
+import com.uplb.punla.notification.PunlaNotifications
 
 class PunlaFirebaseMessagingService : FirebaseMessagingService() {
 
@@ -54,17 +52,9 @@ class PunlaFirebaseMessagingService : FirebaseMessagingService() {
     }
 
     private fun showNotification(title: String, content: String) {
-        val channelId = "punla_push_channel"
+        PunlaNotifications.ensureChannels(this)
+        val channelId = PunlaNotifications.CHANNEL_PUSH
         val notificationManager = NotificationManagerCompat.from(this)
-
-        // minSdk is 26 (O), so NotificationChannel is always available here — no SDK_INT guard needed.
-        val channel = NotificationChannel(
-            channelId,
-            "Push Reminders",
-            NotificationManager.IMPORTANCE_DEFAULT
-        ).apply { description = "Reminders pushed from the server" }
-        val sysManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        sysManager.createNotificationChannel(channel)
 
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
@@ -82,7 +72,7 @@ class PunlaFirebaseMessagingService : FirebaseMessagingService() {
             .setAutoCancel(true)
 
         try {
-            notificationManager.notify(2, builder.build())
+            notificationManager.notify(PunlaNotifications.ID_PUSH_BASE + Math.floorMod((title + content).hashCode(), 300), builder.build())
         } catch (e: SecurityException) {
             // POST_NOTIFICATIONS not granted
         }

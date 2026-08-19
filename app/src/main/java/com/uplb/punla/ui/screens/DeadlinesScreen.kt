@@ -56,6 +56,7 @@ fun DeadlinesScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
     // Roadmap C — withhold "No deadlines logged yet" until Room's first
     // real emission, so it doesn't flash for a frame on cold launch.
     val dataReady by vm.isDataReady.collectAsState()
+    val screenGutter = punlaScreenHorizontalPadding()
     var showForm by rememberSaveable { mutableStateOf(false) }
     var viewMode by rememberSaveable { mutableStateOf(0) } // 0 = List, 1 = Calendar
     var pendingDeleteDeadlineId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -77,11 +78,13 @@ fun DeadlinesScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
 
     Scaffold(
         floatingActionButton = {
-            FloatingActionButton(
+            ExtendedFloatingActionButton(
                 onClick = { showForm = true },
+                icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                text = { Text("Deadline") },
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary
-            ) { Icon(Icons.Default.Add, "Add deadline") }
+            )
         },
         containerColor = Color.Transparent
     ) { padding ->
@@ -89,7 +92,7 @@ fun DeadlinesScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = screenGutter)
         ) {
             Spacer(Modifier.height(8.dp))
             SegmentedControl(
@@ -105,8 +108,10 @@ fun DeadlinesScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
                     if (dataReady) {
                         EmptyState(
                             icon = Icons.Default.Flag,
-                            message = "No deadlines logged yet. Tap + to add one.",
-                            modifier = Modifier.weight(1f)
+                            message = "No deadlines logged yet.",
+                            modifier = Modifier.weight(1f),
+                            actionLabel = "Add deadline",
+                            onAction = { showForm = true }
                         )
                     }
                 } else {

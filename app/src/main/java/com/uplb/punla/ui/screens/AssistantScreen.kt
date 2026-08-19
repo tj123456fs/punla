@@ -93,16 +93,13 @@ fun AssistantScreen(
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
     }
 
+    val screenGutter = punlaScreenHorizontalPadding(maxContentWidth = 780.dp)
+
     Column(
         Modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .padding(horizontal = screenGutter, vertical = 12.dp)
     ) {
-        Text(
-            "Punla Assistant",
-            style = MaterialTheme.typography.headlineLarge.copy(fontFamily = PunlaDisplay),
-            color = MaterialTheme.colorScheme.onBackground
-        )
         Text(
             if (vm.cloudAssistantEnabled && vm.assistantApiKeyConfigured)
                 "Local first · cloud fallback enabled"

@@ -14,6 +14,7 @@ import androidx.work.WorkerParameters
 import com.uplb.punla.R
 import com.uplb.punla.data.PunlaRepository
 import com.uplb.punla.notification.TrackedNotification
+import com.uplb.punla.notification.PunlaNotifications
 import java.util.concurrent.TimeUnit
 
 /**
@@ -37,6 +38,7 @@ class BackupReminderWorker(
         if (!repo.notificationsEnabled) {
             return Result.success()
         }
+        if (PunlaNotifications.isRoutineQuietHours(repo.quietHoursEnabled)) return Result.success()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -61,31 +63,22 @@ class BackupReminderWorker(
     }
 
     private suspend fun showNotification(title: String, content: String) {
-        val channelId = "punla_backup_channel"
+        PunlaNotifications.ensureChannels(context)
+        val channelId = PunlaNotifications.CHANNEL_BACKUP
         val notificationManager = NotificationManagerCompat.from(context)
 
-        val name = "Backup Reminders"
-        val descriptionText = "Occasional nudges to back up your data"
-        val importance = NotificationManager.IMPORTANCE_DEFAULT
-        val channel = NotificationChannel(channelId, name, importance).apply {
-            description = descriptionText
-        }
-        val sysManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        sysManager.createNotificationChannel(channel)
-
-        val builder = NotificationCompat.Builder(context, channelId)
+        val builder = PunlaNotifications.routine(NotificationCompat.Builder(context, channelId))
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(content)
             .setStyle(NotificationCompat.BigTextStyle().bigText(content))
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                         .setAutoCancel(true)
 
         try {
             TrackedNotification.post(
                 context = context,
                 manager = notificationManager,
-                notificationId = 2,
+                notificationId = PunlaNotifications.ID_BACKUP,
                 builder = builder,
                 workerName = "BackupReminderWorker",
                 notificationType = "backup",

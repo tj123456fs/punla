@@ -1,8 +1,6 @@
 package com.uplb.punla.worker
 
 import android.Manifest
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -28,6 +26,7 @@ import com.uplb.punla.data.entity.AttendanceRecord
 import com.uplb.punla.data.entity.AttendanceStatus
 import com.uplb.punla.data.entity.NotificationEvent
 import com.uplb.punla.notification.ClassDayTimeline
+import com.uplb.punla.notification.PunlaNotifications
 import com.uplb.punla.notification.TrackedNotification
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -123,18 +122,7 @@ class ClassDayNotificationWorker(
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
     private fun createChannel() {
-        val channel = NotificationChannel(
-            ClassDayNotification.CHANNEL_ID,
-            "Current class",
-            NotificationManager.IMPORTANCE_LOW
-        ).apply {
-            description = "A silent card for the current class, next class, and breaks between classes"
-            setSound(null, null)
-            enableVibration(false)
-            setShowBadge(false)
-        }
-        (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
-            .createNotificationChannel(channel)
+        PunlaNotifications.ensureChannels(context)
     }
 
     private fun scheduleAfterHiddenDay(classes: List<com.uplb.punla.data.entity.ClassSession>, now: LocalDateTime) {
@@ -271,7 +259,7 @@ class ClassDayNotificationActionReceiver : BroadcastReceiver() {
 }
 
 private object ClassDayNotification {
-    const val CHANNEL_ID = "punla_class_day_channel"
+    const val CHANNEL_ID = PunlaNotifications.CHANNEL_CLASS_DAY
     const val NOTIFICATION_ID = 0x50434C53 // "PCLS"
     const val ACTION_HIDE_TODAY = "com.uplb.punla.HIDE_CLASS_DAY_NOTIFICATION"
     const val ACTION_LOG_ATTENDANCE = "com.uplb.punla.LOG_CLASS_ATTENDANCE"
@@ -348,24 +336,35 @@ private object ClassDayNotification {
             is ClassDayTimeline.State.PreClass -> {
                 addNavigateAction(builder, context, state.next.session.room, stateKey)
                 builder.addAction(R.mipmap.ic_launcher, "Schedule", activityIntent(context, "schedule", null, stateKey, "schedule"))
+                builder.addAction(R.mipmap.ic_launcher, "Hide today", hideTodayIntent(context, stateKey))
             }
             is ClassDayTimeline.State.Ongoing -> {
-                addAttendanceActions(builder, context, state.current, attendanceRecord, stateKey)
-                addNavigateAction(builder, context, state.current.session.room, stateKey)
-                builder.addAction(R.mipmap.ic_launcher, "Schedule", activityIntent(context, "schedule", null, stateKey, "schedule"))
+                if (attendanceRecord == null) {
+                    addAttendanceActions(builder, context, state.current, attendanceRecord, stateKey)
+                    addNavigateAction(builder, context, state.current.session.room, stateKey)
+                } else {
+                    addNavigateAction(builder, context, state.current.session.room, stateKey)
+                    builder.addAction(R.mipmap.ic_launcher, "Schedule", activityIntent(context, "schedule", null, stateKey, "schedule"))
+                    builder.addAction(R.mipmap.ic_launcher, "Hide today", hideTodayIntent(context, stateKey))
+                }
             }
             is ClassDayTimeline.State.Break -> {
-                addAttendanceActions(builder, context, state.previous, attendanceRecord, stateKey)
-                builder.addAction(R.mipmap.ic_launcher, "Start focus", activityIntent(context, "pomodoro", null, stateKey, "focus"))
-                addNavigateAction(builder, context, state.next.session.room, stateKey)
+                if (attendanceRecord == null) {
+                    addAttendanceActions(builder, context, state.previous, attendanceRecord, stateKey)
+                    builder.addAction(R.mipmap.ic_launcher, "Start focus", activityIntent(context, "pomodoro", null, stateKey, "focus"))
+                } else {
+                    builder.addAction(R.mipmap.ic_launcher, "Start focus", activityIntent(context, "pomodoro", null, stateKey, "focus"))
+                    addNavigateAction(builder, context, state.next.session.room, stateKey)
+                    builder.addAction(R.mipmap.ic_launcher, "Schedule", activityIntent(context, "schedule", null, stateKey, "schedule"))
+                }
             }
             is ClassDayTimeline.State.Done -> {
-                addAttendanceActions(builder, context, state.lastClass, attendanceRecord, stateKey)
+                if (attendanceRecord == null) addAttendanceActions(builder, context, state.lastClass, attendanceRecord, stateKey)
                 builder.addAction(R.mipmap.ic_launcher, "Schedule", activityIntent(context, "schedule", null, stateKey, "schedule"))
+                if (attendanceRecord != null) builder.addAction(R.mipmap.ic_launcher, "Hide today", hideTodayIntent(context, stateKey))
             }
             ClassDayTimeline.State.None -> Unit
         }
-        builder.addAction(R.mipmap.ic_launcher, "Hide today", hideTodayIntent(context, stateKey))
         return builder
     }
 

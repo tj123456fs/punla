@@ -15,6 +15,7 @@ import com.uplb.punla.R
 import com.uplb.punla.data.BudgetPeriod
 import com.uplb.punla.data.PunlaRepository
 import com.uplb.punla.notification.TrackedNotification
+import com.uplb.punla.notification.PunlaNotifications
 import java.time.LocalDate
 
 /**
@@ -39,6 +40,7 @@ class BudgetWorker(
         val repo = PunlaRepository(context)
 
         if (!repo.notificationsEnabled) return Result.success()
+        if (PunlaNotifications.isRoutineQuietHours(repo.quietHoursEnabled)) return Result.success()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 return Result.success()
@@ -76,12 +78,14 @@ class BudgetWorker(
         } ?: return
 
         val remaining = budget - spent
+        val safeToday = repo.safeToSpendToday(now)
         val text = if (thresholdToNudge == OVER_THRESHOLD) {
-            "You're over budget this month by \u20b1${"%,.0f".format(-remaining)}."
+            "You're over budget this month by \u20b1${"%,.0f".format(-remaining)}. Pause discretionary spending and review category limits."
         } else {
-            "You've used 80% of this month's budget (\u20b1${"%,.0f".format(remaining)} left)."
+            val pace = if (safeToday > 0.0) " Safe pace: about \u20b1${"%,.0f".format(safeToday)}/day." else " Your safe discretionary pace is already exhausted."
+            "You've used 80% of this month's budget (\u20b1${"%,.0f".format(remaining)} left).$pace"
         }
-        showNotification("Budget check-in", text, notificationId = 3)
+        showNotification("Budget check-in", text, notificationId = PunlaNotifications.ID_BUDGET_MONTH)
 
         repo.lastBudgetNudgeThreshold = thresholdToNudge
         repo.lastBudgetNudgeMonth = currentMonth
@@ -108,12 +112,14 @@ class BudgetWorker(
         } ?: return
 
         val remaining = weeklyBudget - weeklySpent
+        val safeToday = repo.safeToSpendToday()
         val text = if (thresholdToNudge == OVER_THRESHOLD) {
-            "You're over budget this week by \u20b1${"%,.0f".format(-remaining)}."
+            "You're over budget this week by \u20b1${"%,.0f".format(-remaining)}. Pause discretionary spending and rebalance the rest of the week."
         } else {
-            "You've used 80% of this week's budget (\u20b1${"%,.0f".format(remaining)} left)."
+            val pace = if (safeToday > 0.0) " Safe pace: about \u20b1${"%,.0f".format(safeToday)}/day." else " Your safe discretionary pace is already exhausted."
+            "You've used 80% of this week's budget (\u20b1${"%,.0f".format(remaining)} left).$pace"
         }
-        showNotification("Weekly budget check-in", text, notificationId = 4)
+        showNotification("Weekly budget check-in", text, notificationId = PunlaNotifications.ID_BUDGET_WEEK)
 
         repo.lastWeeklyBudgetNudgeThreshold = thresholdToNudge
         repo.lastWeeklyBudgetNudgeWeekStart = weekKey
@@ -121,24 +127,16 @@ class BudgetWorker(
     }
 
     private suspend fun showNotification(title: String, content: String, notificationId: Int) {
-        val channelId = "punla_budget_channel"
+        PunlaNotifications.ensureChannels(context)
+        val channelId = PunlaNotifications.CHANNEL_BUDGET
         val notificationManager = NotificationManagerCompat.from(context)
 
-        val name = "Budget Alerts"
-        val descriptionText = "Nudges when you're close to or over your monthly budget"
-        val importance = NotificationManager.IMPORTANCE_DEFAULT
-        val channel = NotificationChannel(channelId, name, importance).apply {
-            description = descriptionText
-        }
-        val sysManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        sysManager.createNotificationChannel(channel)
-
-        val builder = NotificationCompat.Builder(context, channelId)
+        val builder = PunlaNotifications.routine(NotificationCompat.Builder(context, channelId)).setGroup(PunlaNotifications.GROUP_FINANCE)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(content)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-                        .setAutoCancel(true)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(content))
+            .setAutoCancel(true)
 
         try {
             TrackedNotification.post(

@@ -156,6 +156,7 @@ fun SettingsScreen(
     val backupResult = vm.backupResult
 
     var showCustomColorDialog by rememberSaveable { mutableStateOf(false) }
+    val screenGutter = punlaScreenHorizontalPadding(maxContentWidth = 820.dp)
 
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
@@ -168,17 +169,8 @@ fun SettingsScreen(
     LazyColumn(
         Modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .padding(horizontal = screenGutter, vertical = 12.dp)
     ) {
-        item {
-            Text(
-                "Settings",
-                style = MaterialTheme.typography.headlineLarge.copy(fontFamily = PunlaDisplay),
-                color = MaterialTheme.colorScheme.onBackground
-            )
-            Spacer(Modifier.height(16.dp))
-        }
-
         // Profile Section
         item {
             Card(
@@ -293,6 +285,65 @@ fun SettingsScreen(
                             onCheckedChange = vm::updateClassDayNotificationEnabled
                         )
                     }
+
+                    Spacer(Modifier.height(10.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Morning agenda", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                "A quiet 7:15 AM summary of today's classes and deadlines due today.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Switch(
+                            checked = vm.morningAgendaEnabled && vm.notificationsEnabled && notificationPermissionGranted,
+                            enabled = vm.notificationsEnabled && notificationPermissionGranted,
+                            onCheckedChange = vm::updateMorningAgendaEnabled
+                        )
+                    }
+
+                    Spacer(Modifier.height(10.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Quiet hours", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                "Silence routine nudges from 10:00 PM to 7:00 AM. Class, timer, and deadline alerts stay available.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Switch(
+                            checked = vm.quietHoursEnabled,
+                            enabled = vm.notificationsEnabled && notificationPermissionGranted,
+                            onCheckedChange = vm::updateQuietHoursEnabled
+                        )
+                    }
+
+                    Spacer(Modifier.height(6.dp))
+                    TextButton(
+                        onClick = {
+                            val intent = Intent(AndroidSettings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                putExtra(AndroidSettings.EXTRA_APP_PACKAGE, context.packageName)
+                            }
+                            runCatching { context.startActivity(intent) }
+                        },
+                        contentPadding = PaddingValues(0.dp)
+                    ) { Text("Manage notification categories in Android") }
 
                     if (bestReminderHour != null) {
                         Spacer(Modifier.height(10.dp))

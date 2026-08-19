@@ -3,6 +3,8 @@ package com.uplb.punla.ui.screens
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -10,6 +12,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.EventBusy
@@ -53,11 +56,15 @@ fun BudgetScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
     // Roadmap C — withhold "No expenses logged yet" until Room's first
     // real emission, so it doesn't flash for a frame on cold launch.
     val dataReady by vm.isDataReady.collectAsState()
+    val screenGutter = punlaScreenHorizontalPadding()
     var showForm by rememberSaveable { mutableStateOf(false) }
     var budgetInput by rememberSaveable(vm.monthlyBudget) { mutableStateOf(vm.monthlyBudget.let { if (it > 0) it.toInt().toString() else "" }) }
     var budgetTouched by rememberSaveable { mutableStateOf(false) }
     var pendingDeleteExpenseId by rememberSaveable { mutableStateOf<String?>(null) }
+    var editingExpenseId by rememberSaveable { mutableStateOf<String?>(null) }
+    var showCategoryLimits by rememberSaveable { mutableStateOf(false) }
     val pendingDeleteExpense = remember(pendingDeleteExpenseId, expenses) { expenses.firstOrNull { it.id == pendingDeleteExpenseId } }
+    val editingExpense = remember(editingExpenseId, expenses) { expenses.firstOrNull { it.id == editingExpenseId } }
 
     // Quick-add: when launched from the global quick-add FAB, jump straight
     // into the "new expense" form instead of making the user tap + again.
@@ -163,17 +170,61 @@ fun BudgetScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
         recurringExpenseCandidates(expenses, expenseRules, vm.dismissedExpensePatternKeys).take(3)
     }
 
+    // Budget 2.0 — reserve future fixed recurring commitments before
+    // calculating what is genuinely safe to spend on discretionary items.
+    val monthEnd = currentYearMonth.atEndOfMonth()
+    val upcomingFixedCommitments = remember(expenseRules, now) {
+        vm.repo.projectedFixedCommitmentsFromRules(expenseRules, now, monthEnd)
+    }
+    val monthlyFlexibleRemaining = remaining - upcomingFixedCommitments
+    val monthDaysRemaining = (java.time.temporal.ChronoUnit.DAYS.between(now, monthEnd) + 1).coerceAtLeast(1)
+    val monthlySafePerDay = if (budget > 0.0) monthlyFlexibleRemaining / monthDaysRemaining else 0.0
+    val weekEnd = weekStart.plusDays(6)
+    val weekDaysRemaining = (java.time.temporal.ChronoUnit.DAYS.between(now, weekEnd) + 1).coerceAtLeast(1)
+    val weeklySafePerDay = if (weeklyBudgetAmt > 0.0) weeklyRemaining / weekDaysRemaining else 0.0
+    val safePerDay = when (period) {
+        BudgetPeriod.MONTHLY -> monthlySafePerDay
+        BudgetPeriod.WEEKLY -> weeklySafePerDay
+        BudgetPeriod.BOTH -> listOfNotNull(
+            monthlySafePerDay.takeIf { budget > 0.0 },
+            weeklySafePerDay.takeIf { weeklyBudgetAmt > 0.0 }
+        ).minOrNull() ?: 0.0
+    }
+    val safeBasis = when (period) {
+        BudgetPeriod.MONTHLY -> "month"
+        BudgetPeriod.WEEKLY -> "week"
+        BudgetPeriod.BOTH -> when {
+            budget <= 0.0 -> "week"
+            weeklyBudgetAmt <= 0.0 -> "month"
+            monthlySafePerDay <= weeklySafePerDay -> "month"
+            else -> "week"
+        }
+    }
+    val todaySpent = remember(expenses, now) {
+        expenses.filter { it.date == now.toString() && !it.isFixed }.sumOf { it.amount }
+    }
+    val categoryLimits = vm.categoryBudgetLimits
+    val categorySpentMap = remember(categoryTotals) { categoryTotals.toMap() }
+    val categoryRows = remember(categoryTotals, categoryLimits) {
+        (categoryTotals.map { it.first } + categoryLimits.keys)
+            .distinct()
+            .map { it to (categorySpentMap[it] ?: 0.0) }
+            .sortedByDescending { it.second }
+    }
+
     Scaffold(
         floatingActionButton = {
-            FloatingActionButton(
+            ExtendedFloatingActionButton(
                 onClick = { showForm = true },
+                icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                text = { Text("Expense") },
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary
-            ) { Icon(Icons.Default.Add, "Add expense") }
+            )
         },
         containerColor = Color.Transparent
     ) { padding ->
-        LazyColumn(modifier = Modifier.padding(padding).padding(horizontal = 16.dp)) {
+        LazyColumn(modifier = Modifier.padding(padding).padding(horizontal = screenGutter)) {
             // Weekly Budgeting feature — shown first per the plan doc's
             // "₱850 left this week / ₱2,100 left this month" combined
             // framing, so the more time-sensitive figure reads first.
@@ -260,6 +311,19 @@ fun BudgetScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
                             }
                         }
                     }
+                }
+            }
+
+            if (budget > 0.0 || weeklyBudgetAmt > 0.0) {
+                item {
+                    Spacer(Modifier.height(12.dp))
+                    SafeToSpendCard(
+                        safePerDay = safePerDay,
+                        basis = safeBasis,
+                        todaySpent = todaySpent,
+                        upcomingFixed = upcomingFixedCommitments.takeIf { period != BudgetPeriod.WEEKLY } ?: 0.0,
+                        daysRemaining = if (safeBasis == "week") weekDaysRemaining else monthDaysRemaining
+                    )
                 }
             }
 
@@ -451,18 +515,36 @@ fun BudgetScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
                 }
             }
 
-            // Category Breakdown Section
-            if (categoryTotals.isNotEmpty()) {
+            // Category guardrails — optional monthly caps turn the old
+            // percentage-only breakdown into something actionable. Categories
+            // without a cap keep the original share-of-spending behavior.
+            if (categoryRows.isNotEmpty() || dataReady) {
                 item {
-                    SectionLabel("Spending by Category")
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        SectionLabel("Spending by Category")
+                        TextButton(onClick = { showCategoryLimits = true }) { Text("Set limits") }
+                    }
                 }
-                items(categoryTotals, key = { (cat, _) -> cat }) { (cat, amt) ->
-                    val catPct = if (spent > 0) (amt / spent).toFloat() else 0f
+                items(categoryRows, key = { (cat, _) -> cat }) { (cat, amt) ->
+                    val limit = categoryLimits[cat]
+                    val progressValue = if (limit != null && limit > 0.0) {
+                        (amt / limit).coerceIn(0.0, 1.0).toFloat()
+                    } else if (spent > 0) {
+                        (amt / spent).coerceIn(0.0, 1.0).toFloat()
+                    } else 0f
+                    val overLimit = limit != null && amt > limit
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 4.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (overLimit) MaterialTheme.colorScheme.secondaryContainer
+                            else MaterialTheme.colorScheme.surfaceVariant
+                        ),
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                     ) {
                         Column(Modifier.padding(12.dp)) {
@@ -480,15 +562,33 @@ fun BudgetScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
                                     Spacer(Modifier.width(8.dp))
                                     Text(cat, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium))
                                 }
-                                PesoText(amt, style = MaterialTheme.typography.bodyMedium.copy(fontFamily = PunlaMono, fontWeight = FontWeight.SemiBold))
+                                Column(horizontalAlignment = Alignment.End) {
+                                    PesoText(amt, style = MaterialTheme.typography.bodyMedium.copy(fontFamily = PunlaMono, fontWeight = FontWeight.SemiBold))
+                                    if (limit != null && limit > 0.0) {
+                                        Text(
+                                            if (overLimit) "₱${"%,.0f".format(amt - limit)} over"
+                                            else "₱${"%,.0f".format(limit - amt)} left of ₱${"%,.0f".format(limit)}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (overLimit) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
                             }
                             Spacer(Modifier.height(6.dp))
                             LinearProgressIndicator(
-                                progress = { catPct },
+                                progress = { progressValue },
                                 modifier = Modifier.fillMaxWidth().height(4.dp),
-                                color = getCategoryColor(cat, LocalPunlaPalette.current),
+                                color = if (overLimit) MaterialTheme.colorScheme.secondary else getCategoryColor(cat, LocalPunlaPalette.current),
                                 trackColor = MaterialTheme.colorScheme.outline
                             )
+                            if (limit == null && spent > 0.0) {
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    "${"%,.0f".format((amt / spent) * 100)}% of this month's spending",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }
@@ -497,13 +597,20 @@ fun BudgetScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
             if (expenses.isNotEmpty()) {
                 item { SectionLabel("Recent expenses") }
                 items(expenses.sortedByDescending { it.date }, key = { it.id }) { e ->
-                    ExpenseCard(e, vm, onDelete = { pendingDeleteExpenseId = e.id })
+                    ExpenseCard(
+                        e = e,
+                        vm = vm,
+                        onEdit = { editingExpenseId = e.id },
+                        onDelete = { pendingDeleteExpenseId = e.id }
+                    )
                 }
             } else if (dataReady) {
                 item {
                     EmptyState(
                         icon = Icons.Default.Receipt,
-                        message = "No expenses logged yet. Tap + to add one."
+                        message = "No expenses logged yet.",
+                        actionLabel = "Add expense",
+                        onAction = { showForm = true }
                     )
                 }
             }
@@ -518,6 +625,28 @@ fun BudgetScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
         )
     }
 
+    if (editingExpense != null) {
+        ExpenseFormDialog(
+            initialExpense = editingExpense,
+            onDismiss = { editingExpenseId = null },
+            onSave = { expense, _ ->
+                vm.updateExpense(expense)
+                editingExpenseId = null
+            }
+        )
+    }
+
+    if (showCategoryLimits) {
+        CategoryBudgetDialog(
+            current = categoryLimits,
+            onDismiss = { showCategoryLimits = false },
+            onSave = { limits ->
+                vm.updateCategoryBudgetLimits(limits)
+                showCategoryLimits = false
+            }
+        )
+    }
+
     if (pendingDeleteExpense != null) {
         DestructiveActionDialog(
             title = "Delete expense?",
@@ -528,6 +657,70 @@ fun BudgetScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
             },
             onDismiss = { pendingDeleteExpenseId = null }
         )
+    }
+}
+
+@Composable
+private fun SafeToSpendCard(
+    safePerDay: Double,
+    basis: String,
+    todaySpent: Double,
+    upcomingFixed: Double,
+    daysRemaining: Long
+) {
+    val overPace = safePerDay < 0.0
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (overPace) MaterialTheme.colorScheme.secondaryContainer
+            else MaterialTheme.colorScheme.tertiaryContainer
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text(
+                "SAFE TO SPEND TODAY",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(4.dp))
+            if (overPace) {
+                Text(
+                    "Pause discretionary spending",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.secondary
+                )
+                Text(
+                    "Your remaining $basis budget is already below the safe pace by about ₱${"%,.0f".format(-safePerDay)} per remaining day.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                PesoText(
+                    safePerDay,
+                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = 26.sp, fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+                Text(
+                    "per day for the next $daysRemaining day${if (daysRemaining == 1L) "" else "s"} · based on the tighter $basis limit",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Column {
+                    Text("Spent today", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    PesoText(todaySpent, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
+                }
+                if (upcomingFixed > 0.0) {
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text("Reserved fixed bills", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        PesoText(upcomingFixed, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -591,7 +784,7 @@ private fun RemainingCard(
 }
 
 @Composable
-private fun ExpenseCard(e: Expense, vm: PunlaViewModel, onDelete: () -> Unit) {
+private fun ExpenseCard(e: Expense, vm: PunlaViewModel, onEdit: () -> Unit, onDelete: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -641,6 +834,9 @@ private fun ExpenseCard(e: Expense, vm: PunlaViewModel, onDelete: () -> Unit) {
                         style = MaterialTheme.typography.bodyLarge.copy(fontSize = 14.sp, fontWeight = FontWeight.SemiBold),
                         color = MaterialTheme.colorScheme.secondary
                     )
+                    IconButton(onClick = onEdit) {
+                        Icon(Icons.Default.Edit, "Edit", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     if (e.ruleId != null) {
                         IconButton(onClick = { vm.stopExpenseRecurrence(e.ruleId) }) {
                             Icon(Icons.Default.EventBusy, "Stop repeating", tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -820,20 +1016,41 @@ private val CATEGORY_OPTIONS = listOf(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ExpenseFormDialog(onDismiss: () -> Unit, onSave: (Expense, String?) -> Unit) {
+private fun ExpenseFormDialog(
+    initialExpense: Expense? = null,
+    onDismiss: () -> Unit,
+    onSave: (Expense, String?) -> Unit
+) {
     val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
     val palette = LocalPunlaPalette.current
-    var amount by rememberSaveable { mutableStateOf("") }
-    var category by rememberSaveable { mutableStateOf(CATEGORY_OPTIONS.first()) }
-    var note by rememberSaveable { mutableStateOf("") }
-    var repeat by rememberSaveable { mutableStateOf<String?>(null) }
-    var isFixed by rememberSaveable { mutableStateOf(false) }
-    var amountTouched by rememberSaveable { mutableStateOf(false) }
-    var showDiscardConfirm by rememberSaveable { mutableStateOf(false) }
-    val today = remember { LocalDate.now().toString() }
+    val todayDate = remember { LocalDate.now() }
+    val today = todayDate.toString()
+    val initialAmount = initialExpense?.amount?.let { value ->
+        if (value % 1.0 == 0.0) value.toLong().toString() else value.toString()
+    } ?: ""
+    var amount by rememberSaveable(initialExpense?.id) { mutableStateOf(initialAmount) }
+    var category by rememberSaveable(initialExpense?.id) { mutableStateOf(initialExpense?.category ?: CATEGORY_OPTIONS.first()) }
+    var note by rememberSaveable(initialExpense?.id) { mutableStateOf(initialExpense?.note.orEmpty()) }
+    var date by rememberSaveable(initialExpense?.id) { mutableStateOf(initialExpense?.date ?: today) }
+    var repeat by rememberSaveable(initialExpense?.id) { mutableStateOf<String?>(null) }
+    var isFixed by rememberSaveable(initialExpense?.id) { mutableStateOf(initialExpense?.isFixed ?: false) }
+    var amountTouched by rememberSaveable(initialExpense?.id) { mutableStateOf(false) }
+    var dateTouched by rememberSaveable(initialExpense?.id) { mutableStateOf(false) }
+    var showDiscardConfirm by rememberSaveable(initialExpense?.id) { mutableStateOf(false) }
+
     val parsedAmount = amount.toDoubleOrNull()
+    val parsedDate = runCatching { LocalDate.parse(date.trim()) }.getOrNull()
     val invalidAmount = amountTouched && (parsedAmount == null || parsedAmount <= 0)
-    val isDirty = amount.isNotBlank() || category != CATEGORY_OPTIONS.first() || note.isNotBlank() || repeat != null || isFixed
+    val invalidDate = dateTouched && (parsedDate == null || parsedDate.isAfter(todayDate))
+    val isEditing = initialExpense != null
+    val isDirty = if (initialExpense == null) {
+        amount.isNotBlank() || category != CATEGORY_OPTIONS.first() || note.isNotBlank() ||
+            date != today || repeat != null || isFixed
+    } else {
+        parsedAmount != initialExpense.amount || category != initialExpense.category ||
+            note.trim().ifBlank { null } != initialExpense.note || date.trim() != initialExpense.date ||
+            isFixed != initialExpense.isFixed
+    }
 
     fun requestDismiss() {
         if (isDirty) showDiscardConfirm = true else onDismiss()
@@ -841,12 +1058,24 @@ private fun ExpenseFormDialog(onDismiss: () -> Unit, onSave: (Expense, String?) 
 
     AlertDialog(
         onDismissRequest = { requestDismiss() },
-        title = { Text(if (showDiscardConfirm) "Discard expense?" else "Add expense") },
+        title = {
+            Text(
+                when {
+                    showDiscardConfirm -> if (isEditing) "Discard changes?" else "Discard expense?"
+                    isEditing -> "Edit expense"
+                    else -> "Add expense"
+                }
+            )
+        },
         text = {
             if (showDiscardConfirm) {
-                Text("Your unsaved expense details will be lost.")
+                Text(if (isEditing) "Your changes will be lost." else "Your unsaved expense details will be lost.")
             } else {
-                Column {
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 520.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
                     PunlaField(
                         "Amount (₱)",
                         amount,
@@ -870,13 +1099,34 @@ private fun ExpenseFormDialog(onDismiss: () -> Unit, onSave: (Expense, String?) 
                     Spacer(Modifier.height(8.dp))
                     PunlaField("Note", note, { note = it }, placeholder = "Optional", modifier = Modifier.fillMaxWidth())
                     Spacer(Modifier.height(8.dp))
-                    PunlaDropdownField(
-                        "Repeats",
-                        REPEAT_OPTIONS.first { it.first == repeat }.second,
-                        REPEAT_OPTIONS.map { it.second },
-                        onSelect = { repeat = REPEAT_OPTIONS[it].first },
-                        modifier = Modifier.fillMaxWidth()
+                    PunlaField(
+                        "Date (YYYY-MM-DD)",
+                        date,
+                        { date = it; dateTouched = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = invalidDate,
+                        supportingText = if (invalidDate) "Use a valid date that isn't in the future." else null
                     )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = { date = today; dateTouched = true }) { Text("Today") }
+                        TextButton(onClick = { date = todayDate.minusDays(1).toString(); dateTouched = true }) { Text("Yesterday") }
+                    }
+
+                    if (!isEditing) {
+                        PunlaDropdownField(
+                            "Repeats",
+                            REPEAT_OPTIONS.first { it.first == repeat }.second,
+                            REPEAT_OPTIONS.map { it.second },
+                            onSelect = { repeat = REPEAT_OPTIONS[it].first },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    } else if (initialExpense.ruleId != null) {
+                        Text(
+                            "This changes this occurrence only. The recurring rule for future entries stays unchanged.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     Spacer(Modifier.height(4.dp))
                     Row(
                         Modifier
@@ -889,7 +1139,7 @@ private fun ExpenseFormDialog(onDismiss: () -> Unit, onSave: (Expense, String?) 
                         Column {
                             Text("Fixed / recurring bill", style = MaterialTheme.typography.bodyMedium)
                             Text(
-                                "Rent, tuition, subscriptions — left out of the weekly budget view.",
+                                "Rent, tuition, subscriptions — left out of the weekly discretionary total.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -907,20 +1157,25 @@ private fun ExpenseFormDialog(onDismiss: () -> Unit, onSave: (Expense, String?) 
             } else {
                 TextButton(onClick = {
                     amountTouched = true
-                    if (parsedAmount != null && parsedAmount > 0) {
+                    dateTouched = true
+                    if (parsedAmount != null && parsedAmount > 0 && parsedDate != null && !parsedDate.isAfter(todayDate)) {
                         haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                        onSave(
-                            Expense(
-                                amount = parsedAmount,
-                                category = category,
-                                date = today,
-                                note = note.trim().ifBlank { null },
-                                isFixed = isFixed
-                            ),
-                            repeat
+                        val saved = initialExpense?.copy(
+                            amount = parsedAmount,
+                            category = category,
+                            date = parsedDate.toString(),
+                            note = note.trim().ifBlank { null },
+                            isFixed = isFixed
+                        ) ?: Expense(
+                            amount = parsedAmount,
+                            category = category,
+                            date = parsedDate.toString(),
+                            note = note.trim().ifBlank { null },
+                            isFixed = isFixed
                         )
+                        onSave(saved, if (isEditing) null else repeat)
                     }
-                }) { Text("Save") }
+                }) { Text(if (isEditing) "Save changes" else "Save") }
             }
         },
         dismissButton = {
@@ -928,5 +1183,62 @@ private fun ExpenseFormDialog(onDismiss: () -> Unit, onSave: (Expense, String?) 
                 if (showDiscardConfirm) showDiscardConfirm = false else requestDismiss()
             }) { Text(if (showDiscardConfirm) "Keep editing" else "Cancel") }
         }
+    )
+}
+
+@Composable
+private fun CategoryBudgetDialog(
+    current: Map<String, Double>,
+    onDismiss: () -> Unit,
+    onSave: (Map<String, Double>) -> Unit
+) {
+    val values = remember(current) {
+        mutableStateMapOf<String, String>().apply {
+            CATEGORY_OPTIONS.forEach { category ->
+                val amount = current[category]
+                put(category, amount?.let { if (it % 1.0 == 0.0) it.toLong().toString() else it.toString() }.orEmpty())
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Monthly category limits") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 480.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Text(
+                    "Set guardrails only where they're useful. Leave a category blank for no limit.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(12.dp))
+                CATEGORY_OPTIONS.forEach { category ->
+                    PunlaField(
+                        category,
+                        values[category].orEmpty(),
+                        { input -> values[category] = input.filter { ch -> ch.isDigit() || ch == '.' } },
+                        placeholder = "No limit",
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val limits = buildMap {
+                    CATEGORY_OPTIONS.forEach { category ->
+                        values[category]?.toDoubleOrNull()?.takeIf { it > 0.0 && it.isFinite() }?.let { put(category, it) }
+                    }
+                }
+                onSave(limits)
+            }) { Text("Save limits") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }

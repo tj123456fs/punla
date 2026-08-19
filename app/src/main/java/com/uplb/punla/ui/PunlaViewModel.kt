@@ -249,6 +249,12 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     var classDayNotificationEnabled by mutableStateOf(repo.classDayNotificationEnabled)
         private set
 
+    var morningAgendaEnabled by mutableStateOf(repo.morningAgendaEnabled)
+        private set
+
+    var quietHoursEnabled by mutableStateOf(repo.quietHoursEnabled)
+        private set
+
     var termStartDate by mutableStateOf(repo.termStartDate)
         private set
     var termEndDate by mutableStateOf(repo.termEndDate)
@@ -300,6 +306,9 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     var weeklyRolloverEnabled by mutableStateOf(repo.weeklyRolloverEnabled)
         private set
 
+    var categoryBudgetLimits by mutableStateOf(repo.categoryBudgetLimits)
+        private set
+
     fun updateUserName(name: String) {
         repo.userName = name
         userName = name
@@ -331,6 +340,18 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun updateMorningAgendaEnabled(enabled: Boolean) {
+        repo.morningAgendaEnabled = enabled
+        morningAgendaEnabled = enabled
+        com.uplb.punla.worker.ReminderScheduler.scheduleDaily(getApplication(), updateExisting = true)
+    }
+
+    fun updateQuietHoursEnabled(enabled: Boolean) {
+        repo.quietHoursEnabled = enabled
+        quietHoursEnabled = enabled
+        com.uplb.punla.worker.ReminderScheduler.scheduleDaily(getApplication(), updateExisting = true)
+    }
+
     fun updateBudgetPeriod(period: BudgetPeriod) {
         repo.budgetPeriod = period
         budgetPeriod = period
@@ -353,6 +374,12 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     fun updateWeeklyRolloverEnabled(enabled: Boolean) {
         repo.weeklyRolloverEnabled = enabled
         weeklyRolloverEnabled = enabled
+        viewModelScope.launch { WidgetRefresher.refreshAll(getApplication()) }
+    }
+
+    fun updateCategoryBudgetLimits(limits: Map<String, Double>) {
+        repo.categoryBudgetLimits = limits.filterValues { it > 0.0 && it.isFinite() }
+        categoryBudgetLimits = repo.categoryBudgetLimits
         viewModelScope.launch { WidgetRefresher.refreshAll(getApplication()) }
     }
 
@@ -456,7 +483,16 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
             )
             db.expenseDao().upsertRule(rule)
             db.expenseDao().upsert(expense.copy(ruleId = rule.id, isRecurring = true))
+            // A backdated recurring expense may already have additional due
+            // occurrences. Generate them immediately instead of waiting for
+            // the next cold launch.
+            RecurrenceEngine.generateRecurringExpenses(db.expenseDao())
         }
+        WidgetRefresher.refreshAll(getApplication())
+    }
+
+    fun updateExpense(expense: Expense) = viewModelScope.launch {
+        db.expenseDao().upsert(expense)
         WidgetRefresher.refreshAll(getApplication())
     }
 
@@ -678,10 +714,13 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
             customSeedColor = repo.customSeedColor
             backgroundStyle = repo.backgroundStyle
             monthlyBudget = repo.monthlyBudget
+            categoryBudgetLimits = repo.categoryBudgetLimits
             chedTarget = repo.chedTarget
             userName = repo.userName
             notificationsEnabled = repo.notificationsEnabled
             classDayNotificationEnabled = repo.classDayNotificationEnabled
+            morningAgendaEnabled = repo.morningAgendaEnabled
+            quietHoursEnabled = repo.quietHoursEnabled
             termStartDate = repo.termStartDate
             termEndDate = repo.termEndDate
             cloudAssistantEnabled = repo.cloudAssistantEnabled
@@ -695,6 +734,7 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
             } else {
                 ClassDayNotificationScheduler.cancel(getApplication())
             }
+            com.uplb.punla.worker.ReminderScheduler.scheduleDaily(getApplication(), updateExisting = true)
             backupResult = BackupResult.Success("Backup restored.")
         }.onFailure { e ->
             backupResult = BackupResult.Failure(e.message ?: "Couldn't restore that backup.")

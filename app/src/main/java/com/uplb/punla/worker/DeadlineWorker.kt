@@ -14,6 +14,7 @@ import androidx.work.WorkerParameters
 import com.uplb.punla.R
 import com.uplb.punla.data.PunlaRepository
 import com.uplb.punla.notification.TrackedNotification
+import com.uplb.punla.notification.PunlaNotifications
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
@@ -51,6 +52,14 @@ class DeadlineWorker(
         }
 
         if (urgentDeadlines.isNotEmpty()) {
+            val snapshotKey = urgentDeadlines.sortedBy { it.id }.joinToString("|") { d ->
+                val due = runCatching { LocalDate.parse(d.due) }.getOrNull()
+                val days = due?.let { ChronoUnit.DAYS.between(today, it) } ?: 99
+                "${d.id}:$days"
+            }
+            val prefs = context.getSharedPreferences("punla_prefs", Context.MODE_PRIVATE)
+            if (prefs.getString("deadline_notification_snapshot", null) == snapshotKey) return Result.success()
+
             val title = "Upcoming Deadlines"
             val text = if (urgentDeadlines.size == 1) {
                 val d = urgentDeadlines.first()
@@ -59,27 +68,21 @@ class DeadlineWorker(
                 "You have ${urgentDeadlines.size} deadlines due within the next 3 days."
             }
             showNotification(title, text)
+            prefs.edit().putString("deadline_notification_snapshot", snapshotKey).apply()
+        } else {
+            context.getSharedPreferences("punla_prefs", Context.MODE_PRIVATE)
+                .edit().remove("deadline_notification_snapshot").apply()
         }
 
         return Result.success()
     }
 
     private suspend fun showNotification(title: String, content: String) {
-        val channelId = "punla_deadline_channel"
+        PunlaNotifications.ensureChannels(context)
+        val channelId = PunlaNotifications.CHANNEL_DEADLINE
         val notificationManager = NotificationManagerCompat.from(context)
 
-        // minSdk is 26 (O), so NotificationChannel is always available here — no SDK_INT guard needed.
-        val name = "Deadline Reminders"
-        val descriptionText = "Reminders for upcoming academic deadlines"
-        val importance = NotificationManager.IMPORTANCE_DEFAULT
-        val channel = NotificationChannel(channelId, name, importance).apply {
-            description = descriptionText
-        }
-        // Register the channel with the system
-        val sysManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        sysManager.createNotificationChannel(channel)
-
-        val builder = NotificationCompat.Builder(context, channelId)
+        val builder = PunlaNotifications.academic(NotificationCompat.Builder(context, channelId))
             .setSmallIcon(R.mipmap.ic_launcher) // Defaulting to launcher icon as no custom icon was provided
             .setContentTitle(title)
             .setContentText(content)
@@ -90,7 +93,7 @@ class DeadlineWorker(
             TrackedNotification.post(
                 context = context,
                 manager = notificationManager,
-                notificationId = 1,
+                notificationId = PunlaNotifications.ID_DEADLINES,
                 builder = builder,
                 workerName = "DeadlineWorker",
                 notificationType = "deadline",

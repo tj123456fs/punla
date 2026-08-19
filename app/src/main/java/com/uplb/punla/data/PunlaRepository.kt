@@ -7,12 +7,14 @@ import com.uplb.punla.data.entity.AttendanceStatus
 import com.uplb.punla.data.entity.ClassSession
 import com.uplb.punla.data.entity.Deadline
 import com.uplb.punla.data.entity.Expense
+import com.uplb.punla.data.entity.ExpenseRule
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
+import org.json.JSONObject
 
 /** SYSTEM follows the device's light/dark setting; LIGHT/DARK pin it regardless of the device. */
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
@@ -204,6 +206,16 @@ class PunlaRepository(context: Context) {
         get() = prefs.getBoolean("class_day_notification_enabled", true)
         set(value) = prefs.edit().putBoolean("class_day_notification_enabled", value).apply()
 
+    /** Quiet, once-daily summary of today's schedule and due work. */
+    var morningAgendaEnabled: Boolean
+        get() = prefs.getBoolean("morning_agenda_enabled", true)
+        set(value) = prefs.edit().putBoolean("morning_agenda_enabled", value).apply()
+
+    /** Suppresses low-priority routine nudges between 10 PM and 7 AM. */
+    var quietHoursEnabled: Boolean
+        get() = prefs.getBoolean("quiet_hours_enabled", true)
+        set(value) = prefs.edit().putBoolean("quiet_hours_enabled", value).apply()
+
     // ---- Weekly budget (Weekly Budgeting feature) ----
 
     var budgetPeriod: BudgetPeriod
@@ -241,6 +253,32 @@ class PunlaRepository(context: Context) {
     var weeklyRolloverEnabled: Boolean
         get() = prefs.getBoolean("weekly_rollover_enabled", false)
         set(value) = prefs.edit().putBoolean("weekly_rollover_enabled", value).apply()
+
+    /** Optional monthly caps by expense category. Blank/missing categories have
+     * no cap. Stored as JSON in preferences so the feature stays lightweight
+     * and does not require a Room migration. */
+    var categoryBudgetLimits: Map<String, Double>
+        get() {
+            val raw = prefs.getString("category_budget_limits", null) ?: return emptyMap()
+            return runCatching {
+                val obj = JSONObject(raw)
+                buildMap {
+                    val keys = obj.keys()
+                    while (keys.hasNext()) {
+                        val key = keys.next()
+                        val value = obj.optDouble(key, 0.0)
+                        if (key.isNotBlank() && value > 0.0 && value.isFinite()) put(key, value)
+                    }
+                }
+            }.getOrDefault(emptyMap())
+        }
+        set(value) {
+            val obj = JSONObject()
+            value.forEach { (category, amount) ->
+                if (category.isNotBlank() && amount > 0.0 && amount.isFinite()) obj.put(category, amount)
+            }
+            prefs.edit().putString("category_budget_limits", obj.toString()).apply()
+        }
 
     /** Stashed locally until a backend /subscribe endpoint exists to send it to. */
     var fcmToken: String?
@@ -907,9 +945,77 @@ class PunlaRepository(context: Context) {
     fun weeklyBudgetSpentFromList(expenses: List<Expense>, weekStart: LocalDate = currentWeekStart()): Double =
         sumInRange(expenses, weekStart, weekStart.plusDays(6), excludeFixed = true)
 
+    /** Estimate fixed recurring bills that have not materialized yet. Expense
+     * recurrence only generates rows up to today, so this gives the budget
+     * planner a conservative view of commitments still due later in a period. */
+    fun projectedFixedCommitmentsFromRules(
+        rules: List<ExpenseRule>,
+        afterExclusive: LocalDate,
+        throughInclusive: LocalDate
+    ): Double {
+        if (throughInclusive <= afterExclusive) return 0.0
+        var total = 0.0
+        rules.asSequence().filter { it.isFixed && it.amount > 0.0 }.forEach { rule ->
+            var cursor = runCatching { LocalDate.parse(rule.lastGenerated) }.getOrNull()
+                ?: runCatching { LocalDate.parse(rule.startDate) }.getOrNull()
+                ?: return@forEach
+            var guard = 0
+            while (guard++ < 200) {
+                cursor = when (rule.repeat) {
+                    "monthly" -> cursor.plusMonths(1)
+                    else -> cursor.plusWeeks(1)
+                }
+                if (cursor > throughInclusive) break
+                if (cursor > afterExclusive) total += rule.amount
+            }
+        }
+        return total
+    }
+
+    /** Remaining monthly money after reserving upcoming fixed recurring bills. */
+    fun monthlyFlexibleRemainingFromList(
+        expenses: List<Expense>,
+        rules: List<ExpenseRule>,
+        referenceDate: LocalDate = LocalDate.now()
+    ): Double {
+        if (monthlyBudget <= 0.0) return 0.0
+        val ym = YearMonth.from(referenceDate)
+        val spent = sumInRange(expenses, ym.atDay(1), referenceDate)
+        val reserved = projectedFixedCommitmentsFromRules(rules, referenceDate, ym.atEndOfMonth())
+        return monthlyBudget - spent - reserved
+    }
+
+    /** Conservative per-day discretionary amount for the rest of the month. */
+    fun monthlySafeToSpendPerDayFromList(
+        expenses: List<Expense>,
+        rules: List<ExpenseRule>,
+        referenceDate: LocalDate = LocalDate.now()
+    ): Double {
+        if (monthlyBudget <= 0.0) return 0.0
+        val end = YearMonth.from(referenceDate).atEndOfMonth()
+        val daysRemaining = (java.time.temporal.ChronoUnit.DAYS.between(referenceDate, end) + 1).coerceAtLeast(1)
+        return monthlyFlexibleRemainingFromList(expenses, rules, referenceDate) / daysRemaining
+    }
+
     /** All logged expenses, for callers (like the widget) that don't already
      * hold a reactive list the way the Budget screen's Room Flow does. */
     suspend fun allExpenses(): List<Expense> = db.expenseDao().getAll()
+
+    suspend fun safeToSpendToday(referenceDate: LocalDate = LocalDate.now()): Double {
+        val expenses = allExpenses()
+        val rules = db.expenseDao().getAllRules()
+        val monthlySafe = if (monthlyBudget > 0.0) monthlySafeToSpendPerDayFromList(expenses, rules, referenceDate) else null
+        val weeklySafe = if (budgetPeriod != BudgetPeriod.MONTHLY) {
+            val start = currentWeekStart(referenceDate)
+            val daysRemaining = (java.time.temporal.ChronoUnit.DAYS.between(referenceDate, start.plusDays(6)) + 1).coerceAtLeast(1)
+            (weeklyBudgetAmountFromList(expenses, start) - weeklyBudgetSpentFromList(expenses, start)) / daysRemaining
+        } else null
+        return when (budgetPeriod) {
+            BudgetPeriod.MONTHLY -> monthlySafe ?: 0.0
+            BudgetPeriod.WEEKLY -> weeklySafe ?: 0.0
+            BudgetPeriod.BOTH -> listOfNotNull(monthlySafe, weeklySafe).minOrNull() ?: 0.0
+        }
+    }
 
     /** Suspend wrapper of [weeklyBudgetAmountFromList] for non-Compose
      * callers (the Glance widget) that need to fetch the list first. */
