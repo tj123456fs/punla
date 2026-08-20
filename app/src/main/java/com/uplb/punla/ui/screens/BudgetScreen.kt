@@ -1120,7 +1120,7 @@ private fun ExpenseFormDialog(
                             onSelect = { repeat = REPEAT_OPTIONS[it].first },
                             modifier = Modifier.fillMaxWidth()
                         )
-                    } else if (initialExpense.ruleId != null) {
+                    } else if (initialExpense?.ruleId != null) {
                         Text(
                             "This changes this occurrence only. The recurring rule for future entries stays unchanged.",
                             style = MaterialTheme.typography.bodySmall,
