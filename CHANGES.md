@@ -1,4 +1,32 @@
+# Punla 2.3 — Flashcard JSON Import
+
+- Added JSON flashcard-deck import through Android's document picker.
+- Added import preview and readable validation errors.
+- Added canonical `punla-flashcards` format v1 for ChatGPT-generated decks.
+- Supports common field aliases and bare card arrays.
+- Importing from the library creates a new deck; importing from a deck adds cards there.
+- Imported cards always start as fresh reviews; external mastery/history values are ignored.
+- Added import size/card-count guardrails and invalid-card skipping.
+- Added atomic deck + card insertion for new-deck imports.
+- Fixed a duplicate `tint` argument in the flashcard hero icon found during validation.
+- Version bumped to 2.3 (`versionCode 14`).
+
 # Punla Changes
+
+## Session 28 — Flashcard Maker (v2.2)
+
+- Added an offline-first Flashcards destination with deck creation, optional course labels, descriptions, and deck-level progress.
+- Added manual card create/edit/delete and deck search.
+- Added bulk card import using `front :: back` or tab-separated lines.
+- Added a focused study mode with answer reveal and `Again`, `Hard`, `Good` ratings.
+- Added lightweight spaced repetition and per-card mastery/review metadata.
+- Added due-card counts plus `Study due` and `Study all` flows.
+- Added Room entities/DAO and migration `8 -> 9`; deck deletion cascades safely to its cards.
+- Added flashcards to Punla backup/restore; backup format version is now 5.
+- Added scheduler unit tests.
+- Bundled the GitHub Actions fixes for the Compose `animateColorAsState` import/dependency and nullable `initialExpense?.ruleId`.
+- Version bumped to `2.2` (`versionCode 13`).
+
 
 ## Session 27 — UI/UX 2.1
 

@@ -12,6 +12,7 @@ import com.uplb.punla.data.dao.ClassSessionDao
 import com.uplb.punla.data.dao.DeadlineDao
 import com.uplb.punla.data.dao.ExpenseDao
 import com.uplb.punla.data.dao.GradesDao
+import com.uplb.punla.data.dao.FlashcardDao
 import com.uplb.punla.data.dao.StudySessionDao
 import com.uplb.punla.data.dao.IntelligenceDao
 import com.uplb.punla.data.entity.Archive
@@ -23,6 +24,8 @@ import com.uplb.punla.data.entity.DeadlineRule
 import com.uplb.punla.data.entity.Expense
 import com.uplb.punla.data.entity.ExpenseRule
 import com.uplb.punla.data.entity.GradeCourse
+import com.uplb.punla.data.entity.Flashcard
+import com.uplb.punla.data.entity.FlashcardDeck
 import com.uplb.punla.data.entity.Semester
 import com.uplb.punla.data.entity.StudySession
 import com.uplb.punla.data.entity.StudySuggestionEvent
@@ -42,11 +45,13 @@ import com.uplb.punla.data.entity.NotificationEvent
         StudySession::class,
         StudySuggestionEvent::class,
         NotificationEvent::class,
-        AttendanceRecord::class
+        AttendanceRecord::class,
+        FlashcardDeck::class,
+        Flashcard::class
     ],
     // v7 -> v8: per-occurrence attendance history used by the ongoing
     // class notification and the schedule/dashboard attendance controls.
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 abstract class PunlaDatabase : RoomDatabase() {
@@ -58,6 +63,7 @@ abstract class PunlaDatabase : RoomDatabase() {
     abstract fun checklistDao(): ChecklistDao
     abstract fun studySessionDao(): StudySessionDao
     abstract fun intelligenceDao(): IntelligenceDao
+    abstract fun flashcardDao(): FlashcardDao
 
     companion object {
         @Volatile private var INSTANCE: PunlaDatabase? = null
@@ -127,6 +133,42 @@ abstract class PunlaDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS `flashcard_decks` (
+                        `id` TEXT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `courseCode` TEXT,
+                        `description` TEXT,
+                        `createdAt` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )""".trimIndent()
+                )
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS `flashcards` (
+                        `id` TEXT NOT NULL,
+                        `deckId` TEXT NOT NULL,
+                        `front` TEXT NOT NULL,
+                        `back` TEXT NOT NULL,
+                        `hint` TEXT,
+                        `createdAt` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL,
+                        `dueAt` INTEGER NOT NULL,
+                        `lastReviewedAt` INTEGER,
+                        `reviewCount` INTEGER NOT NULL,
+                        `correctCount` INTEGER NOT NULL,
+                        `mastery` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`),
+                        FOREIGN KEY(`deckId`) REFERENCES `flashcard_decks`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )""".trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_flashcards_deckId` ON `flashcards` (`deckId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_flashcards_dueAt` ON `flashcards` (`dueAt`)")
+            }
+        }
+
         fun get(context: Context): PunlaDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -134,7 +176,7 @@ abstract class PunlaDatabase : RoomDatabase() {
                     PunlaDatabase::class.java,
                     "punla.db"
                 )
-                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8)
+                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                     // Very old development installs never had migration specs.
                     // Preserve current v6+ personal data; only pre-v6 schemas
                     // may still be recreated rather than crashing at launch.

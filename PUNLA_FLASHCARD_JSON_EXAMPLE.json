@@ -1,0 +1,20 @@
+{
+  "format": "punla-flashcards",
+  "version": 1,
+  "deck": {
+    "name": "Example Punla Deck",
+    "courseCode": "SAMPLE 1",
+    "description": "Example file for Punla's JSON flashcard importer"
+  },
+  "cards": [
+    {
+      "front": "What does Punla import from this file?",
+      "back": "A flashcard deck and its cards.",
+      "hint": "JSON"
+    },
+    {
+      "front": "Can a JSON file be imported into an existing deck?",
+      "back": "Yes. Use Import JSON while that deck is open."
+    }
+  ]
+}

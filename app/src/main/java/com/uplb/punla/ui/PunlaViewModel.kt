@@ -26,6 +26,10 @@ import com.uplb.punla.data.entity.DeadlineRule
 import com.uplb.punla.data.entity.Expense
 import com.uplb.punla.data.entity.ExpenseRule
 import com.uplb.punla.data.entity.GradeCourse
+import com.uplb.punla.data.entity.Flashcard
+import com.uplb.punla.data.entity.FlashcardDeck
+import com.uplb.punla.data.entity.FlashcardRating
+import com.uplb.punla.data.entity.FlashcardReviewScheduler
 import com.uplb.punla.data.entity.Semester
 import com.uplb.punla.data.entity.StudySession
 import com.uplb.punla.data.entity.StudySuggestionEvent
@@ -82,6 +86,15 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
 
     val checklistItems: StateFlow<List<ChecklistItem>> = db.checklistDao().observeAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val flashcardDecks: StateFlow<List<FlashcardDeck>> = db.flashcardDao().observeDecks()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val flashcards: StateFlow<List<Flashcard>> = db.flashcardDao().observeAllCards()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun flashcardsFlow(deckId: String): Flow<List<Flashcard>> =
+        db.flashcardDao().observeCards(deckId)
 
     /**
      * True once the first real Room emission has landed for classes,
@@ -560,6 +573,42 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         db.deadlineDao().detachRecurrence(ruleId)
         db.deadlineDao().deleteRule(ruleId)
         WidgetRefresher.refreshAll(getApplication())
+    }
+
+    // ---- Flashcards ----
+    fun upsertFlashcardDeck(deck: FlashcardDeck) = viewModelScope.launch {
+        db.flashcardDao().upsertDeck(deck.copy(updatedAt = System.currentTimeMillis()))
+    }
+
+    fun deleteFlashcardDeck(deck: FlashcardDeck) = viewModelScope.launch {
+        db.flashcardDao().deleteDeck(deck)
+    }
+
+    fun importFlashcardDeck(deck: FlashcardDeck, cards: List<Flashcard>) = viewModelScope.launch {
+        db.flashcardDao().importDeck(deck, cards)
+    }
+
+    fun upsertFlashcard(card: Flashcard) = viewModelScope.launch {
+        db.flashcardDao().upsertCard(card.copy(updatedAt = System.currentTimeMillis()))
+        flashcardDecks.value.firstOrNull { it.id == card.deckId }?.let {
+            db.flashcardDao().upsertDeck(it.copy(updatedAt = System.currentTimeMillis()))
+        }
+    }
+
+    fun addFlashcards(cards: List<Flashcard>) = viewModelScope.launch {
+        if (cards.isEmpty()) return@launch
+        db.flashcardDao().upsertCards(cards)
+        flashcardDecks.value.firstOrNull { it.id == cards.first().deckId }?.let {
+            db.flashcardDao().upsertDeck(it.copy(updatedAt = System.currentTimeMillis()))
+        }
+    }
+
+    fun deleteFlashcard(card: Flashcard) = viewModelScope.launch {
+        db.flashcardDao().deleteCard(card)
+    }
+
+    fun rateFlashcard(card: Flashcard, rating: FlashcardRating) = viewModelScope.launch {
+        db.flashcardDao().upsertCard(FlashcardReviewScheduler.reviewed(card, rating))
     }
 
     // ---- Pre-enrollment checklist ----

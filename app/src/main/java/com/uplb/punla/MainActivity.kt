@@ -53,6 +53,7 @@ import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material.icons.filled.Style
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -99,6 +100,7 @@ import com.uplb.punla.ui.screens.ScheduleScreen
 import com.uplb.punla.ui.screens.SettingsScreen
 import com.uplb.punla.ui.screens.StudyAnalysisScreen
 import com.uplb.punla.ui.screens.AssistantScreen
+import com.uplb.punla.ui.screens.FlashcardsScreen
 import com.uplb.punla.ui.theme.appBackground
 import com.uplb.punla.ui.theme.PunlaDisplay
 import com.uplb.punla.ui.theme.PunlaMono
@@ -453,6 +455,7 @@ private val DRAWER_ITEMS = listOf(
     Tab("campus", "Campus", Icons.Default.Map),
     Tab("checklist", "Before Classes Start", Icons.Default.Checklist),
     Tab("pomodoro", "Focus", Icons.Default.Timer),
+    Tab("flashcards", "Flashcards", Icons.Default.Style),
     Tab("assistant", "Assistant", Icons.Default.SmartToy),
     Tab("settings", "Settings", Icons.Default.Settings)
 )
@@ -467,7 +470,7 @@ private val ALL_DESTINATIONS = BOTTOM_TABS + DRAWER_ITEMS
 // hidden on those to avoid two FABs stacking in the same corner. Pomodoro
 // has no add-form of its own — its FAB slot doesn't apply, so it's hidden
 // here too rather than showing an unrelated speed dial over the timer.
-private val ROUTES_WITH_OWN_FAB = setOf("budget", "deadlines", "grades", "checklist", "campus/fullmap", "pomodoro", "assistant")
+private val ROUTES_WITH_OWN_FAB = setOf("budget", "deadlines", "grades", "checklist", "campus/fullmap", "pomodoro", "flashcards", "assistant")
 
 private data class QuickAddAction(
     val kind: String,
@@ -516,6 +519,7 @@ fun PunlaApp(
             "campus/fullmap" -> "Campus Map"
             "pomodoro" -> "Focus"
             "study-analysis" -> "Study Analysis"
+            "flashcards" -> "Flashcards"
             "assistant" -> "Assistant"
             else -> "Punla"
         }
@@ -529,7 +533,7 @@ fun PunlaApp(
     // Study Analysis is a drill-down from Pomodoro, same story.
     val showBackArrow = currentRoute == "settings" || currentRoute == "checklist" ||
         currentRoute == "campus" || currentRoute == "campus/fullmap" ||
-        currentRoute == "pomodoro" || currentRoute == "study-analysis" || currentRoute == "assistant"
+        currentRoute == "pomodoro" || currentRoute == "study-analysis" || currentRoute == "flashcards" || currentRoute == "assistant"
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -896,6 +900,7 @@ fun PunlaApp(
                     )
                 }
                 composable("study-analysis") { StudyAnalysisScreen(vm) }
+                composable("flashcards") { FlashcardsScreen(vm) }
                 composable("assistant") {
                     AssistantScreen(
                         vm = vm,

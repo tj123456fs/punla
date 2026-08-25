@@ -11,6 +11,8 @@ import com.uplb.punla.data.entity.DeadlineRule
 import com.uplb.punla.data.entity.Expense
 import com.uplb.punla.data.entity.ExpenseRule
 import com.uplb.punla.data.entity.GradeCourse
+import com.uplb.punla.data.entity.Flashcard
+import com.uplb.punla.data.entity.FlashcardDeck
 import com.uplb.punla.data.entity.Semester
 import com.uplb.punla.data.entity.StudySession
 import com.uplb.punla.data.entity.StudySuggestionEvent
@@ -32,7 +34,7 @@ import java.util.Locale
  */
 object BackupManager {
 
-    const val CURRENT_VERSION = 4
+    const val CURRENT_VERSION = 5
 
     /** Suggested filename, mirrors the web app's punla-backup-YYYY-MM-DD.json. */
     fun suggestedFileName(): String {
@@ -60,6 +62,8 @@ object BackupManager {
         val studySuggestionEvents = db.intelligenceDao().getStudySuggestionEvents()
         val notificationEvents = db.intelligenceDao().getNotificationEvents()
         val attendanceRecords = db.attendanceDao().getAll()
+        val flashcardDecks = db.flashcardDao().getDecks()
+        val flashcards = db.flashcardDao().getAllCards()
 
         val root = JSONObject().apply {
             put("version", CURRENT_VERSION)
@@ -81,6 +85,8 @@ object BackupManager {
             put("studySuggestionEvents", JSONArray(studySuggestionEvents.map(::studySuggestionEventToJson)))
             put("notificationEvents", JSONArray(notificationEvents.map(::notificationEventToJson)))
             put("attendanceRecords", JSONArray(attendanceRecords.map(::attendanceRecordToJson)))
+            put("flashcardDecks", JSONArray(flashcardDecks.map(::flashcardDeckToJson)))
+            put("flashcards", JSONArray(flashcards.map(::flashcardToJson)))
             put("budget", repo.monthlyBudget)
             put("userName", repo.userName)
             put("chedTarget", repo.chedTarget)
@@ -170,6 +176,8 @@ object BackupManager {
         val studySuggestionEvents = root.optJSONArray("studySuggestionEvents")?.mapObjects(::studySuggestionEventFromJson) ?: emptyList()
         val notificationEvents = root.optJSONArray("notificationEvents")?.mapObjects(::notificationEventFromJson) ?: emptyList()
         val attendanceRecords = root.optJSONArray("attendanceRecords")?.mapObjects(::attendanceRecordFromJson) ?: emptyList()
+        val flashcardDecks = root.optJSONArray("flashcardDecks")?.mapObjects(::flashcardDeckFromJson) ?: emptyList()
+        val flashcards = root.optJSONArray("flashcards")?.mapObjects(::flashcardFromJson) ?: emptyList()
 
         db.withTransaction {
             db.classSessionDao().clearAll()
@@ -203,6 +211,10 @@ object BackupManager {
 
             db.attendanceDao().clearAll()
             attendanceRecords.forEach { db.attendanceDao().upsert(it) }
+
+            db.flashcardDao().clearAll()
+            db.flashcardDao().upsertDecks(flashcardDecks)
+            db.flashcardDao().upsertCards(flashcards.filter { card -> flashcardDecks.any { it.id == card.deckId } })
         }
 
         // Prefs live outside Room, so they're written after the DB transaction commits.
@@ -308,6 +320,32 @@ private fun attendanceRecordFromJson(o: JSONObject) = AttendanceRecord(
     status = o.getString("status"),
     loggedAt = o.optLong("loggedAt", System.currentTimeMillis()),
     source = o.optString("source", "restore")
+)
+
+private fun flashcardDeckToJson(d: FlashcardDeck) = JSONObject().apply {
+    put("id", d.id); put("name", d.name); put("courseCode", d.courseCode); put("description", d.description)
+    put("createdAt", d.createdAt); put("updatedAt", d.updatedAt)
+}
+
+private fun flashcardDeckFromJson(o: JSONObject) = FlashcardDeck(
+    id = o.getString("id"), name = o.getString("name"),
+    courseCode = o.optStringOrNull("courseCode"), description = o.optStringOrNull("description"),
+    createdAt = o.optLong("createdAt", System.currentTimeMillis()),
+    updatedAt = o.optLong("updatedAt", System.currentTimeMillis())
+)
+
+private fun flashcardToJson(c: Flashcard) = JSONObject().apply {
+    put("id", c.id); put("deckId", c.deckId); put("front", c.front); put("back", c.back); put("hint", c.hint)
+    put("createdAt", c.createdAt); put("updatedAt", c.updatedAt); put("dueAt", c.dueAt); put("lastReviewedAt", c.lastReviewedAt)
+    put("reviewCount", c.reviewCount); put("correctCount", c.correctCount); put("mastery", c.mastery)
+}
+
+private fun flashcardFromJson(o: JSONObject) = Flashcard(
+    id = o.getString("id"), deckId = o.getString("deckId"), front = o.getString("front"), back = o.getString("back"),
+    hint = o.optStringOrNull("hint"), createdAt = o.optLong("createdAt", System.currentTimeMillis()),
+    updatedAt = o.optLong("updatedAt", System.currentTimeMillis()), dueAt = o.optLong("dueAt", 0L),
+    lastReviewedAt = if (!o.has("lastReviewedAt") || o.isNull("lastReviewedAt")) null else o.optLong("lastReviewedAt"),
+    reviewCount = o.optInt("reviewCount", 0), correctCount = o.optInt("correctCount", 0), mastery = o.optInt("mastery", 0)
 )
 
 private fun expenseToJson(e: Expense) = JSONObject().apply {
