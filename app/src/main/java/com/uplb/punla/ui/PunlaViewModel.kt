@@ -1,6 +1,7 @@
 package com.uplb.punla.ui
 
 import android.app.Application
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -53,6 +54,7 @@ import com.uplb.punla.assistant.AssistantSnapshot
 import com.uplb.punla.assistant.LocalAssistant
 import com.uplb.punla.data.AssistantApi
 import com.uplb.punla.data.AssistantApiResult
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -600,7 +602,26 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
 
     fun deleteFlashcardDeck(deck: FlashcardDeck) = viewModelScope.launch { db.flashcardDao().deleteDeck(deck) }
 
-    fun importFlashcardDeck(deck: FlashcardDeck, cards: List<Flashcard>, contentId: String? = null) = viewModelScope.launch {
+    private suspend fun importResult(label: String, block: suspend () -> Unit): Result<Unit> = try {
+        block()
+        Result.success(Unit)
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (error: Exception) {
+        Log.e("PunlaImport", "$label failed", error)
+        Result.failure(error)
+    }
+
+    /**
+     * Imports are awaited by the UI instead of fire-and-forget. A failed Room
+     * transaction is rolled back and returned as a Result, so bad data or a
+     * storage/schema problem can never terminate the app process.
+     */
+    suspend fun importFlashcardDeck(
+        deck: FlashcardDeck,
+        cards: List<Flashcard>,
+        contentId: String? = null
+    ): Result<Unit> = importResult("Flashcard deck import") {
         db.withTransaction {
             db.flashcardDao().importDeck(deck, cards)
             if (!contentId.isNullOrBlank()) db.jsonImportDao().upsert(
@@ -609,7 +630,11 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun importFlashcardsIntoDeck(deck: FlashcardDeck, cards: List<Flashcard>, contentId: String? = null) = viewModelScope.launch {
+    suspend fun importFlashcardsIntoDeck(
+        deck: FlashcardDeck,
+        cards: List<Flashcard>,
+        contentId: String? = null
+    ): Result<Unit> = importResult("Flashcard card import") {
         db.withTransaction {
             if (cards.isNotEmpty()) {
                 db.flashcardDao().upsertCards(cards)
@@ -621,8 +646,13 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun checkJsonImport(fileType: String, contentId: String, onResult: (Boolean) -> Unit) = viewModelScope.launch {
-        onResult(db.jsonImportDao().exists(fileType, contentId))
+    suspend fun checkJsonImport(fileType: String, contentId: String): Result<Boolean> = try {
+        Result.success(db.jsonImportDao().exists(fileType, contentId))
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (error: Exception) {
+        Log.e("PunlaImport", "Import history check failed", error)
+        Result.failure(error)
     }
 
     fun upsertFlashcard(card: Flashcard) = viewModelScope.launch {
@@ -664,7 +694,11 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
 
     fun deleteQuizQuestion(question: QuizQuestion) = viewModelScope.launch { db.quizDao().deleteQuestion(question) }
 
-    fun importQuiz(quiz: Quiz, questions: List<QuizQuestion>, contentId: String? = null) = viewModelScope.launch {
+    suspend fun importQuiz(
+        quiz: Quiz,
+        questions: List<QuizQuestion>,
+        contentId: String? = null
+    ): Result<Unit> = importResult("Quiz import") {
         db.withTransaction {
             db.quizDao().upsertQuiz(quiz)
             db.quizDao().upsertQuestions(questions)

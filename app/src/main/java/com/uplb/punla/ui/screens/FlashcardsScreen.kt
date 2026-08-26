@@ -62,6 +62,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -74,6 +75,7 @@ import androidx.compose.ui.unit.dp
 import com.uplb.punla.data.FlashcardJsonDeck
 import com.uplb.punla.data.FlashcardJsonExport
 import com.uplb.punla.data.FlashcardJsonImport
+import com.uplb.punla.data.PunlaJsonImportReader
 import com.uplb.punla.data.entity.ClozeText
 import com.uplb.punla.data.entity.Flashcard
 import com.uplb.punla.data.entity.FlashcardDeck
@@ -81,6 +83,9 @@ import com.uplb.punla.data.entity.FlashcardRating
 import com.uplb.punla.data.entity.FlashcardTypes
 import com.uplb.punla.ui.PunlaViewModel
 import java.util.UUID
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun FlashcardsScreen(vm: PunlaViewModel) {
@@ -140,19 +145,34 @@ private fun FlashcardLibraryView(
     var pendingImport by remember { mutableStateOf<FlashcardJsonDeck?>(null) }
     var duplicateImport by remember { mutableStateOf(false) }
     var importError by remember { mutableStateOf<String?>(null) }
+    var importInProgress by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val importScope = rememberCoroutineScope()
     val jsonPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            runCatching {
-                val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-                    ?: throw IllegalArgumentException("Punla couldn't open that file.")
-                FlashcardJsonImport.parse(raw)
-            }.onSuccess { imported ->
-                vm.checkJsonImport(FlashcardJsonImport.FILE_ID, imported.contentId) { already ->
-                    duplicateImport = already
-                    pendingImport = imported
+        if (uri != null && !importInProgress) {
+            importScope.launch {
+                importInProgress = true
+                val parsed = runCatching {
+                    withContext(Dispatchers.IO) {
+                        FlashcardJsonImport.parse(
+                            PunlaJsonImportReader.readText(context, uri, FlashcardJsonImport.MAX_FILE_CHARS)
+                        )
+                    }
                 }
-            }.onFailure { importError = it.message ?: "Punla couldn't import that JSON file." }
+                parsed.onSuccess { imported ->
+                    vm.checkJsonImport(FlashcardJsonImport.FILE_ID, imported.contentId)
+                        .onSuccess { already ->
+                            duplicateImport = already
+                            pendingImport = imported
+                        }
+                        .onFailure { error ->
+                            importError = importFailureMessage("check this file", error)
+                        }
+                }.onFailure { error ->
+                    importError = error.message ?: "Punla couldn't import that JSON file."
+                }
+                importInProgress = false
+            }
         }
     }
     val now = System.currentTimeMillis()
@@ -236,20 +256,31 @@ private fun FlashcardLibraryView(
             destinationDeckName = null,
             alreadyImported = duplicateImport,
             exactDuplicateCards = 0,
-            onDismiss = { pendingImport = null },
+            importing = importInProgress,
+            onDismiss = { if (!importInProgress) pendingImport = null },
             onImport = {
-                val timestamp = System.currentTimeMillis()
-                val deck = FlashcardDeck(
-                    name = imported.name,
-                    courseCode = imported.courseCode,
-                    description = imported.description,
-                    createdAt = timestamp,
-                    updatedAt = timestamp
-                )
-                val importedCards = imported.cards.map { it.toEntity(deck.id, timestamp) }
-                vm.importFlashcardDeck(deck, importedCards, imported.contentId)
-                pendingImport = null
-                onOpenDeck(deck)
+                if (!importInProgress) {
+                    val timestamp = System.currentTimeMillis()
+                    val deck = FlashcardDeck(
+                        name = imported.name,
+                        courseCode = imported.courseCode,
+                        description = imported.description,
+                        createdAt = timestamp,
+                        updatedAt = timestamp
+                    )
+                    val importedCards = imported.cards.map { it.toEntity(deck.id, timestamp) }
+                    importScope.launch {
+                        importInProgress = true
+                        val result = vm.importFlashcardDeck(deck, importedCards, imported.contentId)
+                        importInProgress = false
+                        result.onSuccess {
+                            pendingImport = null
+                            onOpenDeck(deck)
+                        }.onFailure { error ->
+                            importError = importFailureMessage("save the imported flashcards", error)
+                        }
+                    }
+                }
             }
         )
     }
@@ -352,20 +383,35 @@ private fun DeckDetailView(
     var duplicateImport by remember { mutableStateOf(false) }
     var importError by remember { mutableStateOf<String?>(null) }
     var exportMessage by remember { mutableStateOf<String?>(null) }
+    var importInProgress by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val importScope = rememberCoroutineScope()
 
     val jsonPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            runCatching {
-                val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-                    ?: throw IllegalArgumentException("Punla couldn't open that file.")
-                FlashcardJsonImport.parse(raw)
-            }.onSuccess { imported ->
-                vm.checkJsonImport(FlashcardJsonImport.FILE_ID, imported.contentId) { already ->
-                    duplicateImport = already
-                    pendingImport = imported
+        if (uri != null && !importInProgress) {
+            importScope.launch {
+                importInProgress = true
+                val parsed = runCatching {
+                    withContext(Dispatchers.IO) {
+                        FlashcardJsonImport.parse(
+                            PunlaJsonImportReader.readText(context, uri, FlashcardJsonImport.MAX_FILE_CHARS)
+                        )
+                    }
                 }
-            }.onFailure { importError = it.message ?: "Punla couldn't import that JSON file." }
+                parsed.onSuccess { imported ->
+                    vm.checkJsonImport(FlashcardJsonImport.FILE_ID, imported.contentId)
+                        .onSuccess { already ->
+                            duplicateImport = already
+                            pendingImport = imported
+                        }
+                        .onFailure { error ->
+                            importError = importFailureMessage("check this file", error)
+                        }
+                }.onFailure { error ->
+                    importError = error.message ?: "Punla couldn't import that JSON file."
+                }
+                importInProgress = false
+            }
         }
     }
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
@@ -551,15 +597,26 @@ private fun DeckDetailView(
             destinationDeckName = deck.name,
             alreadyImported = duplicateImport,
             exactDuplicateCards = exactImportDuplicates,
-            onDismiss = { pendingImport = null },
+            importing = importInProgress,
+            onDismiss = { if (!importInProgress) pendingImport = null },
             onImport = {
-                val timestamp = System.currentTimeMillis()
-                val freshCards = imported.cards.filterNot { incoming ->
-                    cards.any { existing -> existing.front.trim().equals(incoming.front.trim(), true) && existing.back.trim().equals(incoming.back.trim(), true) }
-                }.map { it.toEntity(deck.id, timestamp) }
-                vm.importFlashcardsIntoDeck(deck, freshCards, imported.contentId)
-                pendingImport = null
-                exportMessage = if (freshCards.isEmpty()) "Nothing new was imported; all cards were exact duplicates." else "Imported ${freshCards.size} new cards${if (exactImportDuplicates > 0) " and skipped $exactImportDuplicates duplicates" else ""}."
+                if (!importInProgress) {
+                    val timestamp = System.currentTimeMillis()
+                    val freshCards = imported.cards.filterNot { incoming ->
+                        cards.any { existing -> existing.front.trim().equals(incoming.front.trim(), true) && existing.back.trim().equals(incoming.back.trim(), true) }
+                    }.map { it.toEntity(deck.id, timestamp) }
+                    importScope.launch {
+                        importInProgress = true
+                        val result = vm.importFlashcardsIntoDeck(deck, freshCards, imported.contentId)
+                        importInProgress = false
+                        result.onSuccess {
+                            pendingImport = null
+                            exportMessage = if (freshCards.isEmpty()) "Nothing new was imported; all cards were exact duplicates." else "Imported ${freshCards.size} new cards${if (exactImportDuplicates > 0) " and skipped $exactImportDuplicates duplicates" else ""}."
+                        }.onFailure { error ->
+                            importError = importFailureMessage("save the imported flashcards", error)
+                        }
+                    }
+                }
             }
         )
     }
@@ -831,6 +888,7 @@ private fun FlashcardJsonImportPreviewDialog(
     destinationDeckName: String?,
     alreadyImported: Boolean,
     exactDuplicateCards: Int,
+    importing: Boolean,
     onDismiss: () -> Unit,
     onImport: () -> Unit
 ) {
@@ -867,8 +925,12 @@ private fun FlashcardJsonImportPreviewDialog(
                 item { Text("Review history, mastery, due dates, and IDs from outside files are never imported.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
         },
-        confirmButton = { TextButton(onClick = onImport) { Text(if (alreadyImported) "Import again" else "Import") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        confirmButton = {
+            TextButton(onClick = onImport, enabled = !importing) {
+                Text(if (importing) "Importing…" else if (alreadyImported) "Import again" else "Import")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !importing) { Text("Cancel") } }
     )
 }
 
@@ -887,6 +949,14 @@ private fun FlashcardJsonErrorDialog(message: String, onDismiss: () -> Unit) {
         text = { Text(message) },
         confirmButton = { TextButton(onClick = onDismiss) { Text("OK") } }
     )
+}
+
+private fun importFailureMessage(action: String, error: Throwable): String {
+    val detail = error.message?.trim()?.takeIf { it.isNotEmpty() }?.take(240)
+    return buildString {
+        append("Punla couldn't $action. No partial cards were kept.")
+        if (detail != null) append("\n\nDetails: ").append(detail)
+    }
 }
 
 @Composable

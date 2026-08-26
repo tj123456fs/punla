@@ -1,5 +1,18 @@
 # Punla changes
 
+## v2.6 — Crash-safe JSON imports
+
+- Reworked Flashcard JSON imports into an awaited, atomic flow instead of fire-and-forget database jobs.
+- Room/import failures are now caught and shown as an in-app error; failed transactions roll back instead of terminating Punla.
+- The UI opens an imported deck only after the database transaction has actually succeeded.
+- Import buttons lock while a save is running, preventing double-taps from starting overlapping transactions.
+- Added a bounded JSON reader so Punla never reads an arbitrarily large selected file into memory before applying its size limit.
+- Flashcard and Quiz JSON reading/parsing now runs off the main thread.
+- Hardened duplicate-content history checks so storage/query failures surface as recoverable import errors.
+- Applied the same transaction/error protections to Quiz JSON imports to avoid the same crash class there.
+- No Room schema change; existing decks, quizzes, attempts, and import IDs remain compatible.
+- App version: `2.6` (`versionCode 17`).
+
 ## v2.5 — Atmospheric Background Engine 2.0
 
 - Rebuilt Rain with gravity-dominant motion and stable per-drop x anchors so the scene no longer feels like the camera is moving through the weather.

@@ -57,6 +57,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -69,6 +70,7 @@ import androidx.compose.ui.unit.dp
 import com.uplb.punla.data.QuizJsonExport
 import com.uplb.punla.data.QuizJsonImport
 import com.uplb.punla.data.QuizJsonPayload
+import com.uplb.punla.data.PunlaJsonImportReader
 import com.uplb.punla.data.entity.Flashcard
 import com.uplb.punla.data.entity.FlashcardDeck
 import com.uplb.punla.data.entity.Quiz
@@ -78,6 +80,9 @@ import com.uplb.punla.data.entity.QuizQuestionTypes
 import com.uplb.punla.ui.PunlaViewModel
 import org.json.JSONArray
 import java.util.UUID
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private data class QuizRunRequest(val questions: List<QuizQuestion>, val label: String, val id: String = UUID.randomUUID().toString())
 
@@ -152,19 +157,34 @@ private fun QuizLibraryView(
     var pendingImport by remember { mutableStateOf<QuizJsonPayload?>(null) }
     var duplicateImport by remember { mutableStateOf(false) }
     var importError by remember { mutableStateOf<String?>(null) }
+    var importInProgress by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val importScope = rememberCoroutineScope()
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            runCatching {
-                val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-                    ?: throw IllegalArgumentException("Punla couldn't open that file.")
-                QuizJsonImport.parse(raw)
-            }.onSuccess { imported ->
-                vm.checkJsonImport(QuizJsonImport.FILE_ID, imported.contentId) { already ->
-                    duplicateImport = already
-                    pendingImport = imported
+        if (uri != null && !importInProgress) {
+            importScope.launch {
+                importInProgress = true
+                val parsed = runCatching {
+                    withContext(Dispatchers.IO) {
+                        QuizJsonImport.parse(
+                            PunlaJsonImportReader.readText(context, uri, QuizJsonImport.MAX_FILE_CHARS)
+                        )
+                    }
                 }
-            }.onFailure { importError = it.message ?: "Punla couldn't import that quiz JSON." }
+                parsed.onSuccess { imported ->
+                    vm.checkJsonImport(QuizJsonImport.FILE_ID, imported.contentId)
+                        .onSuccess { already ->
+                            duplicateImport = already
+                            pendingImport = imported
+                        }
+                        .onFailure { error ->
+                            importError = quizImportFailureMessage("check this file", error)
+                        }
+                }.onFailure { error ->
+                    importError = error.message ?: "Punla couldn't import that quiz JSON."
+                }
+                importInProgress = false
+            }
         }
     }
     val horizontalPadding = punlaScreenHorizontalPadding()
@@ -252,34 +272,49 @@ private fun QuizLibraryView(
         )
     }
     pendingImport?.let { imported ->
-        QuizJsonPreviewDialog(imported, duplicateImport, onDismiss = { pendingImport = null }) {
-            val now = System.currentTimeMillis()
-            val quiz = Quiz(
-                title = imported.title,
-                courseCode = imported.courseCode,
-                description = imported.description,
-                passingScore = imported.passingScore,
-                shuffleQuestions = imported.shuffleQuestions,
-                shuffleChoices = imported.shuffleChoices,
-                createdAt = now,
-                updatedAt = now
-            )
-            val importedQuestions = imported.questions.map { q ->
-                QuizQuestion(
-                    quizId = quiz.id,
-                    type = q.type,
-                    prompt = q.prompt,
-                    optionsJson = QuizQuestion.encodeOptions(q.options),
-                    correctAnswer = q.correctAnswer,
-                    explanation = q.explanation,
-                    tags = q.tags,
+        QuizJsonPreviewDialog(
+            imported = imported,
+            alreadyImported = duplicateImport,
+            importing = importInProgress,
+            onDismiss = { if (!importInProgress) pendingImport = null }
+        ) {
+            if (!importInProgress) {
+                val now = System.currentTimeMillis()
+                val quiz = Quiz(
+                    title = imported.title,
+                    courseCode = imported.courseCode,
+                    description = imported.description,
+                    passingScore = imported.passingScore,
+                    shuffleQuestions = imported.shuffleQuestions,
+                    shuffleChoices = imported.shuffleChoices,
                     createdAt = now,
                     updatedAt = now
                 )
+                val importedQuestions = imported.questions.map { q ->
+                    QuizQuestion(
+                        quizId = quiz.id,
+                        type = q.type,
+                        prompt = q.prompt,
+                        optionsJson = QuizQuestion.encodeOptions(q.options),
+                        correctAnswer = q.correctAnswer,
+                        explanation = q.explanation,
+                        tags = q.tags,
+                        createdAt = now,
+                        updatedAt = now
+                    )
+                }
+                importScope.launch {
+                    importInProgress = true
+                    val result = vm.importQuiz(quiz, importedQuestions, imported.contentId)
+                    importInProgress = false
+                    result.onSuccess {
+                        pendingImport = null
+                        onOpenQuiz(quiz)
+                    }.onFailure { error ->
+                        importError = quizImportFailureMessage("save the imported quiz", error)
+                    }
+                }
             }
-            vm.importQuiz(quiz, importedQuestions, imported.contentId)
-            pendingImport = null
-            onOpenQuiz(quiz)
         }
     }
     importError?.let { message ->
@@ -773,8 +808,22 @@ private fun FlashcardDeckPickerDialog(decks: List<FlashcardDeck>, cards: List<Fl
     )
 }
 
+private fun quizImportFailureMessage(action: String, error: Throwable): String {
+    val detail = error.message?.trim()?.takeIf { it.isNotEmpty() }?.take(240)
+    return buildString {
+        append("Punla couldn't $action. No partial quiz data was kept.")
+        if (detail != null) append("\n\nDetails: ").append(detail)
+    }
+}
+
 @Composable
-private fun QuizJsonPreviewDialog(imported: QuizJsonPayload, alreadyImported: Boolean, onDismiss: () -> Unit, onImport: () -> Unit) {
+private fun QuizJsonPreviewDialog(
+    imported: QuizJsonPayload,
+    alreadyImported: Boolean,
+    importing: Boolean,
+    onDismiss: () -> Unit,
+    onImport: () -> Unit
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Import ${imported.questions.size}-question quiz?") },
@@ -792,8 +841,12 @@ private fun QuizJsonPreviewDialog(imported: QuizJsonPayload, alreadyImported: Bo
                 item { Text("Attempt history and scores are never accepted from imported quiz JSON.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
         },
-        confirmButton = { TextButton(onClick = onImport) { Text(if (alreadyImported) "Import again" else "Import") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        confirmButton = {
+            TextButton(onClick = onImport, enabled = !importing) {
+                Text(if (importing) "Importing…" else if (alreadyImported) "Import again" else "Import")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !importing) { Text("Cancel") } }
     )
 }
 

@@ -11,7 +11,8 @@ local-first personal intelligence layer and an optional private assistant.
 
 ### Flashcards 2.0 and Quiz Maker
 
-Punla now includes a complete offline study loop:
+Punla now includes a complete offline study loop. JSON imports are crash-safe in v2.6: file reads are bounded and performed off the main thread, database writes are awaited inside atomic transactions, and failures are shown in-app instead of terminating the process.
+
 
 - Flashcard decks with spaced repetition, Cloze `{{answer}}` cards, reverse study, tags, stars, smart Due/Weak/New/Starred sessions, bulk add, search, and JSON import/export.
 - A Quiz Maker with multiple-choice, true/false, and identification questions, score/history tracking, retry mistakes, flashcard-to-quiz generation, and mistake-to-flashcard conversion.
