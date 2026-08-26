@@ -1,5 +1,14 @@
 # Punla changes
 
+## v2.5 — Atmospheric Background Engine 2.0
+
+- Rebuilt Rain with gravity-dominant motion and stable per-drop x anchors so the scene no longer feels like the camera is moving through the weather.
+- Added explicit far/mid/near rain layers, tiny independent breeze wobble, sparse near-drop splashes, and a subtle stationary haze layer.
+- Rebuilt Aurora from thick stroked curves into four broad filled gradient curtains with independently deforming top/bottom edges and soft inner glow.
+- Slowed and softened Ocean Waves, Fireflies, Sakura, Snow, Bubbles, and Starfield motion so animated backgrounds feel atmospheric rather than like a moving viewport.
+- Preserved the shared renderer used by the live app, Settings previews, and frozen widget frames; no new dependency or database migration.
+- App version: `2.5` (`versionCode 16`).
+
 ## v2.4 — Flashcards 2.0 + Quiz Maker
 
 - Upgraded Flashcards with cloze cards, reverse-direction study, tags, starred cards, and Smart Study filters for Due / Weak / New / Starred / All.

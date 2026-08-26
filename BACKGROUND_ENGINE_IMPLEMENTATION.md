@@ -55,3 +55,10 @@ The central dispatcher is `paintBackgroundFrame()` in `BackgroundRenderer.kt`. E
 ## Source acknowledgement
 
 The rain design was informed by the Apache-2.0 `AnimationExample21.kt` example from `skydoves/compose-animations`. See `THIRD_PARTY_NOTICES.md` and `third_party/licenses/compose-animations-APACHE-2.0.txt`.
+
+
+---
+
+## Session 31 / v2.5 motion-quality refresh
+
+The original shared renderer architecture remains unchanged, but the motion model was substantially revised in `BACKGROUND_ENGINE_2_0.md`. Rain no longer couples x travel to fall progress, Aurora is now made from broad filled gradient curtains rather than stroked paths, and the supporting animated styles received slower, more organic motion.

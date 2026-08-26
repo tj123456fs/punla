@@ -32,25 +32,25 @@ val PunlaBackgroundCatalog: List<BackgroundDescriptor> = listOf(
     BackgroundDescriptor(
         style = BackgroundStyle.RAIN,
         label = "Rain",
-        description = "Layered wind-blown rain with depth and tiny splashes.",
+        description = "Gravity-first layered rain with subtle breeze and sparse splashes.",
         animated = true,
     ),
     BackgroundDescriptor(
         style = BackgroundStyle.AURORA,
         label = "Aurora",
-        description = "Glowing ribbons that flow across a dark sky.",
+        description = "Broad luminous curtains that slowly breathe across the sky.",
         animated = true,
     ),
     BackgroundDescriptor(
         style = BackgroundStyle.OCEAN_WAVES,
         label = "Ocean Waves",
-        description = "Calm layered waves with slow parallax motion.",
+        description = "Slow layered ocean swells with gentle independent motion.",
         animated = true,
     ),
     BackgroundDescriptor(
         style = BackgroundStyle.FIREFLIES,
         label = "Fireflies",
-        description = "Warm wandering lights with soft pulsing glows.",
+        description = "Warm lights that meander, pause, and pulse softly.",
         animated = true,
     ),
     BackgroundDescriptor(
@@ -74,7 +74,7 @@ val PunlaBackgroundCatalog: List<BackgroundDescriptor> = listOf(
     BackgroundDescriptor(
         style = BackgroundStyle.STARFIELD,
         label = "Starfield",
-        description = "A quiet field of twinkling, drifting stars.",
+        description = "A quiet field of twinkling, nearly stationary stars.",
         animated = true,
     ),
     BackgroundDescriptor(

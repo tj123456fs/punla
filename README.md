@@ -46,7 +46,7 @@ See `FLASHCARD_JSON_IMPORT.md`, `QUIZ_JSON_IMPORT.md`, and `STUDY_SYSTEM_2_0.md`
   `Enable precise` upgrade action for better walking-route origins.
 - **Reviewed campus room directory** — 52 canonical UPLB building markers, explicit room-to-building overrides for known upstream contradictions, and conservative unresolved handling instead of risky prefix guesses.
 
-- **Procedural background engine** — twelve selectable styles rendered natively with one shared Canvas pipeline across the app, Settings thumbnails, and frozen widget frames. New effects include Aurora, Ocean Waves, Fireflies, Sakura, Snow, and Bubbles; Theme Match automatically pairs every curated theme with a signature effect.
+- **Atmospheric background engine 2.0** — twelve selectable native Canvas styles share one renderer across the app, Settings thumbnails, and frozen widget frames. Rain is now gravity-first with stable depth layers instead of camera-like lateral travel; Aurora uses broad filled gradient curtains instead of stroked squiggles. Ocean, fireflies, sakura, snow, bubbles, and starfield motion were also softened for a more stationary, atmospheric feel. Theme Match still pairs every curated theme with a signature effect. See `BACKGROUND_ENGINE_2_0.md`.
 
 - **Ongoing class-day notification** — one silent card evolves from leave-soon to current class, free time, and end-of-day. Android's chronometer supplies live start/end countdowns, while Attended/Absent check-in, Navigate, Schedule, Start focus, and Hide today actions keep the notification useful without stacking alerts.
 

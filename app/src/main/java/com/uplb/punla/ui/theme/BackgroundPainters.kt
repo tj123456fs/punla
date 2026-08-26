@@ -77,8 +77,8 @@ fun paintStarfield(
         // Drift: a slow, small elliptical wander around the star's base
         // point — independent seed draws from the twinkle phase/speed above
         // so the two motions don't sync up and read as one repetitive cycle.
-        val driftRadiusPx = rng.nextFloat() * 3.2f + 1.2f
-        val driftSpeed = rng.nextFloat() * 0.12f + 0.04f // much slower than twinkleSpeed
+        val driftRadiusPx = rng.nextFloat() * 1.6f + 0.5f
+        val driftSpeed = rng.nextFloat() * 0.055f + 0.018f // nearly stationary; twinkle carries most of the motion
         val driftPhase = rng.nextFloat() * (2f * Math.PI.toFloat())
 
         val twinkle = (sin(t * speed + phase) * 0.5f + 0.5f).coerceIn(0f, 1f) * 0.75f + 0.15f
@@ -220,17 +220,17 @@ fun paintPaperGrain(
     canvas.drawPoints(pts, 0, i, paint)
 }
 
-/** Cycles-per-second for [paintRain]'s fall loop — one drop takes roughly
- * 1/[RAIN_FALL_HZ] seconds to cross from just-above-top to just-below-bottom
- * at its base speed of 1x (individual drops vary ±25-50% per their own
- * random `speed` draw, same per-star-speed-variance idea as [paintStarfield]). */
-private const val RAIN_FALL_HZ = 0.7f
-
 /**
- * Layered wind-blown rain. Each deterministic drop receives its own depth,
- * speed, length, width, and phase; near drops move faster and appear brighter.
- * A short bright head reads as motion blur, while occasional bottom-edge
- * ellipses provide inexpensive splash cues.
+ * Gravity-first layered rain. The previous renderer coupled horizontal travel
+ * to each drop's vertical progress, which made the whole scene feel like the
+ * camera was moving through rain. Rain 2.0 keeps every drop anchored to a
+ * stable x-position and allows only a tiny independent breeze wobble.
+ *
+ * Three explicit depth layers provide parallax through size/alpha/speed rather
+ * than screen-wide translation:
+ * - far: small, faint, slow drops
+ * - mid: the majority of visible rainfall
+ * - near: sparse, longer streaks and occasional bottom-edge splashes
  */
 fun paintRain(
     canvas: Canvas,
@@ -239,15 +239,27 @@ fun paintRain(
     tSeconds: Float,
     palette: PunlaPalette,
     isDark: Boolean,
-    dropCount: Int = 96,
+    dropCount: Int = 108,
 ) {
-    val base = (if (isDark) palette.darkBg else palette.paper).toArgb()
-    canvas.drawColor(base)
+    val baseColor = (if (isDark) palette.darkBg else palette.paper).toArgb()
+    canvas.drawColor(baseColor)
     if (widthPx <= 0f || heightPx <= 0f) return
 
-    // Inspired by the depth/speed separation used by skydoves' Apache-2.0
-    // Compose rain sample, but kept deterministic so the exact same painter
-    // can also produce a frozen widget frame.
+    // A very soft atmospheric veil gives the rain depth while keeping the
+    // screen itself visually stationary.
+    val hazeColor = (if (isDark) palette.leafBgDark else palette.leafBgLight)
+        .copy(alpha = if (isDark) 0.10f else 0.07f)
+        .toArgb()
+    val hazePaint = Paint().apply {
+        shader = LinearGradient(
+            0f, 0f, 0f, heightPx,
+            intArrayOf(withAlpha(hazeColor, 0), hazeColor, withAlpha(hazeColor, 0)),
+            floatArrayOf(0f, 0.58f, 1f),
+            Shader.TileMode.CLAMP,
+        )
+    }
+    canvas.drawRect(0f, 0f, widthPx, heightPx, hazePaint)
+
     val rng = Random(20260711)
     val farColor = (if (isDark) palette.lineDark else palette.bark).toArgb()
     val nearColor = (if (isDark) palette.textDark else palette.ink).toArgb()
@@ -259,53 +271,88 @@ fun paintRain(
 
     repeat(dropCount) {
         val xSeed = rng.nextFloat()
-        val depth = 0.28f + rng.nextFloat() * 0.72f
-        val speed = (0.52f + depth * 0.82f) * (0.86f + rng.nextFloat() * 0.28f)
+        val layerRoll = rng.nextFloat()
+        val layer = when {
+            layerRoll < 0.44f -> 0 // far
+            layerRoll < 0.86f -> 1 // mid
+            else -> 2              // near
+        }
         val phase = rng.nextFloat()
-        val progress = fractional(tSeconds * RAIN_FALL_HZ * speed + phase)
-        val streakLength = heightPx * (0.018f + depth * 0.035f)
-        val lean = streakLength * (0.20f + depth * 0.16f)
-        val margin = streakLength * 1.4f
+        val wobblePhase = rng.nextFloat() * PI.toFloat() * 2f
+        val speedJitter = 0.90f + rng.nextFloat() * 0.20f
+        val splashEligible = layer == 2 && rng.nextFloat() < 0.28f
+
+        val fallHz = when (layer) {
+            0 -> 0.18f
+            1 -> 0.28f
+            else -> 0.40f
+        } * speedJitter
+        val progress = fractional(tSeconds * fallHz + phase)
+
+        val streakLength = heightPx * when (layer) {
+            0 -> 0.010f + rng.nextFloat() * 0.004f
+            1 -> 0.017f + rng.nextFloat() * 0.006f
+            else -> 0.027f + rng.nextFloat() * 0.010f
+        }
+        val margin = streakLength * 1.6f
         val headY = progress * (heightPx + margin * 2f) - margin
-        val windTravel = heightPx * 0.12f
-        val headX = wrap(widthPx * xSeed - progress * windTravel, -margin, widthPx + margin)
-        val alpha = (42 + depth * 92f).toInt().coerceIn(0, 255)
 
-        dropPaint.color = if (depth > 0.72f) nearColor else farColor
+        // Crucially, x is NOT derived from progress. Breeze is a small local
+        // oscillation so the observer remains visually stationary.
+        val breezeAmplitude = widthPx * when (layer) {
+            0 -> 0.0015f
+            1 -> 0.0028f
+            else -> 0.0042f
+        }
+        val breeze = sin(tSeconds * (0.24f + layer * 0.05f) + wobblePhase) * breezeAmplitude
+        val headX = widthPx * xSeed + breeze
+
+        val lean = streakLength * when (layer) {
+            0 -> 0.025f
+            1 -> 0.045f
+            else -> 0.070f
+        }
+        val alpha = when (layer) {
+            0 -> 40 + rng.nextInt(24)
+            1 -> 72 + rng.nextInt(34)
+            else -> 112 + rng.nextInt(46)
+        }
+
+        dropPaint.color = if (layer == 2) nearColor else farColor
         dropPaint.alpha = alpha
-        dropPaint.strokeWidth = 0.7f + depth * 1.6f
-        canvas.drawLine(
-            headX - lean,
-            headY - streakLength,
-            headX,
-            headY,
-            dropPaint,
-        )
+        dropPaint.strokeWidth = when (layer) {
+            0 -> 0.65f
+            1 -> 1.05f
+            else -> 1.65f
+        }
+        canvas.drawLine(headX - lean, headY - streakLength, headX, headY, dropPaint)
 
-        // A small bright head makes the streak read as motion blur without
-        // allocating one LinearGradient shader per drop per frame.
-        dropPaint.alpha = (alpha * 0.7f).toInt()
-        dropPaint.strokeWidth *= 1.18f
-        canvas.drawLine(
-            headX - lean * 0.14f,
-            headY - streakLength * 0.14f,
-            headX,
-            headY,
-            dropPaint,
-        )
+        // A short brighter tip suggests local motion blur without making the
+        // whole rain field smear in one direction.
+        if (layer > 0) {
+            dropPaint.alpha = (alpha * 0.54f).toInt()
+            dropPaint.strokeWidth *= 1.12f
+            canvas.drawLine(
+                headX - lean * 0.12f,
+                headY - streakLength * 0.12f,
+                headX,
+                headY,
+                dropPaint,
+            )
+        }
 
-        if (progress > 0.982f && headX in 0f..widthPx) {
-            val splashProgress = ((progress - 0.982f) / 0.018f).coerceIn(0f, 1f)
+        if (splashEligible && progress > 0.986f && headX in 0f..widthPx) {
+            val splashProgress = ((progress - 0.986f) / 0.014f).coerceIn(0f, 1f)
             splashPaint.color = nearColor
-            splashPaint.alpha = ((1f - splashProgress) * 92f * depth).toInt()
-            splashPaint.strokeWidth = 0.8f + depth
-            val radius = (2.5f + depth * 5f) * splashProgress
+            splashPaint.alpha = ((1f - splashProgress) * 86f).toInt()
+            splashPaint.strokeWidth = 1.1f
+            val radius = (2.2f + 5.2f * splashProgress) * max(widthPx, heightPx) / 900f
             canvas.drawOval(
                 RectF(
                     headX - radius,
-                    heightPx - radius * 0.28f,
+                    heightPx - radius * 0.24f,
                     headX + radius,
-                    heightPx + radius * 0.28f,
+                    heightPx + radius * 0.24f,
                 ),
                 splashPaint,
             )
@@ -313,7 +360,7 @@ fun paintRain(
     }
 }
 
-/** Flowing translucent ribbons over the active theme background. */
+/** Broad, softly layered aurora curtains over the active theme background. */
 fun paintAurora(
     canvas: Canvas,
     widthPx: Float,
@@ -322,46 +369,110 @@ fun paintAurora(
     palette: PunlaPalette,
     isDark: Boolean,
 ) {
-    val base = (if (isDark) palette.darkBg else palette.paper).toArgb()
-    canvas.drawColor(base)
     if (widthPx <= 0f || heightPx <= 0f) return
 
-    val colors = intArrayOf(
-        (if (isDark) palette.leaf else palette.leafLight).copy(alpha = if (isDark) 0.28f else 0.18f).toArgb(),
-        (if (isDark) palette.mangoDark else palette.mango).copy(alpha = if (isDark) 0.22f else 0.14f).toArgb(),
-        (if (isDark) palette.maroonDark else palette.maroon).copy(alpha = if (isDark) 0.22f else 0.13f).toArgb(),
+    val skyTop = (if (isDark) palette.darkBg else palette.paper).toArgb()
+    val skyBottom = (if (isDark) palette.leafBgDark else palette.leafBgLight).toArgb()
+    val skyPaint = Paint().apply {
+        shader = LinearGradient(0f, 0f, 0f, heightPx, skyTop, skyBottom, Shader.TileMode.CLAMP)
+    }
+    canvas.drawRect(0f, 0f, widthPx, heightPx, skyPaint)
+
+    // Each curtain is a filled translucent region bounded by two independently
+    // deforming low-frequency curves. Nothing is stroked as a line, which
+    // prevents the old "squiggly neon ribbon" look.
+    val curtainColors = arrayOf(
+        if (isDark) palette.leaf else palette.leafLight,
+        if (isDark) palette.mangoDark else palette.mango,
+        if (isDark) palette.leafLight else palette.leaf,
+        if (isDark) palette.maroonDark else palette.maroon,
     )
 
-    repeat(3) { index ->
-        val phase = index * 1.9f
-        val baseY = heightPx * (0.25f + index * 0.19f)
-        val amplitude = heightPx * (0.07f + index * 0.018f)
+    repeat(4) { index ->
+        val phase = 0.85f + index * 1.47f
+        val topBase = heightPx * (0.10f + index * 0.075f)
+        val thickness = heightPx * (0.27f + index * 0.022f)
+        val ampTop = heightPx * (0.025f + index * 0.006f)
+        val ampBottom = heightPx * (0.040f + index * 0.007f)
+        val speed = 0.030f + index * 0.006f
+        val samples = 44
+
+        fun topY(unit: Float): Float = topBase +
+            sin(unit * PI.toFloat() * (1.15f + index * 0.12f) + tSeconds * speed + phase) * ampTop +
+            sin(unit * PI.toFloat() * 2.4f - tSeconds * speed * 0.63f + phase * 0.7f) * ampTop * 0.28f
+
+        fun bottomY(unit: Float): Float = topBase + thickness +
+            sin(unit * PI.toFloat() * (1.02f + index * 0.10f) + tSeconds * speed * 0.72f + phase * 1.18f) * ampBottom +
+            sin(unit * PI.toFloat() * 2.05f + tSeconds * speed * 0.44f + phase) * ampBottom * 0.22f
+
         val path = Path()
-        val samples = 36
         for (sample in 0..samples) {
-            val x = widthPx * sample / samples
-            val y = baseY +
-                sin(sample / samples.toFloat() * PI.toFloat() * (1.6f + index * 0.32f) + tSeconds * (0.18f + index * 0.035f) + phase) * amplitude +
-                sin(sample / samples.toFloat() * PI.toFloat() * 4.2f - tSeconds * 0.11f + phase) * amplitude * 0.28f
+            val unit = sample / samples.toFloat()
+            val x = widthPx * unit
+            val y = topY(unit)
             if (sample == 0) path.moveTo(x, y) else path.lineTo(x, y)
         }
-
-        val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeCap = Paint.Cap.ROUND
-            strokeJoin = Paint.Join.ROUND
-            strokeWidth = heightPx * (0.13f - index * 0.018f)
-            color = colors[index]
+        for (sample in samples downTo 0) {
+            val unit = sample / samples.toFloat()
+            path.lineTo(widthPx * unit, bottomY(unit))
         }
-        canvas.drawPath(path, glow)
+        path.close()
 
-        glow.strokeWidth *= 0.35f
-        glow.alpha = 128
-        canvas.drawPath(path, glow)
+        val color = curtainColors[index]
+        val peakAlpha = if (isDark) 92 - index * 8 else 58 - index * 5
+        val curtainPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = LinearGradient(
+                0f,
+                topBase - ampTop,
+                0f,
+                topBase + thickness + ampBottom,
+                intArrayOf(
+                    withAlpha(color.toArgb(), 0),
+                    withAlpha(color.toArgb(), peakAlpha / 2),
+                    withAlpha(color.toArgb(), peakAlpha),
+                    withAlpha(color.toArgb(), peakAlpha / 2),
+                    withAlpha(color.toArgb(), 0),
+                ),
+                floatArrayOf(0f, 0.16f, 0.43f, 0.72f, 1f),
+                Shader.TileMode.CLAMP,
+            )
+        }
+        canvas.drawPath(path, curtainPaint)
+
+        // A narrower inner curtain gives a soft luminous core while remaining
+        // a filled surface rather than a stroke.
+        val innerPath = Path()
+        for (sample in 0..samples) {
+            val unit = sample / samples.toFloat()
+            val x = widthPx * unit
+            val y = topY(unit) + thickness * 0.18f
+            if (sample == 0) innerPath.moveTo(x, y) else innerPath.lineTo(x, y)
+        }
+        for (sample in samples downTo 0) {
+            val unit = sample / samples.toFloat()
+            val y = topY(unit) + thickness * 0.58f +
+                sin(unit * PI.toFloat() * 1.35f + phase - tSeconds * speed * 0.38f) * ampBottom * 0.18f
+            innerPath.lineTo(widthPx * unit, y)
+        }
+        innerPath.close()
+        val innerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = LinearGradient(
+                0f, topBase, 0f, topBase + thickness,
+                intArrayOf(
+                    withAlpha(color.toArgb(), 0),
+                    withAlpha(color.toArgb(), if (isDark) 56 else 34),
+                    withAlpha(color.toArgb(), 0),
+                ),
+                floatArrayOf(0f, 0.48f, 1f),
+                Shader.TileMode.CLAMP,
+            )
+        }
+        canvas.drawPath(innerPath, innerPaint)
     }
 }
 
-/** Layered sine-wave fills with independent phase speeds. */
+
+/** Layered ocean swells with slow, non-uniform phase motion. */
 fun paintOceanWaves(
     canvas: Canvas,
     widthPx: Float,
@@ -379,23 +490,25 @@ fun paintOceanWaves(
     canvas.drawRect(0f, 0f, widthPx, heightPx, background)
 
     val waveColors = intArrayOf(
-        (if (isDark) palette.leafLight else palette.leaf).copy(alpha = 0.20f).toArgb(),
-        (if (isDark) palette.mangoDark else palette.mango).copy(alpha = 0.16f).toArgb(),
-        (if (isDark) palette.maroonDark else palette.maroon).copy(alpha = 0.14f).toArgb(),
-        (if (isDark) palette.leaf else palette.leafLight).copy(alpha = 0.22f).toArgb(),
+        (if (isDark) palette.leafLight else palette.leaf).copy(alpha = 0.15f).toArgb(),
+        (if (isDark) palette.mangoDark else palette.mango).copy(alpha = 0.12f).toArgb(),
+        (if (isDark) palette.maroonDark else palette.maroon).copy(alpha = 0.11f).toArgb(),
+        (if (isDark) palette.leaf else palette.leafLight).copy(alpha = 0.19f).toArgb(),
     )
 
     repeat(4) { layer ->
-        val baseline = heightPx * (0.52f + layer * 0.10f)
-        val amplitude = heightPx * (0.024f + layer * 0.009f)
-        val phase = tSeconds * (0.16f + layer * 0.035f) * if (layer % 2 == 0) 1f else -1f
+        val baseline = heightPx * (0.55f + layer * 0.095f)
+        val amplitude = heightPx * (0.020f + layer * 0.008f)
+        val direction = if (layer % 2 == 0) 1f else -1f
+        val phase = tSeconds * (0.055f + layer * 0.012f) * direction + layer * 0.9f
         val path = Path().apply { moveTo(0f, heightPx) }
-        val samples = 48
+        val samples = 56
         for (sample in 0..samples) {
             val x = widthPx * sample / samples
             val unit = sample / samples.toFloat()
-            val y = baseline + sin(unit * PI.toFloat() * (2.2f + layer * 0.35f) + phase + layer) * amplitude
-            path.lineTo(x, y)
+            val primary = sin(unit * PI.toFloat() * (2.0f + layer * 0.18f) + phase) * amplitude
+            val secondary = sin(unit * PI.toFloat() * (4.1f + layer * 0.25f) - phase * 0.42f) * amplitude * 0.22f
+            path.lineTo(x, baseline + primary + secondary)
         }
         path.lineTo(widthPx, heightPx)
         path.close()
@@ -403,7 +516,8 @@ fun paintOceanWaves(
     }
 }
 
-/** Warm lights that wander in small loops and pulse independently. */
+
+/** Warm lights that meander gently, pause visually, and pulse independently. */
 fun paintFireflies(
     canvas: Canvas,
     widthPx: Float,
@@ -424,25 +538,32 @@ fun paintFireflies(
         val baseX = rng.nextFloat() * widthPx
         val baseY = rng.nextFloat() * heightPx
         val phase = rng.nextFloat() * PI.toFloat() * 2f
-        val speed = 0.18f + rng.nextFloat() * 0.34f
-        val orbit = (5f + rng.nextFloat() * 18f) * max(widthPx, heightPx) / 900f
-        val x = baseX + cos(tSeconds * speed + phase) * orbit
-        val y = baseY + sin(tSeconds * speed * 0.73f + phase * 1.31f) * orbit * 0.7f
-        val pulse = (sin(tSeconds * (1.0f + rng.nextFloat()) + phase) * 0.5f + 0.5f)
-        val radius = (1.4f + rng.nextFloat() * 1.8f) * max(widthPx, heightPx) / 900f
+        val speed = 0.09f + rng.nextFloat() * 0.13f
+        val orbit = (4f + rng.nextFloat() * 13f) * max(widthPx, heightPx) / 900f
+        // Two very small orbits at unrelated frequencies create organic
+        // meandering. The squared gate naturally spends longer near a pause.
+        val gateRaw = sin(tSeconds * speed * 0.37f + phase) * 0.5f + 0.5f
+        val gate = 0.24f + gateRaw * gateRaw * 0.76f
+        val x = baseX + cos(tSeconds * speed + phase) * orbit * gate +
+            sin(tSeconds * speed * 0.41f + phase * 1.7f) * orbit * 0.24f
+        val y = baseY + sin(tSeconds * speed * 0.69f + phase * 1.31f) * orbit * 0.62f * gate
+        val pulse = (sin(tSeconds * (0.62f + rng.nextFloat() * 0.55f) + phase) * 0.5f + 0.5f)
+        val pulseSoft = pulse * pulse
+        val radius = (1.3f + rng.nextFloat() * 1.7f) * max(widthPx, heightPx) / 900f
 
         glowPaint.color = color
-        glowPaint.alpha = (24 + pulse * 52).toInt()
-        canvas.drawCircle(x, y, radius * 4.2f, glowPaint)
-        glowPaint.alpha = (55 + pulse * 70).toInt()
-        canvas.drawCircle(x, y, radius * 2.1f, glowPaint)
+        glowPaint.alpha = (18 + pulseSoft * 44).toInt()
+        canvas.drawCircle(x, y, radius * 4.6f, glowPaint)
+        glowPaint.alpha = (42 + pulseSoft * 72).toInt()
+        canvas.drawCircle(x, y, radius * 2.15f, glowPaint)
         corePaint.color = color
-        corePaint.alpha = (135 + pulse * 120).toInt()
+        corePaint.alpha = (105 + pulseSoft * 145).toInt()
         canvas.drawCircle(x, y, radius, corePaint)
     }
 }
 
-/** Falling petals with depth, breeze, and rotation. */
+
+/** Falling petals with depth, curved breeze paths, and rotation. */
 fun paintSakura(
     canvas: Canvas,
     widthPx: Float,
@@ -464,14 +585,16 @@ fun paintSakura(
         val xSeed = rng.nextFloat()
         val phase = rng.nextFloat()
         val depth = 0.35f + rng.nextFloat() * 0.65f
-        val speed = 0.055f + depth * 0.055f
+        val speed = 0.045f + depth * 0.048f
         val progress = fractional(tSeconds * speed + phase)
         val y = progress * (heightPx + margin * 2f) - margin
         val swayPhase = rng.nextFloat() * PI.toFloat() * 2f
-        val sway = sin(tSeconds * (0.55f + depth * 0.4f) + swayPhase) * widthPx * (0.018f + depth * 0.02f)
-        val x = wrap(widthPx * xSeed + sway + progress * widthPx * 0.06f, -margin, widthPx + margin)
+        val curveA = sin(tSeconds * (0.34f + depth * 0.25f) + swayPhase) * widthPx * (0.012f + depth * 0.014f)
+        val curveB = sin(progress * PI.toFloat() * 2f + swayPhase * 0.63f) * widthPx * (0.010f + depth * 0.012f)
+        val gentleDrift = (progress - 0.5f) * widthPx * 0.018f
+        val x = wrap(widthPx * xSeed + curveA + curveB + gentleDrift, -margin, widthPx + margin)
         val size = (3.2f + depth * 5.5f) * max(widthPx, heightPx) / 900f
-        val rotation = (tSeconds * (32f + depth * 48f) + phase * 360f) % 360f
+        val rotation = (tSeconds * (22f + depth * 34f) + phase * 360f + sin(tSeconds * 0.5f + swayPhase) * 18f) % 360f
 
         petalPaint.color = if (rng.nextBoolean()) colorA else colorB
         petalPaint.alpha = (72 + depth * 105f).toInt()
@@ -485,7 +608,8 @@ fun paintSakura(
     }
 }
 
-/** Soft snow with three apparent depth layers. */
+
+/** Soft snow with layered depth and flutter rather than straight-line fall. */
 fun paintSnow(
     canvas: Canvas,
     widthPx: Float,
@@ -506,11 +630,13 @@ fun paintSnow(
         val xSeed = rng.nextFloat()
         val phase = rng.nextFloat()
         val depth = 0.22f + rng.nextFloat() * 0.78f
-        val speed = 0.035f + depth * 0.055f
+        val speed = 0.026f + depth * 0.042f
         val progress = fractional(tSeconds * speed + phase)
         val y = progress * (heightPx + margin * 2f) - margin
-        val sway = sin(tSeconds * (0.28f + depth * 0.24f) + phase * PI.toFloat() * 4f) * widthPx * (0.008f + depth * 0.012f)
-        val x = wrap(widthPx * xSeed + sway, -margin, widthPx + margin)
+        val angle = phase * PI.toFloat() * 4f
+        val flutterA = sin(tSeconds * (0.24f + depth * 0.20f) + angle) * widthPx * (0.006f + depth * 0.010f)
+        val flutterB = sin(tSeconds * (0.57f + depth * 0.18f) + angle * 1.6f) * widthPx * 0.004f
+        val x = wrap(widthPx * xSeed + flutterA + flutterB, -margin, widthPx + margin)
         val radius = (0.8f + depth * 2.8f) * max(widthPx, heightPx) / 900f
         paint.color = color
         paint.alpha = (30 + depth * 115f).toInt()
@@ -518,7 +644,8 @@ fun paintSnow(
     }
 }
 
-/** Rising outlined bubbles with highlights and gentle sideways drift. */
+
+/** Rising outlined bubbles with highlights, wobble, and slight shape breathing. */
 fun paintBubbles(
     canvas: Canvas,
     widthPx: Float,
@@ -540,22 +667,31 @@ fun paintBubbles(
         val xSeed = rng.nextFloat()
         val phase = rng.nextFloat()
         val depth = 0.25f + rng.nextFloat() * 0.75f
-        val speed = 0.025f + depth * 0.045f
+        val speed = 0.022f + depth * 0.036f
         val progress = fractional(tSeconds * speed + phase)
         val y = heightPx + margin - progress * (heightPx + margin * 2f)
-        val drift = sin(tSeconds * (0.25f + depth * 0.2f) + phase * PI.toFloat() * 4f) * widthPx * 0.025f
+        val angle = phase * PI.toFloat() * 4f
+        val drift = sin(tSeconds * (0.18f + depth * 0.13f) + angle) * widthPx * 0.014f +
+            sin(tSeconds * 0.43f + angle * 1.4f) * widthPx * 0.004f
         val x = wrap(widthPx * xSeed + drift, -margin, widthPx + margin)
         val radius = (5f + depth * 14f) * max(widthPx, heightPx) / 900f
+        val breathe = sin(tSeconds * (0.42f + depth * 0.18f) + angle) * 0.035f
+        val rx = radius * (1f + breathe)
+        val ry = radius * (1f - breathe)
 
         stroke.color = color
         stroke.alpha = (35 + depth * 75f).toInt()
         stroke.strokeWidth = 0.8f + depth * 1.1f
-        canvas.drawCircle(x, y, radius, stroke)
+        canvas.drawOval(RectF(x - rx, y - ry, x + rx, y + ry), stroke)
         highlight.color = color
         highlight.alpha = (55 + depth * 90f).toInt()
-        canvas.drawCircle(x - radius * 0.33f, y - radius * 0.35f, max(0.8f, radius * 0.11f), highlight)
+        canvas.drawCircle(x - rx * 0.33f, y - ry * 0.35f, max(0.8f, radius * 0.11f), highlight)
     }
 }
+
+
+private fun withAlpha(argb: Int, alpha: Int): Int =
+    (argb and 0x00FFFFFF) or (alpha.coerceIn(0, 255) shl 24)
 
 private fun fractional(value: Float): Float = value - floor(value)
 

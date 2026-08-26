@@ -379,3 +379,8 @@ The most recent work after the v2.1 UI/UX package focused on resolving GitHub Ac
 ## Session 30 — Flashcards 2.0 + Quiz Maker
 
 Punla v2.4 adds cloze/reverse/tagged/starred flashcards, Smart Study filters, safe JSON export/import, a full Quiz Maker, flashcard-to-quiz conversion, retry-mistakes, mistake-to-flashcard conversion, quiz history, and strict JSON type/content IDs (`punla.flashcards.deck`, `punla.quiz`, `punla.backup`). Room database version is now 10 and backup format version is 6.
+
+
+## Session 31 — Atmospheric Background Engine 2.0 (v2.5)
+
+Punla's procedural backgrounds received a motion-quality pass focused on making the observer feel stationary. Rain now falls predominantly downward using stable x anchors and explicit depth layers instead of coupling sideways travel to fall progress. Aurora was rebuilt from thick stroked wave paths into broad translucent filled curtains with vertical gradient falloff and slow independent edge deformation. Ocean Waves, Fireflies, Sakura, Snow, Bubbles, and Starfield were also softened and slowed. The existing shared Canvas renderer for the app, previews, and widget frames was preserved with no database migration.
