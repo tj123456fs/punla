@@ -30,17 +30,20 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.MenuBook
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material.icons.filled.Style
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,14 +53,13 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -70,10 +72,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.uplb.punla.data.FlashcardJsonDeck
+import com.uplb.punla.data.FlashcardJsonExport
 import com.uplb.punla.data.FlashcardJsonImport
+import com.uplb.punla.data.entity.ClozeText
 import com.uplb.punla.data.entity.Flashcard
 import com.uplb.punla.data.entity.FlashcardDeck
 import com.uplb.punla.data.entity.FlashcardRating
+import com.uplb.punla.data.entity.FlashcardTypes
 import com.uplb.punla.ui.PunlaViewModel
 import java.util.UUID
 
@@ -112,7 +117,7 @@ fun FlashcardsScreen(vm: PunlaViewModel) {
                 cards = selectedCards,
                 vm = vm,
                 onBack = { selectedDeckId = null },
-                onStudy = { cards -> studyRequest = cards }
+                onStudy = { studyRequest = it }
             )
             else -> FlashcardLibraryView(
                 decks = decks,
@@ -133,6 +138,7 @@ private fun FlashcardLibraryView(
 ) {
     var showDeckDialog by rememberSaveable { mutableStateOf(false) }
     var pendingImport by remember { mutableStateOf<FlashcardJsonDeck?>(null) }
+    var duplicateImport by remember { mutableStateOf(false) }
     var importError by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val jsonPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -141,8 +147,12 @@ private fun FlashcardLibraryView(
                 val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
                     ?: throw IllegalArgumentException("Punla couldn't open that file.")
                 FlashcardJsonImport.parse(raw)
-            }.onSuccess { pendingImport = it }
-                .onFailure { importError = it.message ?: "Punla couldn't import that JSON file." }
+            }.onSuccess { imported ->
+                vm.checkJsonImport(FlashcardJsonImport.FILE_ID, imported.contentId) { already ->
+                    duplicateImport = already
+                    pendingImport = imported
+                }
+            }.onFailure { importError = it.message ?: "Punla couldn't import that JSON file." }
         }
     }
     val now = System.currentTimeMillis()
@@ -170,21 +180,20 @@ private fun FlashcardLibraryView(
         ) {
             item {
                 FlashcardHero(
-                    title = "Flashcard maker",
-                    subtitle = "Build decks, review what is due, and let difficult cards come back sooner."
+                    title = "Flashcards",
+                    subtitle = "Cloze, reverse cards, tags, starred cards, smart study, and safe Punla JSON import/export."
                 )
             }
             item {
                 OutlinedButton(
-                    onClick = { jsonPicker.launch(FLASHCARD_JSON_MIME_TYPES) },
+                    onClick = { jsonPicker.launch(JSON_MIME_TYPES) },
                     modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp)
                 ) {
                     Icon(Icons.Default.FileOpen, contentDescription = null)
                     Spacer(Modifier.size(8.dp))
-                    Text("Import JSON deck")
+                    Text("Import Punla flashcard JSON")
                 }
             }
-
             if (decks.isEmpty()) {
                 item {
                     EmptyState(
@@ -195,21 +204,15 @@ private fun FlashcardLibraryView(
                     )
                 }
             } else {
-                item {
-                    SectionLabel(
-                        text = "Your decks",
-                        icon = Icons.Default.Style
-                    )
-                }
+                item { SectionLabel(text = "Your decks", icon = Icons.Default.Style) }
                 items(decks, key = { it.id }) { deck ->
                     val deckCards = cards.filter { it.deckId == deck.id }
-                    val due = deckCards.count { it.dueAt == 0L || it.dueAt <= now }
-                    val mastered = deckCards.count { it.mastery >= 4 }
                     DeckCard(
                         deck = deck,
                         cardCount = deckCards.size,
-                        dueCount = due,
-                        masteredCount = mastered,
+                        dueCount = deckCards.count { it.isDue(now) },
+                        masteredCount = deckCards.count { it.mastery >= 4 },
+                        starredCount = deckCards.count { it.starred },
                         onClick = { onOpenDeck(deck) }
                     )
                 }
@@ -231,35 +234,26 @@ private fun FlashcardLibraryView(
         FlashcardJsonImportPreviewDialog(
             imported = imported,
             destinationDeckName = null,
+            alreadyImported = duplicateImport,
+            exactDuplicateCards = 0,
             onDismiss = { pendingImport = null },
             onImport = {
-                val now = System.currentTimeMillis()
+                val timestamp = System.currentTimeMillis()
                 val deck = FlashcardDeck(
                     name = imported.name,
                     courseCode = imported.courseCode,
                     description = imported.description,
-                    createdAt = now,
-                    updatedAt = now
+                    createdAt = timestamp,
+                    updatedAt = timestamp
                 )
-                val importedCards = imported.cards.map { card ->
-                    Flashcard(
-                        deckId = deck.id,
-                        front = card.front,
-                        back = card.back,
-                        hint = card.hint,
-                        createdAt = now,
-                        updatedAt = now
-                    )
-                }
-                vm.importFlashcardDeck(deck, importedCards)
+                val importedCards = imported.cards.map { it.toEntity(deck.id, timestamp) }
+                vm.importFlashcardDeck(deck, importedCards, imported.contentId)
                 pendingImport = null
                 onOpenDeck(deck)
             }
         )
     }
-    importError?.let { message ->
-        FlashcardJsonErrorDialog(message = message, onDismiss = { importError = null })
-    }
+    importError?.let { FlashcardJsonErrorDialog(it) { importError = null } }
 }
 
 @Composable
@@ -272,10 +266,7 @@ private fun FlashcardHero(title: String, subtitle: String) {
     ) {
         Column(Modifier.padding(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                ) {
+                Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)) {
                     Icon(
                         Icons.Default.AutoAwesome,
                         contentDescription = null,
@@ -298,6 +289,7 @@ private fun DeckCard(
     cardCount: Int,
     dueCount: Int,
     masteredCount: Int,
+    starredCount: Int,
     onClick: () -> Unit
 ) {
     Card(
@@ -307,11 +299,7 @@ private fun DeckCard(
     ) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    modifier = Modifier.size(42.dp),
-                    shape = RoundedCornerShape(13.dp),
-                    color = MaterialTheme.colorScheme.secondaryContainer
-                ) {
+                Surface(modifier = Modifier.size(42.dp), shape = RoundedCornerShape(13.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.Style, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
                     }
@@ -319,12 +307,13 @@ private fun DeckCard(
                 Spacer(Modifier.size(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(deck.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    val meta = listOfNotNull(deck.courseCode?.takeIf { it.isNotBlank() }, "$cardCount cards").joinToString(" · ")
-                    Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        listOfNotNull(deck.courseCode?.takeIf { it.isNotBlank() }, "$cardCount cards").joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
-                if (dueCount > 0) {
-                    AssistChip(onClick = onClick, label = { Text("$dueCount due") })
-                }
+                if (dueCount > 0) AssistChip(onClick = onClick, label = { Text("$dueCount due") })
             }
             deck.description?.takeIf { it.isNotBlank() }?.let {
                 Spacer(Modifier.height(10.dp))
@@ -332,11 +321,10 @@ private fun DeckCard(
             }
             if (cardCount > 0) {
                 Spacer(Modifier.height(12.dp))
-                val progress = masteredCount.toFloat() / cardCount.toFloat()
-                LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+                LinearProgressIndicator(progress = { masteredCount.toFloat() / cardCount.toFloat() }, modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(5.dp))
                 Text(
-                    if (masteredCount == 0) "Start reviewing to build mastery" else "$masteredCount of $cardCount cards well learned",
+                    "$masteredCount learned · $starredCount starred",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -361,23 +349,47 @@ private fun DeckDetailView(
     var confirmDeleteDeck by rememberSaveable(deck.id) { mutableStateOf(false) }
     var deleteCard by remember { mutableStateOf<Flashcard?>(null) }
     var pendingImport by remember { mutableStateOf<FlashcardJsonDeck?>(null) }
+    var duplicateImport by remember { mutableStateOf(false) }
     var importError by remember { mutableStateOf<String?>(null) }
+    var exportMessage by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
+
     val jsonPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             runCatching {
                 val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
                     ?: throw IllegalArgumentException("Punla couldn't open that file.")
-                FlashcardJsonImport.parse(raw, fallbackDeckName = deck.name)
-            }.onSuccess { pendingImport = it }
-                .onFailure { importError = it.message ?: "Punla couldn't import that JSON file." }
+                FlashcardJsonImport.parse(raw)
+            }.onSuccess { imported ->
+                vm.checkJsonImport(FlashcardJsonImport.FILE_ID, imported.contentId) { already ->
+                    duplicateImport = already
+                    pendingImport = imported
+                }
+            }.onFailure { importError = it.message ?: "Punla couldn't import that JSON file." }
         }
     }
-    val now = System.currentTimeMillis()
-    val dueCards = cards.filter { it.dueAt == 0L || it.dueAt <= now }
-    val visibleCards = cards.filter {
-        query.isBlank() || it.front.contains(query, ignoreCase = true) || it.back.contains(query, ignoreCase = true)
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) {
+            runCatching {
+                val payload = FlashcardJsonExport.build(deck, cards)
+                context.contentResolver.openOutputStream(uri)?.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+                    ?: throw IllegalStateException("Punla couldn't write that file.")
+            }.onSuccess { exportMessage = "Flashcard JSON exported. You can send this file back to ChatGPT or import it into Punla on another device." }
+                .onFailure { exportMessage = it.message ?: "Couldn't export this deck." }
+        }
     }
+
+    val now = System.currentTimeMillis()
+    val dueCards = cards.filter { it.isDue(now) }
+    val weakCards = cards.filter { it.isWeak() }
+    val newCards = cards.filter { it.isNew() }
+    val starredCards = cards.filter { it.starred }
+    val visibleCards = cards.filter {
+        query.isBlank() || it.front.contains(query, true) || it.back.contains(query, true) || it.tags.contains(query, true)
+    }
+    val exactImportDuplicates = pendingImport?.cards?.count { incoming ->
+        cards.any { existing -> existing.front.trim().equals(incoming.front.trim(), true) && existing.back.trim().equals(incoming.back.trim(), true) }
+    } ?: 0
     val horizontalPadding = punlaScreenHorizontalPadding()
 
     Scaffold(
@@ -402,9 +414,7 @@ private fun DeckDetailView(
         ) {
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to decks")
-                    }
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to decks") }
                     Column(Modifier.weight(1f)) {
                         Text(deck.name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                         Text(
@@ -413,45 +423,36 @@ private fun DeckDetailView(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    IconButton(onClick = { exportLauncher.launch(safeJsonFileName(deck.name, "flashcards")) }) { Icon(Icons.Default.Save, contentDescription = "Export deck JSON") }
                     IconButton(onClick = { showDeckDialog = true }) { Icon(Icons.Default.Edit, contentDescription = "Edit deck") }
                     IconButton(onClick = { confirmDeleteDeck = true }) { Icon(Icons.Default.Delete, contentDescription = "Delete deck") }
                 }
             }
 
             if (cards.isNotEmpty()) {
+                item { SectionLabel(text = "Smart study", icon = Icons.Default.AutoAwesome) }
                 item {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Button(
-                            onClick = { onStudy(dueCards.shuffled()) },
-                            enabled = dueCards.isNotEmpty(),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Icon(Icons.Default.PlayArrow, contentDescription = null)
-                            Spacer(Modifier.size(6.dp))
-                            Text(if (dueCards.isEmpty()) "Nothing due" else "Study due (${dueCards.size})")
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            StudyModeButton("Due", dueCards.size, dueCards.isNotEmpty(), Modifier.weight(1f)) { onStudy(dueCards) }
+                            StudyModeButton("Weak", weakCards.size, weakCards.isNotEmpty(), Modifier.weight(1f)) { onStudy(weakCards) }
+                            StudyModeButton("New", newCards.size, newCards.isNotEmpty(), Modifier.weight(1f)) { onStudy(newCards) }
                         }
-                        OutlinedButton(
-                            onClick = { onStudy(cards.shuffled()) },
-                            modifier = Modifier.weight(1f)
-                        ) { Text("Study all") }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            StudyModeButton("Starred", starredCards.size, starredCards.isNotEmpty(), Modifier.weight(1f)) { onStudy(starredCards) }
+                            Button(onClick = { onStudy(cards) }, modifier = Modifier.weight(2f).heightIn(min = 48.dp)) { Text("Study all ${cards.size}") }
+                        }
                     }
                 }
             }
 
             item {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(
-                        onClick = { jsonPicker.launch(FLASHCARD_JSON_MIME_TYPES) },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Default.FileOpen, contentDescription = null)
+                    OutlinedButton(onClick = { showBulkDialog = true }, modifier = Modifier.weight(1f)) { Text("Bulk add") }
+                    OutlinedButton(onClick = { jsonPicker.launch(JSON_MIME_TYPES) }, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.FileOpen, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.size(6.dp))
                         Text("Import JSON")
-                    }
-                    FilledTonalButton(onClick = { showBulkDialog = true }, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Default.MenuBook, contentDescription = null)
-                        Spacer(Modifier.size(6.dp))
-                        Text("Bulk add")
                     }
                 }
             }
@@ -464,8 +465,7 @@ private fun DeckDetailView(
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                        placeholder = { Text("Search this deck") },
-                        shape = RoundedCornerShape(14.dp)
+                        label = { Text("Search cards or tags") }
                     )
                 }
             }
@@ -473,20 +473,20 @@ private fun DeckDetailView(
             if (cards.isEmpty()) {
                 item {
                     EmptyState(
-                        icon = Icons.Default.Style,
-                        message = "This deck is empty. Add cards one at a time or paste a whole set at once.",
+                        icon = Icons.Default.MenuBook,
+                        message = "This deck is empty. Add a card manually, paste several at once, or import a Punla JSON deck.",
                         actionLabel = "Add first card",
-                        onAction = { showCardDialog = true }
+                        onAction = { editingCard = null; showCardDialog = true }
                     )
                 }
             } else if (visibleCards.isEmpty()) {
-                item { EmptyState(icon = Icons.Default.Search, message = "No cards match your search.") }
+                item { EmptyState(icon = Icons.Default.Search, message = "No cards match “$query”.") }
             } else {
-                item { SectionLabel("Cards", icon = Icons.Default.Style) }
+                item { SectionLabel(text = if (query.isBlank()) "Cards" else "Search results", icon = Icons.Default.MenuBook) }
                 items(visibleCards, key = { it.id }) { card ->
-                    FlashcardListRow(
+                    FlashcardListItem(
                         card = card,
-                        isDue = card.dueAt == 0L || card.dueAt <= now,
+                        onToggleStar = { vm.toggleFlashcardStar(card) },
                         onEdit = { editingCard = card; showCardDialog = true },
                         onDelete = { deleteCard = card }
                     )
@@ -517,32 +517,6 @@ private fun DeckDetailView(
             }
         )
     }
-    pendingImport?.let { imported ->
-        FlashcardJsonImportPreviewDialog(
-            imported = imported,
-            destinationDeckName = deck.name,
-            onDismiss = { pendingImport = null },
-            onImport = {
-                val now = System.currentTimeMillis()
-                vm.addFlashcards(
-                    imported.cards.map { card ->
-                        Flashcard(
-                            deckId = deck.id,
-                            front = card.front,
-                            back = card.back,
-                            hint = card.hint,
-                            createdAt = now,
-                            updatedAt = now
-                        )
-                    }
-                )
-                pendingImport = null
-            }
-        )
-    }
-    importError?.let { message ->
-        FlashcardJsonErrorDialog(message = message, onDismiss = { importError = null })
-    }
     if (showDeckDialog) {
         DeckEditorDialog(
             initial = deck,
@@ -557,66 +531,94 @@ private fun DeckDetailView(
         AlertDialog(
             onDismissRequest = { confirmDeleteDeck = false },
             title = { Text("Delete ${deck.name}?") },
-            text = { Text("All ${cards.size} cards in this deck will be deleted too.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    vm.deleteFlashcardDeck(deck)
-                    confirmDeleteDeck = false
-                    onBack()
-                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
-            },
+            text = { Text("This deletes the deck and all ${cards.size} cards. Quiz copies made earlier are not affected.") },
+            confirmButton = { TextButton(onClick = { vm.deleteFlashcardDeck(deck); confirmDeleteDeck = false; onBack() }) { Text("Delete") } },
             dismissButton = { TextButton(onClick = { confirmDeleteDeck = false }) { Text("Cancel") } }
         )
     }
     deleteCard?.let { card ->
         AlertDialog(
             onDismissRequest = { deleteCard = null },
-            title = { Text("Delete this card?") },
-            text = { Text(card.front, maxLines = 3, overflow = TextOverflow.Ellipsis) },
-            confirmButton = {
-                TextButton(onClick = { vm.deleteFlashcard(card); deleteCard = null }) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
-                }
-            },
+            title = { Text("Delete flashcard?") },
+            text = { Text(card.front, maxLines = 4, overflow = TextOverflow.Ellipsis) },
+            confirmButton = { TextButton(onClick = { vm.deleteFlashcard(card); deleteCard = null }) { Text("Delete") } },
             dismissButton = { TextButton(onClick = { deleteCard = null }) { Text("Cancel") } }
+        )
+    }
+    pendingImport?.let { imported ->
+        FlashcardJsonImportPreviewDialog(
+            imported = imported,
+            destinationDeckName = deck.name,
+            alreadyImported = duplicateImport,
+            exactDuplicateCards = exactImportDuplicates,
+            onDismiss = { pendingImport = null },
+            onImport = {
+                val timestamp = System.currentTimeMillis()
+                val freshCards = imported.cards.filterNot { incoming ->
+                    cards.any { existing -> existing.front.trim().equals(incoming.front.trim(), true) && existing.back.trim().equals(incoming.back.trim(), true) }
+                }.map { it.toEntity(deck.id, timestamp) }
+                vm.importFlashcardsIntoDeck(deck, freshCards, imported.contentId)
+                pendingImport = null
+                exportMessage = if (freshCards.isEmpty()) "Nothing new was imported; all cards were exact duplicates." else "Imported ${freshCards.size} new cards${if (exactImportDuplicates > 0) " and skipped $exactImportDuplicates duplicates" else ""}."
+            }
+        )
+    }
+    importError?.let { FlashcardJsonErrorDialog(it) { importError = null } }
+    exportMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { exportMessage = null },
+            title = { Text("Flashcards") },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = { exportMessage = null }) { Text("OK") } }
         )
     }
 }
 
 @Composable
-private fun FlashcardListRow(card: Flashcard, isDue: Boolean, onEdit: () -> Unit, onDelete: () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
-        Column(Modifier.padding(15.dp)) {
+private fun StudyModeButton(label: String, count: Int, enabled: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    FilledTonalButton(onClick = onClick, enabled = enabled, modifier = modifier.heightIn(min = 48.dp)) {
+        Text("$label $count", maxLines = 1)
+    }
+}
+
+@Composable
+private fun FlashcardListItem(card: Flashcard, onToggleStar: () -> Unit, onEdit: () -> Unit, onDelete: () -> Unit) {
+    Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+        Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f)) {
-                    Text(card.front, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.height(5.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (card.cardType == FlashcardTypes.CLOZE) {
+                            Tag("Cloze", MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer)
+                            Spacer(Modifier.size(6.dp))
+                        }
+                        if (card.reverseEnabled) Tag("Reverse", MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.onSecondaryContainer)
+                    }
+                    if (card.cardType == FlashcardTypes.CLOZE || card.reverseEnabled) Spacer(Modifier.height(7.dp))
+                    Text(card.front, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                    Spacer(Modifier.height(6.dp))
                     Text(card.back, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                }
+                IconButton(onClick = onToggleStar) {
+                    Icon(if (card.starred) Icons.Default.Star else Icons.Default.StarBorder, contentDescription = if (card.starred) "Unstar card" else "Star card", tint = if (card.starred) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, contentDescription = "Edit card") }
                 IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, contentDescription = "Delete card") }
             }
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = if (isDue) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceVariant
-                ) {
-                    Text(
-                        if (isDue) "Due" else "Scheduled",
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                }
-                Text("Mastery ${card.mastery}/5", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (card.reviewCount > 0) {
-                    Text("${card.reviewCount} reviews", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+            if (card.tags.isNotBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Text(card.tagList().joinToString(" · ") { "#$it" }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
             }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                when {
+                    card.isNew() -> "New"
+                    card.isWeak() -> "Weak · ${card.reviewCount} reviews"
+                    else -> "Mastery ${card.mastery}/5 · ${card.reviewCount} reviews"
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -628,17 +630,15 @@ private fun StudyDeckView(
     onRate: (Flashcard, FlashcardRating) -> Unit,
     onExit: () -> Unit
 ) {
-    val queue = remember(deck.id, startingCards.map { it.id }) { mutableStateListOf<Flashcard>().apply { addAll(startingCards) } }
+    val queue = remember(deck.id, startingCards.map { it.id }) { startingCards.shuffled() }
     var index by rememberSaveable(deck.id) { mutableIntStateOf(0) }
-    var revealed by rememberSaveable(deck.id, index) { mutableStateOf(false) }
-    var againCount by rememberSaveable(deck.id) { mutableIntStateOf(0) }
-    var hardCount by rememberSaveable(deck.id) { mutableIntStateOf(0) }
+    var revealed by rememberSaveable(deck.id) { mutableStateOf(false) }
     var goodCount by rememberSaveable(deck.id) { mutableIntStateOf(0) }
-    val horizontalPadding = punlaScreenHorizontalPadding(maxContentWidth = 680.dp)
-
-    BackHandler(onBack = onExit)
-
+    var hardCount by rememberSaveable(deck.id) { mutableIntStateOf(0) }
+    var againCount by rememberSaveable(deck.id) { mutableIntStateOf(0) }
+    val horizontalPadding = punlaScreenHorizontalPadding(680.dp)
     val finished = queue.isEmpty() || index >= queue.size
+
     Scaffold(containerColor = Color.Transparent) { padding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = horizontalPadding, vertical = 10.dp),
@@ -656,6 +656,18 @@ private fun StudyDeckView(
                 LinearProgressIndicator(progress = { (index + 1).toFloat() / queue.size.toFloat() }, modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(22.dp))
                 val card = queue[index]
+                val isCloze = card.cardType == FlashcardTypes.CLOZE && ClozeText.hasCloze(card.front)
+                val reversed = !isCloze && card.reverseEnabled && card.reviewCount % 2 == 1
+                val questionText = when {
+                    isCloze -> ClozeText.question(card.front)
+                    reversed -> card.back
+                    else -> card.front
+                }
+                val answerText = when {
+                    isCloze -> listOf(ClozeText.revealed(card.front), card.back).filter { it.isNotBlank() }.joinToString("\n\n")
+                    reversed -> card.front
+                    else -> card.back
+                }
                 Card(
                     modifier = Modifier.fillMaxWidth().heightIn(min = 310.dp).clickable { revealed = !revealed },
                     shape = RoundedCornerShape(26.dp),
@@ -664,22 +676,12 @@ private fun StudyDeckView(
                     Box(Modifier.fillMaxWidth().heightIn(min = 310.dp).padding(26.dp), contentAlignment = Alignment.Center) {
                         AnimatedContent(targetState = revealed, label = "flashcardReveal") { showBack ->
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(
-                                    if (showBack) "ANSWER" else "QUESTION",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
+                                Text(if (showBack) "ANSWER" else if (isCloze) "FILL THE BLANK" else if (reversed) "REVERSE" else "QUESTION", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                                 Spacer(Modifier.height(18.dp))
-                                Text(
-                                    if (showBack) card.back else card.front,
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                if (!showBack) {
-                                    card.hint?.takeIf { it.isNotBlank() }?.let {
-                                        Spacer(Modifier.height(18.dp))
-                                        Text("Hint: $it", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
+                                Text(if (showBack) answerText else questionText, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                                if (!showBack) card.hint?.takeIf { it.isNotBlank() }?.let {
+                                    Spacer(Modifier.height(18.dp))
+                                    Text("Hint: $it", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }
@@ -687,51 +689,30 @@ private fun StudyDeckView(
                 }
                 Spacer(Modifier.height(14.dp))
                 if (!revealed) {
-                    Button(onClick = { revealed = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
-                        Text("Reveal answer")
-                    }
+                    Button(onClick = { revealed = true }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Reveal answer") }
                     Spacer(Modifier.height(7.dp))
-                    Text("You can also tap the card", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Tap the card to flip it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     Text("How well did you know it?", style = MaterialTheme.typography.titleSmall)
                     Spacer(Modifier.height(10.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(
-                            onClick = {
-                                onRate(card, FlashcardRating.AGAIN)
-                                againCount++
-                                index++
-                                revealed = false
-                            },
+                            onClick = { onRate(card, FlashcardRating.AGAIN); againCount++; index++; revealed = false },
                             modifier = Modifier.weight(1f)
                         ) { Text("Again") }
                         FilledTonalButton(
-                            onClick = {
-                                onRate(card, FlashcardRating.HARD)
-                                hardCount++
-                                index++
-                                revealed = false
-                            },
+                            onClick = { onRate(card, FlashcardRating.HARD); hardCount++; index++; revealed = false },
                             modifier = Modifier.weight(1f)
                         ) { Text("Hard") }
                         Button(
-                            onClick = {
-                                onRate(card, FlashcardRating.GOOD)
-                                goodCount++
-                                index++
-                                revealed = false
-                            },
+                            onClick = { onRate(card, FlashcardRating.GOOD); goodCount++; index++; revealed = false },
                             modifier = Modifier.weight(1f)
                         ) { Text("Good") }
                     }
                 }
             } else {
                 Spacer(Modifier.height(38.dp))
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(24.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer
-                ) {
+                Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.primaryContainer) {
                     Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(42.dp))
                         Spacer(Modifier.height(12.dp))
@@ -753,7 +734,6 @@ private fun DeckEditorDialog(initial: FlashcardDeck?, onDismiss: () -> Unit, onS
     var course by rememberSaveable(initial?.id) { mutableStateOf(initial?.courseCode.orEmpty()) }
     var description by rememberSaveable(initial?.id) { mutableStateOf(initial?.description.orEmpty()) }
     val valid = name.trim().isNotEmpty()
-
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initial == null) "New flashcard deck" else "Edit deck") },
@@ -768,20 +748,8 @@ private fun DeckEditorDialog(initial: FlashcardDeck?, onDismiss: () -> Unit, onS
             TextButton(
                 onClick = {
                     val now = System.currentTimeMillis()
-                    onSave(
-                        initial?.copy(
-                            name = name.trim(),
-                            courseCode = course.trim().ifBlank { null },
-                            description = description.trim().ifBlank { null },
-                            updatedAt = now
-                        ) ?: FlashcardDeck(
-                            name = name.trim(),
-                            courseCode = course.trim().ifBlank { null },
-                            description = description.trim().ifBlank { null },
-                            createdAt = now,
-                            updatedAt = now
-                        )
-                    )
+                    onSave(initial?.copy(name = name.trim(), courseCode = course.trim().ifBlank { null }, description = description.trim().ifBlank { null }, updatedAt = now)
+                        ?: FlashcardDeck(name = name.trim(), courseCode = course.trim().ifBlank { null }, description = description.trim().ifBlank { null }, createdAt = now, updatedAt = now))
                 },
                 enabled = valid
             ) { Text("Save") }
@@ -795,30 +763,60 @@ private fun CardEditorDialog(deckId: String, initial: Flashcard?, onDismiss: () 
     var front by rememberSaveable(initial?.id) { mutableStateOf(initial?.front.orEmpty()) }
     var back by rememberSaveable(initial?.id) { mutableStateOf(initial?.back.orEmpty()) }
     var hint by rememberSaveable(initial?.id) { mutableStateOf(initial?.hint.orEmpty()) }
-    val valid = front.trim().isNotEmpty() && back.trim().isNotEmpty()
-
+    var tags by rememberSaveable(initial?.id) { mutableStateOf(initial?.tags.orEmpty()) }
+    var starred by rememberSaveable(initial?.id) { mutableStateOf(initial?.starred ?: false) }
+    var reverse by rememberSaveable(initial?.id) { mutableStateOf(initial?.reverseEnabled ?: false) }
+    var typeIndex by rememberSaveable(initial?.id) { mutableIntStateOf(if (initial?.cardType == FlashcardTypes.CLOZE) 1 else 0) }
+    val isCloze = typeIndex == 1
+    val valid = front.trim().isNotEmpty() && back.trim().isNotEmpty() && (!isCloze || ClozeText.hasCloze(front))
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initial == null) "Add flashcard" else "Edit flashcard") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(value = front, onValueChange = { front = it }, label = { Text("Front / question") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
-                OutlinedTextField(value = back, onValueChange = { back = it }, label = { Text("Back / answer") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
-                OutlinedTextField(value = hint, onValueChange = { hint = it }, label = { Text("Hint (optional)") }, modifier = Modifier.fillMaxWidth())
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                item { SegmentedControl(listOf("Basic", "Cloze"), typeIndex, { typeIndex = it }, Modifier.fillMaxWidth()) }
+                if (isCloze) {
+                    item {
+                        Text("Wrap the hidden answer in double braces, e.g. Photosynthesis occurs in the {{chloroplast}}.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                item { OutlinedTextField(value = front, onValueChange = { front = it }, label = { Text(if (isCloze) "Cloze sentence" else "Front / question") }, modifier = Modifier.fillMaxWidth(), minLines = 2, isError = isCloze && front.isNotBlank() && !ClozeText.hasCloze(front)) }
+                item { OutlinedTextField(value = back, onValueChange = { back = it }, label = { Text(if (isCloze) "Explanation / back" else "Back / answer") }, modifier = Modifier.fillMaxWidth(), minLines = 2) }
+                item { OutlinedTextField(value = hint, onValueChange = { hint = it }, label = { Text("Hint (optional)") }, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(value = tags, onValueChange = { tags = it }, label = { Text("Tags (comma separated)") }, placeholder = { Text("Lecture 3, Midterm, Plant anatomy") }, modifier = Modifier.fillMaxWidth()) }
+                item {
+                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Starred")
+                            Text("Include in quick starred review", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(checked = starred, onCheckedChange = { starred = it })
+                    }
+                }
+                item {
+                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Study both directions")
+                            Text(if (isCloze) "Reverse mode is disabled for cloze cards" else "Alternates front→back and back→front between reviews", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(checked = reverse && !isCloze, onCheckedChange = { reverse = it }, enabled = !isCloze)
+                    }
+                }
             }
         },
         confirmButton = {
             TextButton(
                 onClick = {
                     val now = System.currentTimeMillis()
-                    onSave(
-                        initial?.copy(
-                            front = front.trim(), back = back.trim(), hint = hint.trim().ifBlank { null }, updatedAt = now
-                        ) ?: Flashcard(
-                            deckId = deckId,
-                            front = front.trim(), back = back.trim(), hint = hint.trim().ifBlank { null }, createdAt = now, updatedAt = now
-                        )
-                    )
+                    val normalizedTags = tags.split(',').map { it.trim() }.filter { it.isNotEmpty() }.distinctBy { it.lowercase() }.joinToString(", ")
+                    onSave(initial?.copy(
+                        front = front.trim(), back = back.trim(), hint = hint.trim().ifBlank { null }, tags = normalizedTags,
+                        starred = starred, reverseEnabled = reverse && !isCloze, cardType = if (isCloze) FlashcardTypes.CLOZE else FlashcardTypes.BASIC, updatedAt = now
+                    ) ?: Flashcard(
+                        deckId = deckId, front = front.trim(), back = back.trim(), hint = hint.trim().ifBlank { null }, tags = normalizedTags,
+                        starred = starred, reverseEnabled = reverse && !isCloze, cardType = if (isCloze) FlashcardTypes.CLOZE else FlashcardTypes.BASIC,
+                        createdAt = now, updatedAt = now
+                    ))
                 },
                 enabled = valid
             ) { Text("Save") }
@@ -827,17 +825,12 @@ private fun CardEditorDialog(deckId: String, initial: Flashcard?, onDismiss: () 
     )
 }
 
-private val FLASHCARD_JSON_MIME_TYPES = arrayOf(
-    "application/json",
-    "text/json",
-    "text/plain",
-    "application/octet-stream"
-)
-
 @Composable
 private fun FlashcardJsonImportPreviewDialog(
     imported: FlashcardJsonDeck,
     destinationDeckName: String?,
+    alreadyImported: Boolean,
+    exactDuplicateCards: Int,
     onDismiss: () -> Unit,
     onImport: () -> Unit
 ) {
@@ -845,49 +838,45 @@ private fun FlashcardJsonImportPreviewDialog(
         onDismissRequest = onDismiss,
         title = { Text("Import ${imported.cards.size} flashcards?") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (destinationDeckName == null) {
-                    Text(imported.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    imported.courseCode?.let {
-                        Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                    }
-                    imported.description?.let {
-                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                    }
-                } else {
-                    Text("Cards will be added to $destinationDeckName.", style = MaterialTheme.typography.bodyMedium)
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                item {
+                    if (destinationDeckName == null) {
+                        Text(imported.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        imported.courseCode?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary) }
+                        imported.description?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis) }
+                    } else Text("Cards will be added to $destinationDeckName.", style = MaterialTheme.typography.bodyMedium)
                 }
-                HorizontalDivider()
-                imported.cards.take(3).forEach { card ->
+                item {
+                    Text("Punla file ID: ${FlashcardJsonImport.FILE_ID}\nContent ID: ${imported.contentId}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (alreadyImported) {
+                    item { WarningSurface("This exact content ID was imported before. Import again only if you intentionally want another copy.") }
+                }
+                if (exactDuplicateCards > 0) {
+                    item { WarningSurface("$exactDuplicateCards exact front/back duplicate${if (exactDuplicateCards == 1) "" else "s"} already exist in this deck. Punla will skip them.") }
+                }
+                item { HorizontalDivider() }
+                items(imported.cards.take(3)) { card ->
                     Column {
                         Text(card.front, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         Text(card.back, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                 }
-                if (imported.cards.size > 3) {
-                    Text("+${imported.cards.size - 3} more cards", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                if (imported.warnings.isNotEmpty()) {
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.tertiaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer
-                    ) {
-                        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            imported.warnings.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
-                        }
-                    }
-                }
-                Text(
-                    "Imported cards start as new reviews. Existing mastery or review-history fields in JSON are ignored.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                if (imported.cards.size > 3) item { Text("+${imported.cards.size - 3} more cards", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                if (imported.warnings.isNotEmpty()) item { WarningSurface(imported.warnings.joinToString("\n")) }
+                item { Text("Review history, mastery, due dates, and IDs from outside files are never imported.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
         },
-        confirmButton = { TextButton(onClick = onImport) { Text("Import") } },
+        confirmButton = { TextButton(onClick = onImport) { Text(if (alreadyImported) "Import again" else "Import") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
+}
+
+@Composable
+private fun WarningSurface(message: String) {
+    Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.tertiaryContainer, contentColor = MaterialTheme.colorScheme.onTertiaryContainer) {
+        Text(message, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(10.dp))
+    }
 }
 
 @Composable
@@ -904,17 +893,12 @@ private fun FlashcardJsonErrorDialog(message: String, onDismiss: () -> Unit) {
 private fun BulkAddDialog(deckId: String, onDismiss: () -> Unit, onSave: (List<Flashcard>) -> Unit) {
     var text by rememberSaveable { mutableStateOf("") }
     val parsed = remember(text, deckId) { parseBulkCards(deckId, text) }
-
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Bulk add cards") },
         text = {
             Column {
-                Text(
-                    "Paste one card per line. Separate front and back with a tab or ::",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Text("Paste one card per line. Separate front and back with a tab or ::", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
                     value = text,
@@ -947,3 +931,23 @@ private fun parseBulkCards(deckId: String, raw: String): List<Flashcard> {
         else Flashcard(id = UUID.randomUUID().toString(), deckId = deckId, front = front, back = back, createdAt = now, updatedAt = now)
     }.toList()
 }
+
+private fun com.uplb.punla.data.FlashcardJsonCard.toEntity(deckId: String, timestamp: Long): Flashcard = Flashcard(
+    deckId = deckId,
+    front = front,
+    back = back,
+    hint = hint,
+    tags = tags,
+    starred = starred,
+    reverseEnabled = reverseEnabled,
+    cardType = cardType,
+    createdAt = timestamp,
+    updatedAt = timestamp
+)
+
+private fun safeJsonFileName(name: String, suffix: String): String {
+    val base = name.trim().lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-').ifBlank { "punla" }.take(50)
+    return "$base-$suffix.json"
+}
+
+private val JSON_MIME_TYPES = arrayOf("application/json", "text/json", "text/plain", "application/octet-stream")

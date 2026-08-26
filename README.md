@@ -9,6 +9,16 @@ recreating the core of the original Punla web app, with **three real home-screen
 widgets**: Next Class, Budget Remaining, and Next Deadline. It also includes a
 local-first personal intelligence layer and an optional private assistant.
 
+### Flashcards 2.0 and Quiz Maker
+
+Punla now includes a complete offline study loop:
+
+- Flashcard decks with spaced repetition, Cloze `{{answer}}` cards, reverse study, tags, stars, smart Due/Weak/New/Starred sessions, bulk add, search, and JSON import/export.
+- A Quiz Maker with multiple-choice, true/false, and identification questions, score/history tracking, retry mistakes, flashcard-to-quiz generation, and mistake-to-flashcard conversion.
+- Type-safe Punla JSON envelopes keep flashcard, quiz, and backup files separated: `punla.flashcards.deck`, `punla.quiz`, and `punla.backup`. UUID `contentId` values also let Punla warn when the same generated content is imported twice.
+
+See `FLASHCARD_JSON_IMPORT.md`, `QUIZ_JSON_IMPORT.md`, and `STUDY_SYSTEM_2_0.md`.
+
 ## Opening the project
 
 1. Open Android Studio (Hedgehog/2023.1+ recommended, matching AGP 8.5 / Kotlin 1.9.24).

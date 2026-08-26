@@ -13,6 +13,8 @@ import com.uplb.punla.data.dao.DeadlineDao
 import com.uplb.punla.data.dao.ExpenseDao
 import com.uplb.punla.data.dao.GradesDao
 import com.uplb.punla.data.dao.FlashcardDao
+import com.uplb.punla.data.dao.QuizDao
+import com.uplb.punla.data.dao.JsonImportDao
 import com.uplb.punla.data.dao.StudySessionDao
 import com.uplb.punla.data.dao.IntelligenceDao
 import com.uplb.punla.data.entity.Archive
@@ -26,6 +28,10 @@ import com.uplb.punla.data.entity.ExpenseRule
 import com.uplb.punla.data.entity.GradeCourse
 import com.uplb.punla.data.entity.Flashcard
 import com.uplb.punla.data.entity.FlashcardDeck
+import com.uplb.punla.data.entity.Quiz
+import com.uplb.punla.data.entity.QuizQuestion
+import com.uplb.punla.data.entity.QuizAttempt
+import com.uplb.punla.data.entity.JsonImportRecord
 import com.uplb.punla.data.entity.Semester
 import com.uplb.punla.data.entity.StudySession
 import com.uplb.punla.data.entity.StudySuggestionEvent
@@ -47,11 +53,15 @@ import com.uplb.punla.data.entity.NotificationEvent
         NotificationEvent::class,
         AttendanceRecord::class,
         FlashcardDeck::class,
-        Flashcard::class
+        Flashcard::class,
+        Quiz::class,
+        QuizQuestion::class,
+        QuizAttempt::class,
+        JsonImportRecord::class
     ],
     // v7 -> v8: per-occurrence attendance history used by the ongoing
     // class notification and the schedule/dashboard attendance controls.
-    version = 9,
+    version = 10,
     exportSchema = false
 )
 abstract class PunlaDatabase : RoomDatabase() {
@@ -64,6 +74,8 @@ abstract class PunlaDatabase : RoomDatabase() {
     abstract fun studySessionDao(): StudySessionDao
     abstract fun intelligenceDao(): IntelligenceDao
     abstract fun flashcardDao(): FlashcardDao
+    abstract fun quizDao(): QuizDao
+    abstract fun jsonImportDao(): JsonImportDao
 
     companion object {
         @Volatile private var INSTANCE: PunlaDatabase? = null
@@ -169,6 +181,73 @@ abstract class PunlaDatabase : RoomDatabase() {
             }
         }
 
+
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `flashcards` ADD COLUMN `tags` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE `flashcards` ADD COLUMN `starred` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `flashcards` ADD COLUMN `reverseEnabled` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `flashcards` ADD COLUMN `cardType` TEXT NOT NULL DEFAULT 'BASIC'")
+
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS `quizzes` (
+                        `id` TEXT NOT NULL,
+                        `title` TEXT NOT NULL,
+                        `courseCode` TEXT,
+                        `description` TEXT,
+                        `passingScore` INTEGER NOT NULL,
+                        `shuffleQuestions` INTEGER NOT NULL,
+                        `shuffleChoices` INTEGER NOT NULL,
+                        `createdAt` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )""".trimIndent()
+                )
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS `quiz_questions` (
+                        `id` TEXT NOT NULL,
+                        `quizId` TEXT NOT NULL,
+                        `type` TEXT NOT NULL,
+                        `prompt` TEXT NOT NULL,
+                        `optionsJson` TEXT NOT NULL,
+                        `correctAnswer` TEXT NOT NULL,
+                        `explanation` TEXT,
+                        `tags` TEXT NOT NULL,
+                        `createdAt` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`),
+                        FOREIGN KEY(`quizId`) REFERENCES `quizzes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )""".trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_quiz_questions_quizId` ON `quiz_questions` (`quizId`)")
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS `quiz_attempts` (
+                        `id` TEXT NOT NULL,
+                        `quizId` TEXT NOT NULL,
+                        `startedAt` INTEGER NOT NULL,
+                        `completedAt` INTEGER NOT NULL,
+                        `score` INTEGER NOT NULL,
+                        `total` INTEGER NOT NULL,
+                        `durationMs` INTEGER NOT NULL,
+                        `incorrectQuestionIdsJson` TEXT NOT NULL,
+                        PRIMARY KEY(`id`),
+                        FOREIGN KEY(`quizId`) REFERENCES `quizzes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )""".trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_quiz_attempts_quizId` ON `quiz_attempts` (`quizId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_quiz_attempts_completedAt` ON `quiz_attempts` (`completedAt`)")
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS `json_import_records` (
+                        `fileType` TEXT NOT NULL,
+                        `contentId` TEXT NOT NULL,
+                        `importedAt` INTEGER NOT NULL,
+                        `destinationId` TEXT,
+                        PRIMARY KEY(`fileType`, `contentId`)
+                    )""".trimIndent()
+                )
+            }
+        }
+
         fun get(context: Context): PunlaDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -176,7 +255,7 @@ abstract class PunlaDatabase : RoomDatabase() {
                     PunlaDatabase::class.java,
                     "punla.db"
                 )
-                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                     // Very old development installs never had migration specs.
                     // Preserve current v6+ personal data; only pre-v6 schemas
                     // may still be recreated rather than crashing at launch.

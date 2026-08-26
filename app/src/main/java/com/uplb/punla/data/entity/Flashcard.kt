@@ -16,6 +16,11 @@ data class FlashcardDeck(
     val updatedAt: Long = System.currentTimeMillis()
 )
 
+object FlashcardTypes {
+    const val BASIC = "BASIC"
+    const val CLOZE = "CLOZE"
+}
+
 @Entity(
     tableName = "flashcards",
     foreignKeys = [
@@ -40,8 +45,20 @@ data class Flashcard(
     val lastReviewedAt: Long? = null,
     val reviewCount: Int = 0,
     val correctCount: Int = 0,
-    val mastery: Int = 0
-)
+    val mastery: Int = 0,
+    /** Comma-separated normalized tags. Kept as text so Room stays converter-free. */
+    val tags: String = "",
+    val starred: Boolean = false,
+    /** Alternates front/back direction between reviews when enabled. */
+    val reverseEnabled: Boolean = false,
+    /** BASIC or CLOZE. Cloze markup uses {{answer}} in [front]. */
+    val cardType: String = FlashcardTypes.BASIC
+) {
+    fun tagList(): List<String> = tags.split(',').map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+    fun isNew(): Boolean = reviewCount == 0
+    fun isWeak(): Boolean = reviewCount > 0 && mastery <= 1
+    fun isDue(now: Long = System.currentTimeMillis()): Boolean = dueAt == 0L || dueAt <= now
+}
 
 enum class FlashcardRating { AGAIN, HARD, GOOD }
 
@@ -49,11 +66,6 @@ object FlashcardReviewScheduler {
     private const val MINUTE = 60_000L
     private const val DAY = 24L * 60L * MINUTE
 
-    /**
-     * Lightweight offline spaced repetition. It deliberately stays simple and
-     * predictable: "Again" returns the card quickly, "Hard" tomorrow, and
-     * "Good" grows the interval as the card becomes familiar.
-     */
     fun reviewed(card: Flashcard, rating: FlashcardRating, now: Long = System.currentTimeMillis()): Flashcard {
         val nextMastery = when (rating) {
             FlashcardRating.AGAIN -> 0
@@ -80,4 +92,22 @@ object FlashcardReviewScheduler {
             mastery = nextMastery
         )
     }
+}
+
+object ClozeText {
+    private val pattern = Regex("\\{\\{([^{}]+)}}")
+
+    fun hasCloze(text: String): Boolean = pattern.containsMatchIn(text)
+
+    fun question(text: String): String = pattern.replace(text) { match ->
+        val answer = match.groupValues[1].trim()
+        if (answer.isEmpty()) "[…]" else "[${"•".repeat(answer.length.coerceIn(3, 12))}]"
+    }
+
+    fun revealed(text: String): String = pattern.replace(text) { it.groupValues[1].trim() }
+
+    fun answers(text: String): List<String> = pattern.findAll(text)
+        .map { it.groupValues[1].trim() }
+        .filter { it.isNotEmpty() }
+        .toList()
 }

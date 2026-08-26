@@ -63,3 +63,8 @@ This package also includes the two fixes discovered by the real GitHub Actions b
 ## JSON import
 
 See `FLASHCARD_JSON_IMPORT.md` and `PUNLA_FLASHCARD_JSON_EXAMPLE.json`. The library-level importer creates a new deck; the deck-level importer adds cards to the currently open deck. New-deck imports use a Room transaction.
+
+
+## Session 30 — Flashcards 2.0
+
+The data model now adds `tags`, `starred`, `reverseEnabled`, and `cardType` to each card through Room migration 9→10. `CLOZE` cards use `{{answer}}` markup; basic cards can alternate reverse direction based on review count. Smart Study filters are derived locally from existing mastery/due/review fields. Flashcard JSON moved to strict envelope v2 with type and UUID identity, and deck export uses the deck UUID as a stable content ID.

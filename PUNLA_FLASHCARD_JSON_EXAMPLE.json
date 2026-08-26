@@ -1,20 +1,38 @@
 {
-  "format": "punla-flashcards",
-  "version": 1,
+  "punlaFileId": "punla.flashcards.deck",
+  "schemaVersion": 2,
+  "contentId": "a928d7c1-cc95-4daa-aaf3-178e6c4b1237",
   "deck": {
-    "name": "Example Punla Deck",
-    "courseCode": "SAMPLE 1",
-    "description": "Example file for Punla's JSON flashcard importer"
+    "name": "AGRI 31 — Photosynthesis",
+    "courseCode": "AGRI 31",
+    "description": "Example deck using Punla Flashcards 2.0"
   },
   "cards": [
     {
-      "front": "What does Punla import from this file?",
-      "back": "A flashcard deck and its cards.",
-      "hint": "JSON"
+      "front": "Where do the light-dependent reactions occur?",
+      "back": "In the thylakoid membranes.",
+      "hint": "Inside the chloroplast",
+      "tags": [
+        "Photosynthesis",
+        "Lecture 3"
+      ],
+      "starred": true
     },
     {
-      "front": "Can a JSON file be imported into an existing deck?",
-      "back": "Yes. Use Import JSON while that deck is open."
+      "front": "Photosynthesis occurs in the {{chloroplast}}.",
+      "back": "Chloroplasts contain the thylakoids and stroma used by photosynthetic reactions.",
+      "cardType": "CLOZE",
+      "tags": [
+        "Photosynthesis"
+      ]
+    },
+    {
+      "front": "Stomata",
+      "back": "Pores that regulate gas exchange and water loss in leaves.",
+      "reverseEnabled": true,
+      "tags": [
+        "Plant anatomy"
+      ]
     }
   ]
 }

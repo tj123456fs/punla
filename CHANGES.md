@@ -1,3 +1,17 @@
+# Punla changes
+
+## v2.4 — Flashcards 2.0 + Quiz Maker
+
+- Upgraded Flashcards with cloze cards, reverse-direction study, tags, starred cards, and Smart Study filters for Due / Weak / New / Starred / All.
+- Added strict flashcard JSON v2 export/import with `punla.flashcards.deck`, schema versioning, UUID content IDs, re-import warnings, and exact-card duplicate skipping.
+- Added **Quizzes** as a drawer destination with manual quiz/question editing, multiple choice, true/false, identification, passing score, shuffling, explanations, scoring, attempt history, and retry-mistakes flow.
+- Added **Create quiz from flashcards** and **Make flashcards from quiz mistakes**.
+- Added strict quiz JSON v1 import/export with `punla.quiz` and UUID content IDs.
+- Added `punla.backup` to newly exported full backups so the three JSON import surfaces can reject files intended for another Punla feature. Older backups remain readable.
+- Added Room migration 9→10 for flashcard metadata, quizzes, attempts, and JSON import records.
+- Backup format v6 now preserves upgraded flashcards, quizzes, quiz questions, attempts, and imported-content IDs.
+- App version: `2.4` (`versionCode 15`).
+
 # Punla 2.3 — Flashcard JSON Import
 
 - Added JSON flashcard-deck import through Android's document picker.

@@ -13,6 +13,10 @@ import com.uplb.punla.data.entity.ExpenseRule
 import com.uplb.punla.data.entity.GradeCourse
 import com.uplb.punla.data.entity.Flashcard
 import com.uplb.punla.data.entity.FlashcardDeck
+import com.uplb.punla.data.entity.Quiz
+import com.uplb.punla.data.entity.QuizQuestion
+import com.uplb.punla.data.entity.QuizAttempt
+import com.uplb.punla.data.entity.JsonImportRecord
 import com.uplb.punla.data.entity.Semester
 import com.uplb.punla.data.entity.StudySession
 import com.uplb.punla.data.entity.StudySuggestionEvent
@@ -23,6 +27,7 @@ import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 
 /**
  * Mirrors the web app's exportData()/importData() (index.html ~line 2075):
@@ -34,7 +39,7 @@ import java.util.Locale
  */
 object BackupManager {
 
-    const val CURRENT_VERSION = 5
+    const val CURRENT_VERSION = 6
 
     /** Suggested filename, mirrors the web app's punla-backup-YYYY-MM-DD.json. */
     fun suggestedFileName(): String {
@@ -64,8 +69,15 @@ object BackupManager {
         val attendanceRecords = db.attendanceDao().getAll()
         val flashcardDecks = db.flashcardDao().getDecks()
         val flashcards = db.flashcardDao().getAllCards()
+        val quizzes = db.quizDao().getQuizzes()
+        val quizQuestions = db.quizDao().getAllQuestions()
+        val quizAttempts = db.quizDao().getAllAttempts()
+        val jsonImportRecords = db.jsonImportDao().getAll()
 
         val root = JSONObject().apply {
+            put("punlaFileId", PunlaJsonFileIds.BACKUP)
+            put("schemaVersion", 1)
+            put("contentId", UUID.randomUUID().toString())
             put("version", CURRENT_VERSION)
             put("exportedAt", java.time.Instant.now().toString())
             put("schedule", JSONArray(schedule.map(::classSessionToJson)))
@@ -87,6 +99,10 @@ object BackupManager {
             put("attendanceRecords", JSONArray(attendanceRecords.map(::attendanceRecordToJson)))
             put("flashcardDecks", JSONArray(flashcardDecks.map(::flashcardDeckToJson)))
             put("flashcards", JSONArray(flashcards.map(::flashcardToJson)))
+            put("quizzes", JSONArray(quizzes.map(::quizToJson)))
+            put("quizQuestions", JSONArray(quizQuestions.map(::quizQuestionToJson)))
+            put("quizAttempts", JSONArray(quizAttempts.map(::quizAttemptToJson)))
+            put("jsonImportRecords", JSONArray(jsonImportRecords.map(::jsonImportRecordToJson)))
             put("budget", repo.monthlyBudget)
             put("userName", repo.userName)
             put("chedTarget", repo.chedTarget)
@@ -127,6 +143,8 @@ object BackupManager {
     /** Port of the web app's isValidBackupShape(): checks the top-level
      * shape is sane before anything touches the database. */
     private fun isValidBackupShape(root: JSONObject): Boolean {
+        val declaredFileId = root.optString("punlaFileId").trim()
+        if (declaredFileId.isNotEmpty() && declaredFileId != PunlaJsonFileIds.BACKUP) return false
         if (!root.has("version") || root.optInt("version", -1) < 1) return false
         val requiredArrays = listOf("schedule", "expenses", "deadlines", "gradesSemesters")
         for (key in requiredArrays) {
@@ -146,6 +164,12 @@ object BackupManager {
             throw InvalidBackupException("That file isn't valid JSON.")
         }
 
+        val declaredFileId = root.optString("punlaFileId").trim()
+        if (declaredFileId.isNotEmpty() && declaredFileId != PunlaJsonFileIds.BACKUP) {
+            throw InvalidBackupException(
+                "That is a Punla ${PunlaJsonFileIds.label(declaredFileId)} JSON, not a backup. Open it from the matching Punla screen instead."
+            )
+        }
         if (!isValidBackupShape(root)) {
             throw InvalidBackupException("That file doesn't look like a Punla backup.")
         }
@@ -178,6 +202,10 @@ object BackupManager {
         val attendanceRecords = root.optJSONArray("attendanceRecords")?.mapObjects(::attendanceRecordFromJson) ?: emptyList()
         val flashcardDecks = root.optJSONArray("flashcardDecks")?.mapObjects(::flashcardDeckFromJson) ?: emptyList()
         val flashcards = root.optJSONArray("flashcards")?.mapObjects(::flashcardFromJson) ?: emptyList()
+        val quizzes = root.optJSONArray("quizzes")?.mapObjects(::quizFromJson) ?: emptyList()
+        val quizQuestions = root.optJSONArray("quizQuestions")?.mapObjects(::quizQuestionFromJson) ?: emptyList()
+        val quizAttempts = root.optJSONArray("quizAttempts")?.mapObjects(::quizAttemptFromJson) ?: emptyList()
+        val jsonImportRecords = root.optJSONArray("jsonImportRecords")?.mapObjects(::jsonImportRecordFromJson) ?: emptyList()
 
         db.withTransaction {
             db.classSessionDao().clearAll()
@@ -215,6 +243,14 @@ object BackupManager {
             db.flashcardDao().clearAll()
             db.flashcardDao().upsertDecks(flashcardDecks)
             db.flashcardDao().upsertCards(flashcards.filter { card -> flashcardDecks.any { it.id == card.deckId } })
+
+            db.quizDao().clearAll()
+            db.quizDao().upsertQuizzes(quizzes)
+            db.quizDao().upsertQuestions(quizQuestions.filter { q -> quizzes.any { it.id == q.quizId } })
+            db.quizDao().insertAttempts(quizAttempts.filter { a -> quizzes.any { it.id == a.quizId } })
+
+            db.jsonImportDao().clearAll()
+            db.jsonImportDao().upsertAll(jsonImportRecords)
         }
 
         // Prefs live outside Room, so they're written after the DB transaction commits.
@@ -338,6 +374,7 @@ private fun flashcardToJson(c: Flashcard) = JSONObject().apply {
     put("id", c.id); put("deckId", c.deckId); put("front", c.front); put("back", c.back); put("hint", c.hint)
     put("createdAt", c.createdAt); put("updatedAt", c.updatedAt); put("dueAt", c.dueAt); put("lastReviewedAt", c.lastReviewedAt)
     put("reviewCount", c.reviewCount); put("correctCount", c.correctCount); put("mastery", c.mastery)
+    put("tags", c.tags); put("starred", c.starred); put("reverseEnabled", c.reverseEnabled); put("cardType", c.cardType)
 }
 
 private fun flashcardFromJson(o: JSONObject) = Flashcard(
@@ -345,7 +382,55 @@ private fun flashcardFromJson(o: JSONObject) = Flashcard(
     hint = o.optStringOrNull("hint"), createdAt = o.optLong("createdAt", System.currentTimeMillis()),
     updatedAt = o.optLong("updatedAt", System.currentTimeMillis()), dueAt = o.optLong("dueAt", 0L),
     lastReviewedAt = if (!o.has("lastReviewedAt") || o.isNull("lastReviewedAt")) null else o.optLong("lastReviewedAt"),
-    reviewCount = o.optInt("reviewCount", 0), correctCount = o.optInt("correctCount", 0), mastery = o.optInt("mastery", 0)
+    reviewCount = o.optInt("reviewCount", 0), correctCount = o.optInt("correctCount", 0), mastery = o.optInt("mastery", 0),
+    tags = o.optString("tags", ""), starred = o.optBoolean("starred", false),
+    reverseEnabled = o.optBoolean("reverseEnabled", false), cardType = o.optString("cardType", "BASIC")
+)
+
+private fun quizToJson(q: Quiz) = JSONObject().apply {
+    put("id", q.id); put("title", q.title); put("courseCode", q.courseCode); put("description", q.description)
+    put("passingScore", q.passingScore); put("shuffleQuestions", q.shuffleQuestions); put("shuffleChoices", q.shuffleChoices)
+    put("createdAt", q.createdAt); put("updatedAt", q.updatedAt)
+}
+
+private fun quizFromJson(o: JSONObject) = Quiz(
+    id = o.getString("id"), title = o.getString("title"), courseCode = o.optStringOrNull("courseCode"),
+    description = o.optStringOrNull("description"), passingScore = o.optInt("passingScore", 70).coerceIn(1, 100),
+    shuffleQuestions = o.optBoolean("shuffleQuestions", true), shuffleChoices = o.optBoolean("shuffleChoices", true),
+    createdAt = o.optLong("createdAt", System.currentTimeMillis()), updatedAt = o.optLong("updatedAt", System.currentTimeMillis())
+)
+
+private fun quizQuestionToJson(q: QuizQuestion) = JSONObject().apply {
+    put("id", q.id); put("quizId", q.quizId); put("type", q.type); put("prompt", q.prompt)
+    put("optionsJson", q.optionsJson); put("correctAnswer", q.correctAnswer); put("explanation", q.explanation); put("tags", q.tags)
+    put("createdAt", q.createdAt); put("updatedAt", q.updatedAt)
+}
+
+private fun quizQuestionFromJson(o: JSONObject) = QuizQuestion(
+    id = o.getString("id"), quizId = o.getString("quizId"), type = o.optString("type", "MULTIPLE_CHOICE"),
+    prompt = o.getString("prompt"), optionsJson = o.optString("optionsJson", "[]"), correctAnswer = o.getString("correctAnswer"),
+    explanation = o.optStringOrNull("explanation"), tags = o.optString("tags", ""),
+    createdAt = o.optLong("createdAt", System.currentTimeMillis()), updatedAt = o.optLong("updatedAt", System.currentTimeMillis())
+)
+
+private fun quizAttemptToJson(a: QuizAttempt) = JSONObject().apply {
+    put("id", a.id); put("quizId", a.quizId); put("startedAt", a.startedAt); put("completedAt", a.completedAt)
+    put("score", a.score); put("total", a.total); put("durationMs", a.durationMs); put("incorrectQuestionIdsJson", a.incorrectQuestionIdsJson)
+}
+
+private fun quizAttemptFromJson(o: JSONObject) = QuizAttempt(
+    id = o.getString("id"), quizId = o.getString("quizId"), startedAt = o.getLong("startedAt"),
+    completedAt = o.getLong("completedAt"), score = o.optInt("score", 0), total = o.optInt("total", 0),
+    durationMs = o.optLong("durationMs", 0L), incorrectQuestionIdsJson = o.optString("incorrectQuestionIdsJson", "[]")
+)
+
+private fun jsonImportRecordToJson(r: JsonImportRecord) = JSONObject().apply {
+    put("fileType", r.fileType); put("contentId", r.contentId); put("importedAt", r.importedAt); put("destinationId", r.destinationId)
+}
+
+private fun jsonImportRecordFromJson(o: JSONObject) = JsonImportRecord(
+    fileType = o.getString("fileType"), contentId = o.getString("contentId"),
+    importedAt = o.optLong("importedAt", System.currentTimeMillis()), destinationId = o.optStringOrNull("destinationId")
 )
 
 private fun expenseToJson(e: Expense) = JSONObject().apply {

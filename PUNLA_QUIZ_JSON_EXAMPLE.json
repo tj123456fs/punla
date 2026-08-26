@@ -1,0 +1,42 @@
+{
+  "punlaFileId": "punla.quiz",
+  "schemaVersion": 1,
+  "contentId": "5a4b5af4-54cd-475e-b558-51fb8cfee217",
+  "quiz": {
+    "title": "AGRI 31 — Photosynthesis Quiz",
+    "courseCode": "AGRI 31",
+    "description": "Example Punla quiz JSON",
+    "passingScore": 70,
+    "shuffleQuestions": true,
+    "shuffleChoices": true
+  },
+  "questions": [
+    {
+      "type": "multiple_choice",
+      "question": "Where do the light-dependent reactions occur?",
+      "choices": [
+        "Stroma",
+        "Thylakoid membrane",
+        "Cytoplasm",
+        "Nucleus"
+      ],
+      "correctAnswer": "Thylakoid membrane",
+      "explanation": "The photosystems and electron transport chain are embedded in the thylakoid membrane.",
+      "tags": [
+        "Photosynthesis"
+      ]
+    },
+    {
+      "type": "true_false",
+      "question": "The Calvin cycle directly requires light photons to proceed.",
+      "correctAnswer": false,
+      "explanation": "It uses ATP and NADPH produced by the light-dependent reactions rather than light directly."
+    },
+    {
+      "type": "identification",
+      "question": "What organelle is the primary site of photosynthesis in plant cells?",
+      "correctAnswer": "Chloroplast",
+      "explanation": "Photosynthesis takes place in chloroplasts."
+    }
+  ]
+}

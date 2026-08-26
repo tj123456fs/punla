@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
+import androidx.room.withTransaction
 import androidx.lifecycle.viewModelScope
 import com.uplb.punla.data.BackgroundStyle
 import com.uplb.punla.data.BudgetPeriod
@@ -30,6 +31,13 @@ import com.uplb.punla.data.entity.Flashcard
 import com.uplb.punla.data.entity.FlashcardDeck
 import com.uplb.punla.data.entity.FlashcardRating
 import com.uplb.punla.data.entity.FlashcardReviewScheduler
+import com.uplb.punla.data.entity.FlashcardTypes
+import com.uplb.punla.data.entity.ClozeText
+import com.uplb.punla.data.entity.Quiz
+import com.uplb.punla.data.entity.QuizQuestion
+import com.uplb.punla.data.entity.QuizQuestionTypes
+import com.uplb.punla.data.entity.QuizAttempt
+import com.uplb.punla.data.entity.JsonImportRecord
 import com.uplb.punla.data.entity.Semester
 import com.uplb.punla.data.entity.StudySession
 import com.uplb.punla.data.entity.StudySuggestionEvent
@@ -93,8 +101,18 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     val flashcards: StateFlow<List<Flashcard>> = db.flashcardDao().observeAllCards()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun flashcardsFlow(deckId: String): Flow<List<Flashcard>> =
-        db.flashcardDao().observeCards(deckId)
+    val quizzes: StateFlow<List<Quiz>> = db.quizDao().observeQuizzes()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val quizQuestions: StateFlow<List<QuizQuestion>> = db.quizDao().observeAllQuestions()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val quizAttempts: StateFlow<List<QuizAttempt>> = db.quizDao().observeAllAttempts()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun flashcardsFlow(deckId: String): Flow<List<Flashcard>> = db.flashcardDao().observeCards(deckId)
+    fun quizQuestionsFlow(quizId: String): Flow<List<QuizQuestion>> = db.quizDao().observeQuestions(quizId)
+    fun quizAttemptsFlow(quizId: String): Flow<List<QuizAttempt>> = db.quizDao().observeAttempts(quizId)
 
     /**
      * True once the first real Room emission has landed for classes,
@@ -575,17 +593,36 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         WidgetRefresher.refreshAll(getApplication())
     }
 
-    // ---- Flashcards ----
+    // ---- Flashcards + quiz study tools ----
     fun upsertFlashcardDeck(deck: FlashcardDeck) = viewModelScope.launch {
         db.flashcardDao().upsertDeck(deck.copy(updatedAt = System.currentTimeMillis()))
     }
 
-    fun deleteFlashcardDeck(deck: FlashcardDeck) = viewModelScope.launch {
-        db.flashcardDao().deleteDeck(deck)
+    fun deleteFlashcardDeck(deck: FlashcardDeck) = viewModelScope.launch { db.flashcardDao().deleteDeck(deck) }
+
+    fun importFlashcardDeck(deck: FlashcardDeck, cards: List<Flashcard>, contentId: String? = null) = viewModelScope.launch {
+        db.withTransaction {
+            db.flashcardDao().importDeck(deck, cards)
+            if (!contentId.isNullOrBlank()) db.jsonImportDao().upsert(
+                JsonImportRecord(com.uplb.punla.data.PunlaJsonFileIds.FLASHCARD_DECK, contentId, destinationId = deck.id)
+            )
+        }
     }
 
-    fun importFlashcardDeck(deck: FlashcardDeck, cards: List<Flashcard>) = viewModelScope.launch {
-        db.flashcardDao().importDeck(deck, cards)
+    fun importFlashcardsIntoDeck(deck: FlashcardDeck, cards: List<Flashcard>, contentId: String? = null) = viewModelScope.launch {
+        db.withTransaction {
+            if (cards.isNotEmpty()) {
+                db.flashcardDao().upsertCards(cards)
+                db.flashcardDao().upsertDeck(deck.copy(updatedAt = System.currentTimeMillis()))
+            }
+            if (!contentId.isNullOrBlank()) db.jsonImportDao().upsert(
+                JsonImportRecord(com.uplb.punla.data.PunlaJsonFileIds.FLASHCARD_DECK, contentId, destinationId = deck.id)
+            )
+        }
+    }
+
+    fun checkJsonImport(fileType: String, contentId: String, onResult: (Boolean) -> Unit) = viewModelScope.launch {
+        onResult(db.jsonImportDao().exists(fileType, contentId))
     }
 
     fun upsertFlashcard(card: Flashcard) = viewModelScope.launch {
@@ -603,12 +640,101 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun deleteFlashcard(card: Flashcard) = viewModelScope.launch {
-        db.flashcardDao().deleteCard(card)
-    }
+    fun deleteFlashcard(card: Flashcard) = viewModelScope.launch { db.flashcardDao().deleteCard(card) }
+
+    fun toggleFlashcardStar(card: Flashcard) = upsertFlashcard(card.copy(starred = !card.starred))
 
     fun rateFlashcard(card: Flashcard, rating: FlashcardRating) = viewModelScope.launch {
         db.flashcardDao().upsertCard(FlashcardReviewScheduler.reviewed(card, rating))
+    }
+
+    // ---- Quizzes ----
+    fun upsertQuiz(quiz: Quiz) = viewModelScope.launch {
+        db.quizDao().upsertQuiz(quiz.copy(updatedAt = System.currentTimeMillis()))
+    }
+
+    fun deleteQuiz(quiz: Quiz) = viewModelScope.launch { db.quizDao().deleteQuiz(quiz) }
+
+    fun upsertQuizQuestion(question: QuizQuestion) = viewModelScope.launch {
+        db.quizDao().upsertQuestion(question.copy(updatedAt = System.currentTimeMillis()))
+        quizzes.value.firstOrNull { it.id == question.quizId }?.let {
+            db.quizDao().upsertQuiz(it.copy(updatedAt = System.currentTimeMillis()))
+        }
+    }
+
+    fun deleteQuizQuestion(question: QuizQuestion) = viewModelScope.launch { db.quizDao().deleteQuestion(question) }
+
+    fun importQuiz(quiz: Quiz, questions: List<QuizQuestion>, contentId: String? = null) = viewModelScope.launch {
+        db.withTransaction {
+            db.quizDao().upsertQuiz(quiz)
+            db.quizDao().upsertQuestions(questions)
+            if (!contentId.isNullOrBlank()) db.jsonImportDao().upsert(
+                JsonImportRecord(com.uplb.punla.data.PunlaJsonFileIds.QUIZ, contentId, destinationId = quiz.id)
+            )
+        }
+    }
+
+    fun recordQuizAttempt(attempt: QuizAttempt) = viewModelScope.launch { db.quizDao().insertAttempt(attempt) }
+
+    /** Turns missed quiz questions into a fresh flashcard deck for spaced repetition. */
+    fun createFlashcardsFromQuizMistakes(quiz: Quiz, questions: List<QuizQuestion>, onCreated: (FlashcardDeck) -> Unit = {}) = viewModelScope.launch {
+        if (questions.isEmpty()) return@launch
+        val now = System.currentTimeMillis()
+        val deck = FlashcardDeck(
+            name = "${quiz.title} — Mistakes",
+            courseCode = quiz.courseCode,
+            description = "Created from ${questions.size} missed quiz question${if (questions.size == 1) "" else "s"}.",
+            createdAt = now,
+            updatedAt = now
+        )
+        val cards = questions.map { q ->
+            Flashcard(
+                deckId = deck.id,
+                front = q.prompt,
+                back = q.correctAnswer,
+                hint = q.explanation,
+                tags = q.tags,
+                starred = true,
+                createdAt = now,
+                updatedAt = now
+            )
+        }
+        db.flashcardDao().importDeck(deck, cards)
+        onCreated(deck)
+    }
+
+    /** Creates an identification quiz from the selected flashcard deck. */
+    fun createQuizFromFlashcards(deck: FlashcardDeck, cards: List<Flashcard>, onCreated: (Quiz) -> Unit = {}) = viewModelScope.launch {
+        val usable = cards.filter { it.front.isNotBlank() && it.back.isNotBlank() }
+        if (usable.isEmpty()) return@launch
+        val now = System.currentTimeMillis()
+        val quiz = Quiz(
+            title = "${deck.name} Quiz",
+            courseCode = deck.courseCode,
+            description = "Generated from ${usable.size} Punla flashcards.",
+            createdAt = now,
+            updatedAt = now
+        )
+        val questions = usable.map { card ->
+            val isCloze = card.cardType == FlashcardTypes.CLOZE && ClozeText.hasCloze(card.front)
+            val prompt = if (isCloze) ClozeText.question(card.front) else card.front
+            val answer = if (isCloze) ClozeText.answers(card.front).joinToString(" / ").ifBlank { card.back } else card.back
+            QuizQuestion(
+                quizId = quiz.id,
+                type = QuizQuestionTypes.IDENTIFICATION,
+                prompt = prompt,
+                correctAnswer = answer,
+                explanation = if (isCloze) listOf(ClozeText.revealed(card.front), card.back).filter { it.isNotBlank() }.joinToString("\n\n") else card.hint,
+                tags = card.tags,
+                createdAt = now,
+                updatedAt = now
+            )
+        }
+        db.withTransaction {
+            db.quizDao().upsertQuiz(quiz)
+            db.quizDao().upsertQuestions(questions)
+        }
+        onCreated(quiz)
     }
 
     // ---- Pre-enrollment checklist ----
