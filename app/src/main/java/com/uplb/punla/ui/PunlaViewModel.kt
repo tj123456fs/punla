@@ -52,6 +52,7 @@ import com.uplb.punla.data.entity.StudyConfidence
 import com.uplb.punla.data.entity.StudyGoal
 import com.uplb.punla.data.entity.StudyGoalTypes
 import com.uplb.punla.data.entity.StudyPlanItem
+import com.uplb.punla.data.entity.StudyReviewProgress
 import com.uplb.punla.data.entity.QuizAnswerResult
 import com.uplb.punla.data.entity.QuestionBankItem
 import com.uplb.punla.data.StudyEngine
