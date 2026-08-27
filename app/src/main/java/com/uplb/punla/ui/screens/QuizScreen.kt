@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -1027,20 +1028,20 @@ private fun QuestionEditorDialog(quizId: String, initial: QuizQuestion?, onDismi
         mutableIntStateOf(initialOptions.indexOfFirst { QuizQuestion.normalizeAnswer(it) == QuizQuestion.normalizeAnswer(initial?.correctAnswer.orEmpty()) }.coerceAtLeast(0))
     }
     var multiCorrectCsv by rememberSaveable(initial?.id) {
-        mutableStateOf(if (initial?.type == QuizQuestionTypes.MULTI_SELECT) decodeJsonStringList(initial.correctAnswer).mapNotNull { ans -> initialOptions.indexOfFirst { QuizQuestion.normalizeAnswer(it) == QuizQuestion.normalizeAnswer(ans) }.takeIf { it >= 0 } }.joinToString(",") else "")
+        mutableStateOf(if (initial?.type == QuizQuestionTypes.MULTI_SELECT) decodeJsonStringList(initial?.correctAnswer.orEmpty()).mapNotNull { ans -> initialOptions.indexOfFirst { QuizQuestion.normalizeAnswer(it) == QuizQuestion.normalizeAnswer(ans) }.takeIf { it >= 0 } }.joinToString(",") else "")
     }
     var trueFalseIndex by rememberSaveable(initial?.id) { mutableIntStateOf(if (initial?.correctAnswer.equals("False", true)) 1 else 0) }
     var typedAnswer by rememberSaveable(initial?.id) {
-        mutableStateOf(if (initial?.type in setOf(QuizQuestionTypes.IDENTIFICATION, QuizQuestionTypes.NUMERIC, QuizQuestionTypes.IMAGE_IDENTIFICATION)) initial.correctAnswer else "")
+        mutableStateOf(if (initial?.type in setOf(QuizQuestionTypes.IDENTIFICATION, QuizQuestionTypes.NUMERIC, QuizQuestionTypes.IMAGE_IDENTIFICATION)) initial?.correctAnswer.orEmpty() else "")
     }
     var numericTolerance by rememberSaveable(initial?.id) {
         mutableStateOf(runCatching { JSONObject(initial?.metadataJson ?: "{}").optDouble("tolerance", 0.0).toString() }.getOrDefault("0.0"))
     }
     var orderingText by rememberSaveable(initial?.id) {
-        mutableStateOf(if (initial?.type == QuizQuestionTypes.ORDERING) decodeJsonStringList(initial.correctAnswer).joinToString("\n") else initialOptions.joinToString("\n"))
+        mutableStateOf(if (initial?.type == QuizQuestionTypes.ORDERING) decodeJsonStringList(initial?.correctAnswer.orEmpty()).joinToString("\n") else initialOptions.joinToString("\n"))
     }
     var matchingText by rememberSaveable(initial?.id) {
-        mutableStateOf(if (initial?.type == QuizQuestionTypes.MATCHING) decodeMatchingPairs(initial.correctAnswer).entries.joinToString("\n") { "${it.key} :: ${it.value}" } else "")
+        mutableStateOf(if (initial?.type == QuizQuestionTypes.MATCHING) decodeMatchingPairs(initial?.correctAnswer.orEmpty()).entries.joinToString("\n") { "${it.key} :: ${it.value}" } else "")
     }
     var explanation by rememberSaveable(initial?.id) { mutableStateOf(initial?.explanation.orEmpty()) }
     var tags by rememberSaveable(initial?.id) { mutableStateOf(initial?.tags.orEmpty()) }

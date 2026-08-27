@@ -1,3 +1,9 @@
+# Session 33b — Study System 3.0 build fix
+
+- Fixed missing ArrowForward, Image, and layout.height imports.
+- Fixed nullable QuizQuestion editor initialization accesses.
+- Bumped app to 2.7.1 / versionCode 19.
+
 # Punla changes
 
 ## v2.6 — Crash-safe JSON imports
