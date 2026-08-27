@@ -88,6 +88,7 @@ import com.uplb.punla.data.entity.Quiz
 import com.uplb.punla.data.entity.QuizAttempt
 import com.uplb.punla.data.entity.QuizAnswerResult
 import com.uplb.punla.data.entity.StudyConfidence
+import com.uplb.punla.data.entity.StudyTopic
 import com.uplb.punla.data.entity.QuizQuestion
 import com.uplb.punla.data.entity.QuizQuestionTypes
 import com.uplb.punla.ui.PunlaViewModel
@@ -125,13 +126,48 @@ private fun quizTypeIndex(type: String): Int = when (type) {
 }
 
 @Composable
-fun QuizScreen(vm: PunlaViewModel) {
+fun QuizScreen(vm: PunlaViewModel, initialCourse: String? = null, initialTopicId: String? = null, overallOnly: Boolean = false) {
     val quizzes by vm.quizzes.collectAsState()
+    val studyTopics by vm.studyTopics.collectAsState()
+    val scopedTopicIds = remember(studyTopics, initialTopicId) {
+        if (initialTopicId == null) emptySet<String>() else {
+            val ids = linkedSetOf(initialTopicId)
+            var changed = true
+            while (changed) {
+                changed = false
+                studyTopics.forEach { topic -> if (topic.parentTopicId?.let { it in ids } == true && ids.add(topic.id)) changed = true }
+            }
+            ids
+        }
+    }
+    val scopedQuizzes = remember(quizzes, initialCourse, initialTopicId, overallOnly, scopedTopicIds) {
+        quizzes.filter { quiz ->
+            (initialCourse.isNullOrBlank() || quiz.courseCode.equals(initialCourse, true)) &&
+                when {
+                    overallOnly -> quiz.topicId == null
+                    initialTopicId != null -> quiz.topicId?.let { it in scopedTopicIds } == true
+                    else -> true
+                }
+        }
+    }
     val allQuestions by vm.quizQuestions.collectAsState()
     val allAttempts by vm.quizAttempts.collectAsState()
     val decks by vm.flashcardDecks.collectAsState()
     val flashcards by vm.flashcards.collectAsState()
+    val scopedFlashcardDecks = remember(decks, initialCourse, initialTopicId, overallOnly, scopedTopicIds) {
+        decks.filter { deck ->
+            (initialCourse.isNullOrBlank() || deck.courseCode.equals(initialCourse, true)) &&
+                when {
+                    overallOnly -> deck.topicId == null
+                    initialTopicId != null -> deck.topicId?.let { it in scopedTopicIds } == true
+                    else -> true
+                }
+        }
+    }
+    val scopedFlashcardDeckIds = remember(scopedFlashcardDecks) { scopedFlashcardDecks.mapTo(hashSetOf()) { it.id } }
+    val scopedFlashcards = remember(flashcards, scopedFlashcardDeckIds) { flashcards.filter { it.deckId in scopedFlashcardDeckIds } }
     var selectedQuizId by rememberSaveable { mutableStateOf<String?>(null) }
+    var initialScopeApplied by rememberSaveable(initialCourse, initialTopicId, overallOnly) { mutableStateOf(false) }
     // Store the active run as primitives so an in-progress quiz survives
     // rotation/process recreation instead of falling back to the detail screen.
     var runQuestionIds by rememberSaveable { mutableStateOf<String?>(null) }
@@ -158,6 +194,13 @@ fun QuizScreen(vm: PunlaViewModel) {
         runLabel = ""
         runExamMode = false
         runId = null
+    }
+
+    LaunchedEffect(scopedQuizzes, initialScopeApplied) {
+        if (!initialScopeApplied && (!initialCourse.isNullOrBlank() || initialTopicId != null || overallOnly)) {
+            if (scopedQuizzes.size == 1) selectedQuizId = scopedQuizzes.first().id
+            initialScopeApplied = true
+        }
     }
 
     val selectedQuiz = quizzes.firstOrNull { it.id == selectedQuizId }
@@ -195,16 +238,21 @@ fun QuizScreen(vm: PunlaViewModel) {
                 questions = selectedQuestions,
                 attempts = selectedAttempts,
                 vm = vm,
+                topics = studyTopics,
                 onBack = { selectedQuizId = null },
                 onStart = { questions, label, examMode -> startRun(questions, label, examMode) }
             )
             else -> QuizLibraryView(
-                quizzes = quizzes,
+                quizzes = scopedQuizzes,
                 questions = allQuestions,
                 attempts = allAttempts,
-                decks = decks,
-                flashcards = flashcards,
+                decks = scopedFlashcardDecks,
+                flashcards = scopedFlashcards,
                 vm = vm,
+                topics = studyTopics,
+                scopeCourse = initialCourse,
+                scopeTopicId = initialTopicId,
+                overallOnly = overallOnly,
                 onOpenQuiz = { selectedQuizId = it.id }
             )
         }
@@ -219,6 +267,10 @@ private fun QuizLibraryView(
     decks: List<FlashcardDeck>,
     flashcards: List<Flashcard>,
     vm: PunlaViewModel,
+    topics: List<StudyTopic>,
+    scopeCourse: String? = null,
+    scopeTopicId: String? = null,
+    overallOnly: Boolean = false,
     onOpenQuiz: (Quiz) -> Unit
 ) {
     var showQuizDialog by rememberSaveable { mutableStateOf(false) }
@@ -323,7 +375,13 @@ private fun QuizLibraryView(
     }
 
     if (showQuizDialog) {
-        QuizEditorDialog(null, onDismiss = { showQuizDialog = false }) {
+        QuizEditorDialog(
+            initial = null,
+            topics = topics,
+            defaultCourse = scopeCourse,
+            defaultTopicId = if (overallOnly) null else scopeTopicId,
+            onDismiss = { showQuizDialog = false }
+        ) {
             vm.upsertQuiz(it)
             showQuizDialog = false
             onOpenQuiz(it)
@@ -351,7 +409,8 @@ private fun QuizLibraryView(
                 val now = System.currentTimeMillis()
                 val quiz = Quiz(
                     title = imported.title,
-                    courseCode = imported.courseCode,
+                    courseCode = scopeCourse ?: imported.courseCode,
+                    topicId = if (overallOnly) null else scopeTopicId,
                     description = imported.description,
                     passingScore = imported.passingScore,
                     shuffleQuestions = imported.shuffleQuestions,
@@ -428,6 +487,7 @@ private fun QuizDetailView(
     questions: List<QuizQuestion>,
     attempts: List<QuizAttempt>,
     vm: PunlaViewModel,
+    topics: List<StudyTopic>,
     onBack: () -> Unit,
     onStart: (List<QuizQuestion>, String, Boolean) -> Unit
 ) {
@@ -520,7 +580,7 @@ private fun QuizDetailView(
     }
 
     if (showQuizDialog) {
-        QuizEditorDialog(quiz, onDismiss = { showQuizDialog = false }) { vm.upsertQuiz(it); showQuizDialog = false }
+        QuizEditorDialog(quiz, topics, onDismiss = { showQuizDialog = false }) { vm.upsertQuiz(it); showQuizDialog = false }
     }
     if (showQuestionDialog) {
         QuestionEditorDialog(quiz.id, editingQuestion, onDismiss = { showQuestionDialog = false; editingQuestion = null }) {
@@ -963,9 +1023,17 @@ private fun TakeQuizView(
 }
 
 @Composable
-private fun QuizEditorDialog(initial: Quiz?, onDismiss: () -> Unit, onSave: (Quiz) -> Unit) {
+private fun QuizEditorDialog(
+    initial: Quiz?,
+    topics: List<StudyTopic>,
+    defaultCourse: String? = null,
+    defaultTopicId: String? = null,
+    onDismiss: () -> Unit,
+    onSave: (Quiz) -> Unit
+) {
     var title by rememberSaveable(initial?.id) { mutableStateOf(initial?.title.orEmpty()) }
-    var course by rememberSaveable(initial?.id) { mutableStateOf(initial?.courseCode.orEmpty()) }
+    var course by rememberSaveable(initial?.id, defaultCourse) { mutableStateOf(initial?.courseCode ?: defaultCourse.orEmpty()) }
+    var topicId by rememberSaveable(initial?.id, defaultTopicId) { mutableStateOf(initial?.topicId ?: defaultTopicId) }
     var description by rememberSaveable(initial?.id) { mutableStateOf(initial?.description.orEmpty()) }
     var passing by rememberSaveable(initial?.id) { mutableStateOf((initial?.passingScore ?: 70).toString()) }
     var shuffleQuestions by rememberSaveable(initial?.id) { mutableStateOf(initial?.shuffleQuestions ?: true) }
@@ -974,13 +1042,17 @@ private fun QuizEditorDialog(initial: Quiz?, onDismiss: () -> Unit, onSave: (Qui
     var feedbackAfter by rememberSaveable(initial?.id) { mutableStateOf(initial?.feedbackMode == "AFTER") }
     val passingInt = passing.toIntOrNull()
     val valid = title.trim().isNotBlank() && passingInt != null && passingInt in 1..100
+    val modules = topics.filter { it.courseCode.equals(course.trim(), true) && it.parentTopicId == null }.sortedWith(compareBy<StudyTopic> { it.sortOrder }.thenBy { it.name.lowercase() })
+    val moduleLabels = listOf("Overall / course-wide") + modules.map { it.name }
+    val moduleIndex = modules.indexOfFirst { it.id == topicId }.let { if (it < 0) 0 else it + 1 }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initial == null) "New quiz" else "Edit quiz") },
         text = {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 item { OutlinedTextField(title, { title = it }, label = { Text("Quiz title") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
-                item { OutlinedTextField(course, { course = it }, label = { Text("Course code (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
+                item { OutlinedTextField(course, { course = it; topicId = null }, label = { Text("Course code (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
+                item { PunlaDropdownField(label = "Module", selectedLabel = moduleLabels.getOrElse(moduleIndex) { "Overall / course-wide" }, options = moduleLabels, onSelect = { index -> topicId = if (index == 0) null else modules.getOrNull(index - 1)?.id }, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(description, { description = it }, label = { Text("Description (optional)") }, modifier = Modifier.fillMaxWidth(), minLines = 2) }
                 item { OutlinedTextField(passing, { passing = it.filter(Char::isDigit).take(3) }, label = { Text("Passing score %") }, modifier = Modifier.fillMaxWidth(), singleLine = true, isError = passing.isNotBlank() && (passingInt == null || passingInt !in 1..100)) }
                 item { OutlinedTextField(timeLimit, { timeLimit = it.filter(Char::isDigit).take(3) }, label = { Text("Time limit minutes (optional)") }, supportingText = { Text("Leave blank for untimed. Practice-test mode defaults to roughly 1 minute/question if blank.") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
@@ -1007,8 +1079,8 @@ private fun QuizEditorDialog(initial: Quiz?, onDismiss: () -> Unit, onSave: (Qui
         confirmButton = {
             TextButton(onClick = {
                 val now = System.currentTimeMillis()
-                onSave(initial?.copy(title = title.trim(), courseCode = course.trim().ifBlank { null }, description = description.trim().ifBlank { null }, passingScore = passingInt ?: 70, shuffleQuestions = shuffleQuestions, shuffleChoices = shuffleChoices, timeLimitMinutes = timeLimit.toIntOrNull()?.takeIf { it > 0 }, feedbackMode = if (feedbackAfter) "AFTER" else "IMMEDIATE", updatedAt = now)
-                    ?: Quiz(title = title.trim(), courseCode = course.trim().ifBlank { null }, description = description.trim().ifBlank { null }, passingScore = passingInt ?: 70, shuffleQuestions = shuffleQuestions, shuffleChoices = shuffleChoices, timeLimitMinutes = timeLimit.toIntOrNull()?.takeIf { it > 0 }, feedbackMode = if (feedbackAfter) "AFTER" else "IMMEDIATE", createdAt = now, updatedAt = now))
+                onSave(initial?.copy(title = title.trim(), courseCode = course.trim().ifBlank { null }, topicId = topicId, description = description.trim().ifBlank { null }, passingScore = passingInt ?: 70, shuffleQuestions = shuffleQuestions, shuffleChoices = shuffleChoices, timeLimitMinutes = timeLimit.toIntOrNull()?.takeIf { it > 0 }, feedbackMode = if (feedbackAfter) "AFTER" else "IMMEDIATE", updatedAt = now)
+                    ?: Quiz(title = title.trim(), courseCode = course.trim().ifBlank { null }, topicId = topicId, description = description.trim().ifBlank { null }, passingScore = passingInt ?: 70, shuffleQuestions = shuffleQuestions, shuffleChoices = shuffleChoices, timeLimitMinutes = timeLimit.toIntOrNull()?.takeIf { it > 0 }, feedbackMode = if (feedbackAfter) "AFTER" else "IMMEDIATE", createdAt = now, updatedAt = now))
             }, enabled = valid) { Text("Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }

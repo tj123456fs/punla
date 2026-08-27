@@ -1,3 +1,21 @@
+# Session 34 — Course Learning Path
+
+- Bumped app to **2.8.0 / versionCode 20**.
+- Upgraded the Study Hub so every course can follow a consistent learning sequence:
+  - Module Review → Module Flashcards → Module Quiz
+  - then Overall Review → Overall Flashcards → Comprehensive Quiz.
+- Top-level Study Topics now act as ordered course modules; nested topics remain subtopics inside the module.
+- Added persistent reviewer-completion tracking without locking later study steps.
+- Flashcard decks and quizzes can now be attached to a module (`topicId`) or left course-level for Overall Review.
+- Added module-scoped opening for Flashcards and Quizzes from Study Hub.
+- Added manual module assignment in Flashcard Deck and Quiz editors.
+- Creating or importing decks/quizzes from a module now keeps that module/course scope by default; quiz-from-flashcards also stays inside the active module.
+- Added module/topic ordering (`sortOrder`) and migration **v11 → v12**.
+- Updated backup/restore to preserve module links, topic order, and reviewer completion.
+- Extended study-pack JSON import with optional `topicKey` on flashcard decks/quizzes and `sortOrder` on topics while keeping schemaVersion 1 backward compatible.
+
+---
+
 # Session 33b — Study System 3.0 build fix
 
 - Fixed missing ArrowForward, Image, and layout.height imports.

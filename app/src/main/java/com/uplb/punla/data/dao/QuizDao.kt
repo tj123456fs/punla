@@ -58,6 +58,9 @@ interface QuizDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAttempts(attempts: List<QuizAttempt>)
 
+    @Query("UPDATE quizzes SET topicId = NULL WHERE topicId = :topicId")
+    suspend fun clearTopicAssociation(topicId: String)
+
     @Delete
     suspend fun deleteQuiz(quiz: Quiz)
 

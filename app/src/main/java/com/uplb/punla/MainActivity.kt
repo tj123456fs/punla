@@ -920,16 +920,52 @@ fun PunlaApp(
                 composable("study") {
                     StudyHubScreen(
                         vm = vm,
-                        onOpenFlashcards = { navigateTo("flashcards") },
-                        onOpenQuizzes = { navigateTo("quizzes") },
+                        onOpenFlashcards = { course, topicId, overall ->
+                            val c = course?.let { android.net.Uri.encode(it) }.orEmpty()
+                            val t = topicId?.let { android.net.Uri.encode(it) }.orEmpty()
+                            navController.navigate("flashcards?course=$c&topicId=$t&overall=$overall")
+                        },
+                        onOpenQuizzes = { course, topicId, overall ->
+                            val c = course?.let { android.net.Uri.encode(it) }.orEmpty()
+                            val t = topicId?.let { android.net.Uri.encode(it) }.orEmpty()
+                            navController.navigate("quizzes?course=$c&topicId=$t&overall=$overall")
+                        },
                         onOpenFocus = { course ->
                             if (course != null) navController.navigate("pomodoro?course=${android.net.Uri.encode(course)}")
                             else navController.navigate("pomodoro")
                         }
                     )
                 }
-                composable("flashcards") { FlashcardsScreen(vm) }
-                composable("quizzes") { QuizScreen(vm) }
+                composable(
+                    "flashcards?course={course}&topicId={topicId}&overall={overall}",
+                    arguments = listOf(
+                        navArgument("course") { type = NavType.StringType; nullable = true; defaultValue = null },
+                        navArgument("topicId") { type = NavType.StringType; nullable = true; defaultValue = null },
+                        navArgument("overall") { type = NavType.BoolType; defaultValue = false }
+                    )
+                ) { backEntry ->
+                    FlashcardsScreen(
+                        vm,
+                        initialCourse = backEntry.arguments?.getString("course")?.takeIf { it.isNotBlank() },
+                        initialTopicId = backEntry.arguments?.getString("topicId")?.takeIf { it.isNotBlank() },
+                        overallOnly = backEntry.arguments?.getBoolean("overall") ?: false
+                    )
+                }
+                composable(
+                    "quizzes?course={course}&topicId={topicId}&overall={overall}",
+                    arguments = listOf(
+                        navArgument("course") { type = NavType.StringType; nullable = true; defaultValue = null },
+                        navArgument("topicId") { type = NavType.StringType; nullable = true; defaultValue = null },
+                        navArgument("overall") { type = NavType.BoolType; defaultValue = false }
+                    )
+                ) { backEntry ->
+                    QuizScreen(
+                        vm,
+                        initialCourse = backEntry.arguments?.getString("course")?.takeIf { it.isNotBlank() },
+                        initialTopicId = backEntry.arguments?.getString("topicId")?.takeIf { it.isNotBlank() },
+                        overallOnly = backEntry.arguments?.getBoolean("overall") ?: false
+                    )
+                }
                 composable("assistant") {
                     AssistantScreen(
                         vm = vm,

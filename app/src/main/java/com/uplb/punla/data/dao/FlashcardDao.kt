@@ -55,6 +55,9 @@ interface FlashcardDao {
         if (cards.isNotEmpty()) upsertCards(cards)
     }
 
+    @Query("UPDATE flashcard_decks SET topicId = NULL WHERE topicId = :topicId")
+    suspend fun clearTopicAssociation(topicId: String)
+
     @Delete
     suspend fun deleteDeck(deck: FlashcardDeck)
 

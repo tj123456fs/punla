@@ -18,11 +18,13 @@ object QuizQuestionTypes {
     const val IMAGE_IDENTIFICATION = "IMAGE_IDENTIFICATION"
 }
 
-@Entity(tableName = "quizzes")
+@Entity(tableName = "quizzes", indices = [Index("courseCode"), Index("topicId")])
 data class Quiz(
     @PrimaryKey val id: String = UUID.randomUUID().toString(),
     val title: String,
     val courseCode: String? = null,
+    /** Module/topic association used by the course learning path. Null means course-level/overall material. */
+    val topicId: String? = null,
     val description: String? = null,
     val passingScore: Int = 70,
     val shuffleQuestions: Boolean = true,

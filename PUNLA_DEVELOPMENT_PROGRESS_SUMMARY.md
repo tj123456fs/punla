@@ -1,8 +1,35 @@
 # Punla Development Progress Summary
 
-_Last updated: August 20, 2026_
+_Last updated: August 27, 2026_
 
 This document summarizes the major Punla improvements completed during this development run, including feature work, UX changes, data fixes, and build-error fixes.
+
+---
+
+## 0. Course Learning Path (Study System 3.1)
+
+Punla now gives every course the same guided learning structure while keeping all stages freely accessible.
+
+### Per-module sequence
+- Review
+- Flashcards
+- Module Quiz
+
+### Course-wide sequence
+After the modules, Punla shows:
+- Overall Review
+- Overall Flashcards
+- Comprehensive Quiz
+
+### Implementation details
+- Top-level study topics are treated as ordered modules.
+- Nested topics are included inside the parent module's study scope.
+- Notes and formulas already use topic links; flashcard decks and quizzes now also support `topicId`.
+- Course-level material with no `topicId` is treated as Overall Review material.
+- Reviewer completion is tracked separately; flashcard and quiz completion are inferred from real review/attempt history.
+- No hard locks are used, so students can jump ahead or cram from the Overall Review at any time.
+- Manual deck and quiz editors now include module assignment.
+- Backup/restore preserves module associations and reviewer progress.
 
 ---
 

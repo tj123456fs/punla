@@ -1,0 +1,52 @@
+{
+  "punlaFileId": "punla.study.bundle",
+  "schemaVersion": 1,
+  "contentId": "6b46e1bd-5275-46a7-9772-eef0a45d82be",
+  "bundle": {
+    "title": "Example Course Learning Path",
+    "courseCode": "COURSE 1",
+    "description": "Module reviews, module flashcards and quizzes, followed by course-wide review material."
+  },
+  "topics": [
+    { "key": "module-1", "name": "Module 1", "sortOrder": 0, "priority": 4 },
+    { "key": "module-2", "name": "Module 2", "sortOrder": 1, "priority": 4 }
+  ],
+  "notes": [
+    { "title": "Module 1 Review", "topicKey": "module-1", "body": "Key concept :: Key answer" },
+    { "title": "Module 2 Review", "topicKey": "module-2", "body": "Second concept :: Second answer" },
+    { "title": "Overall Review", "body": "Course-wide synthesis and high-yield connections." }
+  ],
+  "flashcardDecks": [
+    {
+      "name": "Module 1 Flashcards",
+      "topicKey": "module-1",
+      "cards": [{ "front": "Module 1 question", "back": "Module 1 answer" }]
+    },
+    {
+      "name": "Module 2 Flashcards",
+      "topicKey": "module-2",
+      "cards": [{ "front": "Module 2 question", "back": "Module 2 answer" }]
+    },
+    {
+      "name": "Overall Flashcards",
+      "cards": [{ "front": "Course-wide question", "back": "Course-wide answer" }]
+    }
+  ],
+  "quizzes": [
+    {
+      "title": "Module 1 Quiz",
+      "topicKey": "module-1",
+      "questions": [{ "type": "identification", "question": "Module 1 recall", "correctAnswer": "Answer" }]
+    },
+    {
+      "title": "Module 2 Quiz",
+      "topicKey": "module-2",
+      "questions": [{ "type": "identification", "question": "Module 2 recall", "correctAnswer": "Answer" }]
+    },
+    {
+      "title": "Comprehensive Quiz",
+      "passingScore": 75,
+      "questions": [{ "type": "identification", "question": "Course-wide recall", "correctAnswer": "Answer" }]
+    }
+  ]
+}

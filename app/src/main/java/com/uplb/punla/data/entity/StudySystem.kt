@@ -22,6 +22,8 @@ data class StudyTopic(
     val examDate: String? = null,
     /** 1..5; higher values receive more weight in cram/readiness calculations. */
     val priority: Int = 3,
+    /** Stable display order. Top-level topics are rendered as course modules in this order. */
+    val sortOrder: Int = 0,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )
@@ -156,6 +158,25 @@ data class StudyPlanItem(
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )
+
+
+/** Tracks only whether a learner has explicitly finished reading a module/overall reviewer.
+ * Flashcard and quiz progress continue to come from their real review/attempt history. */
+@Entity(tableName = "study_review_progress", indices = [Index("courseCode"), Index("topicId"), Index("completed")])
+data class StudyReviewProgress(
+    @PrimaryKey val id: String,
+    val courseCode: String,
+    /** Null represents the course-level Overall Review. */
+    val topicId: String? = null,
+    val completed: Boolean = false,
+    val completedAt: Long? = null,
+    val updatedAt: Long = System.currentTimeMillis()
+) {
+    companion object {
+        fun key(courseCode: String, topicId: String?): String =
+            if (topicId == null) "overall:${courseCode.trim().lowercase()}" else "module:$topicId"
+    }
+}
 
 
 /** Immutable event history keeps study streaks/heatmaps accurate even after a card is reviewed again. */

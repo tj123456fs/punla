@@ -139,6 +139,8 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val studyPlanItems: StateFlow<List<StudyPlanItem>> = db.studyMaterialDao().observePlanItems()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val studyReviewProgress: StateFlow<List<StudyReviewProgress>> = db.studyMaterialDao().observeReviewProgress()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val flashcardReviewEvents: StateFlow<List<FlashcardReviewEvent>> = db.studyMaterialDao().observeFlashcardReviewEvents()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -931,6 +933,7 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         val deck = FlashcardDeck(
             name = "${quiz.title} — Mistakes",
             courseCode = quiz.courseCode,
+            topicId = quiz.topicId,
             description = "Created from ${questions.size} missed quiz question${if (questions.size == 1) "" else "s"}.",
             createdAt = now,
             updatedAt = now
@@ -952,11 +955,14 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         onCreated(deck)
     }
 
-    // ---- Study System 3.0 ----
+    // ---- Study System 3.1 ----
     fun upsertStudyTopic(item: StudyTopic) = viewModelScope.launch { db.studyMaterialDao().upsertTopic(item.copy(updatedAt = System.currentTimeMillis())) }
     fun deleteStudyTopic(item: StudyTopic) = viewModelScope.launch {
         db.withTransaction {
             db.studyMaterialDao().clearChildParentReferences(item.id, System.currentTimeMillis())
+            db.flashcardDao().clearTopicAssociation(item.id)
+            db.quizDao().clearTopicAssociation(item.id)
+            db.studyMaterialDao().deleteReviewProgressForTopic(item.id)
             db.studyMaterialDao().deleteTopic(item)
         }
     }
@@ -1001,6 +1007,19 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     }
     fun upsertStudyPlanItem(item: StudyPlanItem) = viewModelScope.launch { db.studyMaterialDao().upsertPlanItem(item.copy(updatedAt = System.currentTimeMillis())) }
     fun deleteStudyPlanItem(item: StudyPlanItem) = viewModelScope.launch { db.studyMaterialDao().deletePlanItem(item) }
+    fun setReviewCompleted(courseCode: String, topicId: String?, completed: Boolean) = viewModelScope.launch {
+        val now = System.currentTimeMillis()
+        db.studyMaterialDao().upsertReviewProgress(
+            StudyReviewProgress(
+                id = StudyReviewProgress.key(courseCode, topicId),
+                courseCode = courseCode,
+                topicId = topicId,
+                completed = completed,
+                completedAt = if (completed) now else null,
+                updatedAt = now
+            )
+        )
+    }
     fun resolveMistake(item: MistakeRecord, resolved: Boolean = true) = viewModelScope.launch { db.studyMaterialDao().upsertMistake(item.copy(resolved = resolved)) }
     fun deleteMistake(item: MistakeRecord) = viewModelScope.launch { db.studyMaterialDao().deleteMistake(item.id) }
     fun upsertQuestionBankItem(item: QuestionBankItem) = viewModelScope.launch { db.studyMaterialDao().upsertBankItem(item.copy(updatedAt = System.currentTimeMillis())) }
@@ -1026,6 +1045,7 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
                     parentTopicId = topicId(t.parentKey),
                     examDate = t.examDate,
                     priority = t.priority,
+                    sortOrder = t.sortOrder,
                     createdAt = now, updatedAt = now
                 )
             }
@@ -1039,7 +1059,7 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
             }
             if (formulas.isNotEmpty()) db.studyMaterialDao().upsertFormulas(formulas)
             bundle.decks.forEach { d ->
-                val deck = FlashcardDeck(name = d.name, courseCode = effectiveCourse, description = d.description ?: bundle.description, createdAt = now, updatedAt = now)
+                val deck = FlashcardDeck(name = d.name, courseCode = effectiveCourse, topicId = topicId(d.topicKey), description = d.description ?: bundle.description, createdAt = now, updatedAt = now)
                 val cards = d.cards.map { c ->
                     Flashcard(
                         deckId = deck.id,
@@ -1059,7 +1079,7 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
                 db.flashcardDao().importDeck(deck, cards)
             }
             bundle.quizzes.forEach { q ->
-                val quiz = Quiz(title = q.title, courseCode = effectiveCourse, description = q.description ?: bundle.description, passingScore = q.passingScore, createdAt = now, updatedAt = now)
+                val quiz = Quiz(title = q.title, courseCode = effectiveCourse, topicId = topicId(q.topicKey), description = q.description ?: bundle.description, passingScore = q.passingScore, createdAt = now, updatedAt = now)
                 val qs = q.questions.map { x ->
                     QuizQuestion(
                         quizId = quiz.id,
@@ -1099,6 +1119,7 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         val deck = FlashcardDeck(
             name = "${note.title} — Reviewer",
             courseCode = note.courseCode,
+            topicId = note.topicId,
             description = "Created from Punla reviewer note '${note.title}'.",
             createdAt = now,
             updatedAt = now
@@ -1125,6 +1146,7 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         val quiz = Quiz(
             title = "${note.title} — Recall Quiz",
             courseCode = note.courseCode,
+            topicId = note.topicId,
             description = "Generated from Punla reviewer note '${note.title}'.",
             passingScore = 70,
             shuffleQuestions = true,
@@ -1288,6 +1310,7 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         val quiz = Quiz(
             title = "${deck.name} Quiz",
             courseCode = deck.courseCode,
+            topicId = deck.topicId,
             description = "Generated from ${usable.size} Punla flashcards.",
             createdAt = now,
             updatedAt = now

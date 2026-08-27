@@ -64,6 +64,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -88,6 +89,7 @@ import com.uplb.punla.data.entity.Flashcard
 import com.uplb.punla.data.entity.FlashcardDeck
 import com.uplb.punla.data.entity.FlashcardRating
 import com.uplb.punla.data.entity.FlashcardTypes
+import com.uplb.punla.data.entity.StudyTopic
 import com.uplb.punla.ui.PunlaViewModel
 import coil.compose.AsyncImage
 import org.json.JSONArray
@@ -98,12 +100,44 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-fun FlashcardsScreen(vm: PunlaViewModel) {
+fun FlashcardsScreen(vm: PunlaViewModel, initialCourse: String? = null, initialTopicId: String? = null, overallOnly: Boolean = false) {
     val decks by vm.flashcardDecks.collectAsState()
     val allCards by vm.flashcards.collectAsState()
+    val studyTopics by vm.studyTopics.collectAsState()
+    val scopedTopicIds = remember(studyTopics, initialTopicId) {
+        if (initialTopicId == null) emptySet<String>() else {
+            val ids = linkedSetOf(initialTopicId)
+            var changed = true
+            while (changed) {
+                changed = false
+                studyTopics.forEach { topic -> if (topic.parentTopicId?.let { it in ids } == true && ids.add(topic.id)) changed = true }
+            }
+            ids
+        }
+    }
+    val scopedDecks = remember(decks, initialCourse, initialTopicId, overallOnly, scopedTopicIds) {
+        decks.filter { deck ->
+            (initialCourse.isNullOrBlank() || deck.courseCode.equals(initialCourse, true)) &&
+                when {
+                    overallOnly -> deck.topicId == null
+                    initialTopicId != null -> deck.topicId?.let { it in scopedTopicIds } == true
+                    else -> true
+                }
+        }
+    }
+    val scopedDeckIds = remember(scopedDecks) { scopedDecks.mapTo(hashSetOf()) { it.id } }
+    val scopedCards = remember(allCards, scopedDeckIds) { allCards.filter { it.deckId in scopedDeckIds } }
     var selectedDeckId by rememberSaveable { mutableStateOf<String?>(null) }
+    var initialScopeApplied by rememberSaveable(initialCourse, initialTopicId, overallOnly) { mutableStateOf(false) }
     var studyCardIds by rememberSaveable { mutableStateOf<String?>(null) }
     var studyRunId by rememberSaveable { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(scopedDecks, initialScopeApplied) {
+        if (!initialScopeApplied && (!initialCourse.isNullOrBlank() || initialTopicId != null || overallOnly)) {
+            if (scopedDecks.size == 1) selectedDeckId = scopedDecks.first().id
+            initialScopeApplied = true
+        }
+    }
 
     val selectedDeck = decks.firstOrNull { it.id == selectedDeckId }
     val selectedCards = selectedDeck?.let { deck -> allCards.filter { it.deckId == deck.id } }.orEmpty()
@@ -145,13 +179,18 @@ fun FlashcardsScreen(vm: PunlaViewModel) {
                 deck = selectedDeck!!,
                 cards = selectedCards,
                 vm = vm,
+                topics = studyTopics,
                 onBack = { selectedDeckId = null },
                 onStudy = { startStudy(it) }
             )
             else -> FlashcardLibraryView(
-                decks = decks,
-                cards = allCards,
+                decks = scopedDecks,
+                cards = scopedCards,
                 vm = vm,
+                topics = studyTopics,
+                scopeCourse = initialCourse,
+                scopeTopicId = initialTopicId,
+                overallOnly = overallOnly,
                 onOpenDeck = { selectedDeckId = it.id }
             )
         }
@@ -163,6 +202,10 @@ private fun FlashcardLibraryView(
     decks: List<FlashcardDeck>,
     cards: List<Flashcard>,
     vm: PunlaViewModel,
+    topics: List<StudyTopic>,
+    scopeCourse: String? = null,
+    scopeTopicId: String? = null,
+    overallOnly: Boolean = false,
     onOpenDeck: (FlashcardDeck) -> Unit
 ) {
     var showDeckDialog by rememberSaveable { mutableStateOf(false) }
@@ -267,6 +310,9 @@ private fun FlashcardLibraryView(
     if (showDeckDialog) {
         DeckEditorDialog(
             initial = null,
+            topics = topics,
+            defaultCourse = scopeCourse,
+            defaultTopicId = if (overallOnly) null else scopeTopicId,
             onDismiss = { showDeckDialog = false },
             onSave = {
                 vm.upsertFlashcardDeck(it)
@@ -287,7 +333,8 @@ private fun FlashcardLibraryView(
                     val timestamp = System.currentTimeMillis()
                     val deck = FlashcardDeck(
                         name = imported.name,
-                        courseCode = imported.courseCode,
+                        courseCode = scopeCourse ?: imported.courseCode,
+                        topicId = if (overallOnly) null else scopeTopicId,
                         description = imported.description,
                         createdAt = timestamp,
                         updatedAt = timestamp
@@ -393,6 +440,7 @@ private fun DeckDetailView(
     deck: FlashcardDeck,
     cards: List<Flashcard>,
     vm: PunlaViewModel,
+    topics: List<StudyTopic>,
     onBack: () -> Unit,
     onStudy: (List<Flashcard>) -> Unit
 ) {
@@ -590,6 +638,7 @@ private fun DeckDetailView(
     if (showDeckDialog) {
         DeckEditorDialog(
             initial = deck,
+            topics = topics,
             onDismiss = { showDeckDialog = false },
             onSave = {
                 vm.upsertFlashcardDeck(it)
@@ -817,18 +866,36 @@ private fun StudyDeckView(
 }
 
 @Composable
-private fun DeckEditorDialog(initial: FlashcardDeck?, onDismiss: () -> Unit, onSave: (FlashcardDeck) -> Unit) {
+private fun DeckEditorDialog(
+    initial: FlashcardDeck?,
+    topics: List<StudyTopic>,
+    defaultCourse: String? = null,
+    defaultTopicId: String? = null,
+    onDismiss: () -> Unit,
+    onSave: (FlashcardDeck) -> Unit
+) {
     var name by rememberSaveable(initial?.id) { mutableStateOf(initial?.name.orEmpty()) }
-    var course by rememberSaveable(initial?.id) { mutableStateOf(initial?.courseCode.orEmpty()) }
+    var course by rememberSaveable(initial?.id, defaultCourse) { mutableStateOf(initial?.courseCode ?: defaultCourse.orEmpty()) }
+    var topicId by rememberSaveable(initial?.id, defaultTopicId) { mutableStateOf(initial?.topicId ?: defaultTopicId) }
     var description by rememberSaveable(initial?.id) { mutableStateOf(initial?.description.orEmpty()) }
     val valid = name.trim().isNotEmpty()
+    val modules = topics.filter { it.courseCode.equals(course.trim(), true) && it.parentTopicId == null }.sortedWith(compareBy<StudyTopic> { it.sortOrder }.thenBy { it.name.lowercase() })
+    val moduleLabels = listOf("Overall / course-wide") + modules.map { it.name }
+    val moduleIndex = modules.indexOfFirst { it.id == topicId }.let { if (it < 0) 0 else it + 1 }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initial == null) "New flashcard deck" else "Edit deck") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Deck name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = course, onValueChange = { course = it }, label = { Text("Course code (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = course, onValueChange = { course = it; topicId = null }, label = { Text("Course code (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                PunlaDropdownField(
+                    label = "Module",
+                    selectedLabel = moduleLabels.getOrElse(moduleIndex) { "Overall / course-wide" },
+                    options = moduleLabels,
+                    onSelect = { index -> topicId = if (index == 0) null else modules.getOrNull(index - 1)?.id },
+                    modifier = Modifier.fillMaxWidth()
+                )
                 OutlinedTextField(value = description, onValueChange = { description = it }, label = { Text("Description (optional)") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
             }
         },
@@ -836,8 +903,8 @@ private fun DeckEditorDialog(initial: FlashcardDeck?, onDismiss: () -> Unit, onS
             TextButton(
                 onClick = {
                     val now = System.currentTimeMillis()
-                    onSave(initial?.copy(name = name.trim(), courseCode = course.trim().ifBlank { null }, description = description.trim().ifBlank { null }, updatedAt = now)
-                        ?: FlashcardDeck(name = name.trim(), courseCode = course.trim().ifBlank { null }, description = description.trim().ifBlank { null }, createdAt = now, updatedAt = now))
+                    onSave(initial?.copy(name = name.trim(), courseCode = course.trim().ifBlank { null }, topicId = topicId, description = description.trim().ifBlank { null }, updatedAt = now)
+                        ?: FlashcardDeck(name = name.trim(), courseCode = course.trim().ifBlank { null }, topicId = topicId, description = description.trim().ifBlank { null }, createdAt = now, updatedAt = now))
                 },
                 enabled = valid
             ) { Text("Save") }

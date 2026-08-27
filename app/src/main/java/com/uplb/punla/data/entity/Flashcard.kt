@@ -6,11 +6,13 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import java.util.UUID
 
-@Entity(tableName = "flashcard_decks")
+@Entity(tableName = "flashcard_decks", indices = [Index("courseCode"), Index("topicId")])
 data class FlashcardDeck(
     @PrimaryKey val id: String = UUID.randomUUID().toString(),
     val name: String,
     val courseCode: String? = null,
+    /** Module/topic association used by the course learning path. Null means course-level/overall material. */
+    val topicId: String? = null,
     val description: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()

@@ -23,6 +23,7 @@ import com.uplb.punla.data.entity.FormulaReference
 import com.uplb.punla.data.entity.MistakeRecord
 import com.uplb.punla.data.entity.StudyGoal
 import com.uplb.punla.data.entity.StudyPlanItem
+import com.uplb.punla.data.entity.StudyReviewProgress
 import com.uplb.punla.data.entity.QuizAnswerResult
 import com.uplb.punla.data.entity.FlashcardReviewEvent
 import com.uplb.punla.data.entity.QuestionBankItem
@@ -50,7 +51,7 @@ import kotlinx.coroutines.withContext
  */
 object BackupManager {
 
-    const val CURRENT_VERSION = 7
+    const val CURRENT_VERSION = 8
     private const val MAX_BACKUP_FILE_CHARS = 20_000_000
 
     /** Suggested filename, mirrors the web app's punla-backup-YYYY-MM-DD.json. */
@@ -91,6 +92,7 @@ object BackupManager {
         val mistakeRecords = db.studyMaterialDao().getMistakes()
         val studyGoals = db.studyMaterialDao().getGoals()
         val studyPlanItems = db.studyMaterialDao().getPlanItems()
+        val studyReviewProgress = db.studyMaterialDao().getReviewProgress()
         val flashcardReviewEvents = db.studyMaterialDao().getFlashcardReviewEvents()
         val quizAnswerResults = db.studyMaterialDao().getAnswerResults()
         val questionBank = db.studyMaterialDao().getQuestionBank()
@@ -130,6 +132,7 @@ object BackupManager {
             put("mistakeRecords", JSONArray(mistakeRecords.map(::mistakeRecordToJson)))
             put("studyGoals", JSONArray(studyGoals.map(::studyGoalToJson)))
             put("studyPlanItems", JSONArray(studyPlanItems.map(::studyPlanItemToJson)))
+            put("studyReviewProgress", JSONArray(studyReviewProgress.map(::studyReviewProgressToJson)))
             put("flashcardReviewEvents", JSONArray(flashcardReviewEvents.map(::flashcardReviewEventToJson)))
             put("quizAnswerResults", JSONArray(quizAnswerResults.map(::quizAnswerResultToJson)))
             put("questionBank", JSONArray(questionBank.map(::questionBankItemToJson)))
@@ -252,14 +255,16 @@ object BackupManager {
         val mistakeRecords = root.optJSONArray("mistakeRecords")?.mapObjects(::mistakeRecordFromJson) ?: emptyList()
         val studyGoals = root.optJSONArray("studyGoals")?.mapObjects(::studyGoalFromJson) ?: emptyList()
         val studyPlanItems = root.optJSONArray("studyPlanItems")?.mapObjects(::studyPlanItemFromJson) ?: emptyList()
+        val studyReviewProgress = root.optJSONArray("studyReviewProgress")?.mapObjects(::studyReviewProgressFromJson) ?: emptyList()
         val flashcardReviewEvents = root.optJSONArray("flashcardReviewEvents")?.mapObjects(::flashcardReviewEventFromJson) ?: emptyList()
         val quizAnswerResults = root.optJSONArray("quizAnswerResults")?.mapObjects(::quizAnswerResultFromJson) ?: emptyList()
         val questionBank = root.optJSONArray("questionBank")?.mapObjects(::questionBankItemFromJson) ?: emptyList()
 
         db.withTransaction {
-            // Study System 3.0 tables are cleared first so foreign-key children never
+            // Study System 3.1 tables are cleared first so foreign-key children never
             // reference quiz/question rows that are about to be replaced.
             db.studyMaterialDao().clearAnswerResults()
+            db.studyMaterialDao().clearReviewProgress()
             db.studyMaterialDao().clearFlashcardReviewEvents()
             db.studyMaterialDao().clearQuestionBank()
             db.studyMaterialDao().clearMistakes()
@@ -316,6 +321,7 @@ object BackupManager {
             db.studyMaterialDao().upsertMistakes(mistakeRecords)
             db.studyMaterialDao().upsertGoals(studyGoals)
             db.studyMaterialDao().upsertPlanItems(studyPlanItems)
+            db.studyMaterialDao().upsertReviewProgress(studyReviewProgress.filter { p -> p.topicId == null || studyTopics.any { it.id == p.topicId } })
             db.studyMaterialDao().upsertBankItems(questionBank)
             db.studyMaterialDao().upsertFlashcardReviewEvents(flashcardReviewEvents)
             val questionIds = quizQuestions.mapTo(hashSetOf()) { it.id }
@@ -435,13 +441,13 @@ private fun attendanceRecordFromJson(o: JSONObject) = AttendanceRecord(
 )
 
 private fun flashcardDeckToJson(d: FlashcardDeck) = JSONObject().apply {
-    put("id", d.id); put("name", d.name); put("courseCode", d.courseCode); put("description", d.description)
+    put("id", d.id); put("name", d.name); put("courseCode", d.courseCode); put("topicId", d.topicId); put("description", d.description)
     put("createdAt", d.createdAt); put("updatedAt", d.updatedAt)
 }
 
 private fun flashcardDeckFromJson(o: JSONObject) = FlashcardDeck(
     id = o.getString("id"), name = o.getString("name"),
-    courseCode = o.optStringOrNull("courseCode"), description = o.optStringOrNull("description"),
+    courseCode = o.optStringOrNull("courseCode"), topicId = o.optStringOrNull("topicId"), description = o.optStringOrNull("description"),
     createdAt = o.optLong("createdAt", System.currentTimeMillis()),
     updatedAt = o.optLong("updatedAt", System.currentTimeMillis())
 )
@@ -466,7 +472,7 @@ private fun flashcardFromJson(o: JSONObject) = Flashcard(
 )
 
 private fun quizToJson(q: Quiz) = JSONObject().apply {
-    put("id", q.id); put("title", q.title); put("courseCode", q.courseCode); put("description", q.description)
+    put("id", q.id); put("title", q.title); put("courseCode", q.courseCode); put("topicId", q.topicId); put("description", q.description)
     put("passingScore", q.passingScore); put("shuffleQuestions", q.shuffleQuestions); put("shuffleChoices", q.shuffleChoices)
     put("timeLimitMinutes", q.timeLimitMinutes); put("feedbackMode", q.feedbackMode)
     put("createdAt", q.createdAt); put("updatedAt", q.updatedAt)
@@ -474,7 +480,7 @@ private fun quizToJson(q: Quiz) = JSONObject().apply {
 
 private fun quizFromJson(o: JSONObject) = Quiz(
     id = o.getString("id"), title = o.getString("title"), courseCode = o.optStringOrNull("courseCode"),
-    description = o.optStringOrNull("description"), passingScore = o.optInt("passingScore", 70).coerceIn(1, 100),
+    topicId = o.optStringOrNull("topicId"), description = o.optStringOrNull("description"), passingScore = o.optInt("passingScore", 70).coerceIn(1, 100),
     shuffleQuestions = o.optBoolean("shuffleQuestions", true), shuffleChoices = o.optBoolean("shuffleChoices", true),
     timeLimitMinutes = if (!o.has("timeLimitMinutes") || o.isNull("timeLimitMinutes")) null else o.optInt("timeLimitMinutes").takeIf { it > 0 },
     feedbackMode = o.optString("feedbackMode", "IMMEDIATE"),
@@ -518,11 +524,11 @@ private fun jsonImportRecordFromJson(o: JSONObject) = JsonImportRecord(
 
 private fun studyTopicToJson(x: StudyTopic) = JSONObject().apply {
     put("id", x.id); put("courseCode", x.courseCode); put("name", x.name); put("parentTopicId", x.parentTopicId)
-    put("examDate", x.examDate); put("priority", x.priority); put("createdAt", x.createdAt); put("updatedAt", x.updatedAt)
+    put("examDate", x.examDate); put("priority", x.priority); put("sortOrder", x.sortOrder); put("createdAt", x.createdAt); put("updatedAt", x.updatedAt)
 }
 private fun studyTopicFromJson(o: JSONObject) = StudyTopic(
     id=o.getString("id"), courseCode=o.getString("courseCode"), name=o.getString("name"), parentTopicId=o.optStringOrNull("parentTopicId"),
-    examDate=o.optStringOrNull("examDate"), priority=o.optInt("priority",3).coerceIn(1,5), createdAt=o.optLong("createdAt",System.currentTimeMillis()), updatedAt=o.optLong("updatedAt",System.currentTimeMillis())
+    examDate=o.optStringOrNull("examDate"), priority=o.optInt("priority",3).coerceIn(1,5), sortOrder=o.optInt("sortOrder",0).coerceAtLeast(0), createdAt=o.optLong("createdAt",System.currentTimeMillis()), updatedAt=o.optLong("updatedAt",System.currentTimeMillis())
 )
 private fun studyNoteToJson(x: StudyNote)=JSONObject().apply{put("id",x.id);put("courseCode",x.courseCode);put("topicId",x.topicId);put("title",x.title);put("body",x.body);put("tags",x.tags);put("createdAt",x.createdAt);put("updatedAt",x.updatedAt)}
 private fun studyNoteFromJson(o:JSONObject)=StudyNote(id=o.getString("id"),courseCode=o.optStringOrNull("courseCode"),topicId=o.optStringOrNull("topicId"),title=o.getString("title"),body=o.getString("body"),tags=o.optString("tags",""),createdAt=o.optLong("createdAt",System.currentTimeMillis()),updatedAt=o.optLong("updatedAt",System.currentTimeMillis()))
@@ -534,6 +540,9 @@ private fun studyGoalToJson(x:StudyGoal)=JSONObject().apply{put("id",x.id);put("
 private fun studyGoalFromJson(o:JSONObject)=StudyGoal(id=o.getString("id"),courseCode=o.optStringOrNull("courseCode"),topicTag=o.optStringOrNull("topicTag"),title=o.getString("title"),goalType=o.optString("goalType","CUSTOM"),targetValue=o.optInt("targetValue",1).coerceAtLeast(1),progressValue=o.optInt("progressValue",0).coerceAtLeast(0),dueDate=o.optStringOrNull("dueDate"),completed=o.optBoolean("completed",false),createdAt=o.optLong("createdAt",System.currentTimeMillis()),updatedAt=o.optLong("updatedAt",System.currentTimeMillis()))
 private fun studyPlanItemToJson(x:StudyPlanItem)=JSONObject().apply{put("id",x.id);put("courseCode",x.courseCode);put("topicTag",x.topicTag);put("title",x.title);put("plannedDate",x.plannedDate);put("minutes",x.minutes);put("kind",x.kind);put("completed",x.completed);put("createdAt",x.createdAt);put("updatedAt",x.updatedAt)}
 private fun studyPlanItemFromJson(o:JSONObject)=StudyPlanItem(id=o.getString("id"),courseCode=o.optStringOrNull("courseCode"),topicTag=o.optStringOrNull("topicTag"),title=o.getString("title"),plannedDate=o.optString("plannedDate",java.time.LocalDate.now().toString()),minutes=o.optInt("minutes",25).coerceIn(1,1440),kind=o.optString("kind","REVIEW"),completed=o.optBoolean("completed",false),createdAt=o.optLong("createdAt",System.currentTimeMillis()),updatedAt=o.optLong("updatedAt",System.currentTimeMillis()))
+private fun studyReviewProgressToJson(x:StudyReviewProgress)=JSONObject().apply{put("id",x.id);put("courseCode",x.courseCode);put("topicId",x.topicId);put("completed",x.completed);put("completedAt",x.completedAt);put("updatedAt",x.updatedAt)}
+private fun studyReviewProgressFromJson(o:JSONObject)=StudyReviewProgress(id=o.getString("id"),courseCode=o.getString("courseCode"),topicId=o.optStringOrNull("topicId"),completed=o.optBoolean("completed",false),completedAt=if(!o.has("completedAt")||o.isNull("completedAt"))null else o.optLong("completedAt"),updatedAt=o.optLong("updatedAt",System.currentTimeMillis()))
+
 private fun flashcardReviewEventToJson(x:FlashcardReviewEvent)=JSONObject().apply{put("id",x.id);put("cardId",x.cardId);put("deckId",x.deckId);put("courseCode",x.courseCode);put("rating",x.rating);put("reviewedAt",x.reviewedAt)}
 private fun flashcardReviewEventFromJson(o:JSONObject)=FlashcardReviewEvent(id=o.getString("id"),cardId=o.getString("cardId"),deckId=o.optStringOrNull("deckId"),courseCode=o.optStringOrNull("courseCode"),rating=o.optString("rating","GOOD"),reviewedAt=o.optLong("reviewedAt",System.currentTimeMillis()))
 private fun quizAnswerResultToJson(x:QuizAnswerResult)=JSONObject().apply{put("id",x.id);put("attemptId",x.attemptId);put("quizId",x.quizId);put("questionId",x.questionId);put("userAnswer",x.userAnswer);put("correctAnswer",x.correctAnswer);put("correct",x.correct);put("confidence",x.confidence);put("answeredAt",x.answeredAt)}

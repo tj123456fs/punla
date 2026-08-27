@@ -16,7 +16,8 @@ data class StudyJsonTopic(
     val name: String,
     val parentKey: String? = null,
     val examDate: String? = null,
-    val priority: Int = 3
+    val priority: Int = 3,
+    val sortOrder: Int = 0
 )
 
 data class StudyJsonNote(val title: String, val body: String, val topicKey: String? = null, val tags: String = "")
@@ -32,7 +33,7 @@ data class StudyJsonCard(
     val imageUri: String? = null,
     val occlusionJson: String = "[]"
 )
-data class StudyJsonDeck(val name: String, val description: String? = null, val cards: List<StudyJsonCard>)
+data class StudyJsonDeck(val name: String, val description: String? = null, val topicKey: String? = null, val cards: List<StudyJsonCard>)
 data class StudyJsonQuestion(
     val type: String,
     val prompt: String,
@@ -43,7 +44,7 @@ data class StudyJsonQuestion(
     val metadataJson: String = "{}",
     val imageUri: String? = null
 )
-data class StudyJsonQuiz(val title: String, val description: String? = null, val passingScore: Int = 70, val questions: List<StudyJsonQuestion>)
+data class StudyJsonQuiz(val title: String, val description: String? = null, val topicKey: String? = null, val passingScore: Int = 70, val questions: List<StudyJsonQuestion>)
 
 data class StudyJsonBundle(
     val fileId: String,
@@ -148,7 +149,8 @@ object StudyJsonImport {
                 name = name.take(200),
                 parentKey = firstText(o, "parentKey", "parent")?.take(100),
                 examDate = validExam,
-                priority = o.optInt("priority", 3).coerceIn(1, 5)
+                priority = o.optInt("priority", 3).coerceIn(1, 5),
+                sortOrder = o.optInt("sortOrder", o.optInt("order", i)).coerceAtLeast(0)
             )
         }
         if (a.length() > MAX_TOPICS) warnings += "Only the first $MAX_TOPICS topics were imported."
@@ -255,7 +257,7 @@ object StudyJsonImport {
                 total++
             }
             if (cards.isNotEmpty()) {
-                out += StudyJsonDeck(name.take(120), firstText(o, "description", "notes")?.take(2_000), cards)
+                out += StudyJsonDeck(name.take(120), firstText(o, "description", "notes")?.take(2_000), firstText(o, "topicKey", "topic", "module")?.take(100), cards)
             } else {
                 skipped++
             }
@@ -268,7 +270,7 @@ object StudyJsonImport {
 
     private fun parseQuizzes(a: JSONArray?, warnings: MutableList<String>): List<StudyJsonQuiz> {
         if(a==null)return emptyList();val out=mutableListOf<StudyJsonQuiz>();var total=0
-        for(i in 0 until minOf(a.length(),MAX_QUIZZES)){val o=a.optJSONObject(i)?:continue;val title=firstText(o,"title","name")?:continue;val qa=o.optJSONArray("questions")?:continue;val questions=mutableListOf<StudyJsonQuestion>();for(j in 0 until qa.length()){if(total>=MAX_QUESTIONS)break;parseQuestion(qa.optJSONObject(j),j,warnings)?.let{questions+=it;total++}};if(questions.isNotEmpty())out+=StudyJsonQuiz(title.take(120),firstText(o,"description","notes")?.take(2_000),o.optInt("passingScore",70).coerceIn(1,100),questions)}
+        for(i in 0 until minOf(a.length(),MAX_QUIZZES)){val o=a.optJSONObject(i)?:continue;val title=firstText(o,"title","name")?:continue;val qa=o.optJSONArray("questions")?:continue;val questions=mutableListOf<StudyJsonQuestion>();for(j in 0 until qa.length()){if(total>=MAX_QUESTIONS)break;parseQuestion(qa.optJSONObject(j),j,warnings)?.let{questions+=it;total++}};if(questions.isNotEmpty())out+=StudyJsonQuiz(title.take(120),firstText(o,"description","notes")?.take(2_000),firstText(o,"topicKey","topic","module")?.take(100),o.optInt("passingScore",70).coerceIn(1,100),questions)}
         if(total>=MAX_QUESTIONS)warnings+="The bundle reached the $MAX_QUESTIONS quiz-question limit; remaining questions were skipped.";return out
     }
 

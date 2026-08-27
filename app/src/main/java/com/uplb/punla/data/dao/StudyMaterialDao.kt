@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface StudyMaterialDao {
-    @Query("SELECT * FROM study_topics ORDER BY courseCode COLLATE NOCASE, name COLLATE NOCASE")
+    @Query("SELECT * FROM study_topics ORDER BY courseCode COLLATE NOCASE, sortOrder ASC, name COLLATE NOCASE")
     fun observeTopics(): Flow<List<StudyTopic>>
     @Query("SELECT * FROM study_topics") suspend fun getTopics(): List<StudyTopic>
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsertTopic(item: StudyTopic)
@@ -51,6 +51,12 @@ interface StudyMaterialDao {
     @Delete suspend fun deletePlanItem(item: StudyPlanItem)
     @Query("DELETE FROM study_plan_items WHERE courseCode = :courseCode COLLATE NOCASE AND title LIKE 'Exam prep:%'") suspend fun clearGeneratedExamPlan(courseCode: String)
 
+    @Query("SELECT * FROM study_review_progress ORDER BY updatedAt DESC") fun observeReviewProgress(): Flow<List<StudyReviewProgress>>
+    @Query("SELECT * FROM study_review_progress") suspend fun getReviewProgress(): List<StudyReviewProgress>
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsertReviewProgress(item: StudyReviewProgress)
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsertReviewProgress(items: List<StudyReviewProgress>)
+    @Query("DELETE FROM study_review_progress WHERE topicId = :topicId") suspend fun deleteReviewProgressForTopic(topicId: String)
+
     @Query("SELECT * FROM flashcard_review_events ORDER BY reviewedAt DESC") fun observeFlashcardReviewEvents(): Flow<List<FlashcardReviewEvent>>
     @Query("SELECT * FROM flashcard_review_events ORDER BY reviewedAt DESC") suspend fun getFlashcardReviewEvents(): List<FlashcardReviewEvent>
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsertFlashcardReviewEvent(item: FlashcardReviewEvent)
@@ -73,6 +79,7 @@ interface StudyMaterialDao {
     @Query("DELETE FROM mistake_records") suspend fun clearMistakes()
     @Query("DELETE FROM study_goals") suspend fun clearGoals()
     @Query("DELETE FROM study_plan_items") suspend fun clearPlanItems()
+    @Query("DELETE FROM study_review_progress") suspend fun clearReviewProgress()
     @Query("DELETE FROM flashcard_review_events") suspend fun clearFlashcardReviewEvents()
     @Query("DELETE FROM quiz_answer_results") suspend fun clearAnswerResults()
     @Query("DELETE FROM question_bank") suspend fun clearQuestionBank()

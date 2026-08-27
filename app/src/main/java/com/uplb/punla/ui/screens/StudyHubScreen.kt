@@ -1,6 +1,7 @@
 package com.uplb.punla.ui.screens
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -42,8 +43,8 @@ private val STUDY_TABS = listOf("Overview", "Queue", "Mistakes", "Notes", "Plan"
 @Composable
 fun StudyHubScreen(
     vm: PunlaViewModel,
-    onOpenFlashcards: () -> Unit,
-    onOpenQuizzes: () -> Unit,
+    onOpenFlashcards: (String?, String?, Boolean) -> Unit,
+    onOpenQuizzes: (String?, String?, Boolean) -> Unit,
     onOpenFocus: (String?) -> Unit
 ) {
     val topics by vm.studyTopics.collectAsState()
@@ -52,6 +53,7 @@ fun StudyHubScreen(
     val mistakes by vm.mistakeRecords.collectAsState()
     val goals by vm.studyGoals.collectAsState()
     val planItems by vm.studyPlanItems.collectAsState()
+    val reviewProgress by vm.studyReviewProgress.collectAsState()
     val answerResults by vm.quizAnswerResults.collectAsState()
     val flashcardReviews by vm.flashcardReviewEvents.collectAsState()
     val bank by vm.questionBank.collectAsState()
@@ -67,6 +69,7 @@ fun StudyHubScreen(
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var selectedCourse by rememberSaveable { mutableStateOf<String?>(null) }
     var smartSession by remember { mutableStateOf<List<StudyEngine.QueueItem>?>(null) }
+    var activeReview by remember { mutableStateOf<StudyReviewTarget?>(null) }
     val courseCodes = remember(decks, quizzes, classes, deadlines, topics, notes, formulas, goals, planItems, bank) {
         buildSet {
             addAll(classes.map { it.code })
@@ -140,6 +143,19 @@ fun StudyHubScreen(
         }
     }
 
+    activeReview?.let { target ->
+        ReviewReadingScreen(
+            target = target,
+            notes = notes,
+            formulas = formulas,
+            topics = topics,
+            reviewProgress = reviewProgress,
+            vm = vm,
+            onExit = { activeReview = null }
+        )
+        return
+    }
+
     smartSession?.let { activeQueue ->
         SmartStudySession(
             queue = activeQueue,
@@ -163,12 +179,12 @@ fun StudyHubScreen(
             }
         }
         when (selectedTab) {
-            1 -> QueueTab(visibleQueue, onOpenFlashcards, onOpenQuizzes, onOpenFocus, vm)
+            1 -> QueueTab(visibleQueue, { onOpenFlashcards(null, null, false) }, { onOpenQuizzes(null, null, false) }, onOpenFocus, vm)
             2 -> MistakesTab(mistakes, vm)
             3 -> NotesTab(notes, formulas, topics, selectedCourse, { creatingNote = true }, { showNoteEditor = it }, { creatingFormula = true }, { showFormulaEditor = it }, vm)
             4 -> PlanTab(planItems, goals, topics, courseCodes, selectedCourse, { creatingPlan = true }, { showPlanEditor = it }, { creatingGoal = true }, { showGoalEditor = it }, vm)
             5 -> AnalyticsTab(weak, attempts, answerResults, studyDays, streak, cards, sessions)
-            6 -> QuestionBankTab(bank, quizzes, questions, selectedCourse, vm, onOpenQuizzes) { msg -> practiceMessage = msg }
+            6 -> QuestionBankTab(bank, quizzes, questions, selectedCourse, vm, { onOpenQuizzes(selectedCourse, null, false) }) { msg -> practiceMessage = msg }
             else -> OverviewTab(
                 courseCodes = courseCodes,
                 selectedCourse = selectedCourse,
@@ -178,6 +194,7 @@ fun StudyHubScreen(
                 decks = decks,
                 cards = cards,
                 quizzes = quizzes,
+                questions = questions,
                 attempts = attempts,
                 notes = notes,
                 formulas = formulas,
@@ -185,6 +202,7 @@ fun StudyHubScreen(
                 mistakes = mistakes,
                 planItems = planItems,
                 goals = goals,
+                reviewProgress = reviewProgress,
                 examDates = examDates,
                 streak = streak,
                 onStudyNow = { if (visibleQueue.isEmpty()) selectedTab = 4 else smartSession = visibleQueue },
@@ -193,6 +211,7 @@ fun StudyHubScreen(
                 onOpenFocus = onOpenFocus,
                 onAddTopic = { showTopicEditor = true },
                 onImportStudy = { studyPicker.launch(arrayOf("application/json", "text/json", "text/plain", "application/octet-stream")) },
+                onOpenReview = { activeReview = it },
                 vm = vm
             )
         }
@@ -230,8 +249,8 @@ fun StudyHubScreen(
 @Composable
 private fun OverviewTab(
     courseCodes: List<String>, selectedCourse: String?, onSelectCourse: (String?) -> Unit,
-    queue: List<StudyEngine.QueueItem>, weak: List<StudyEngine.WeakTopic>, decks: List<FlashcardDeck>, cards: List<Flashcard>, quizzes: List<Quiz>, attempts: List<QuizAttempt>, notes: List<StudyNote>, formulas: List<FormulaReference>, topics: List<StudyTopic>, mistakes: List<MistakeRecord>, planItems: List<StudyPlanItem>, goals: List<StudyGoal>, examDates: Map<String, LocalDate>, streak: Int,
-    onStudyNow: () -> Unit, onOpenFlashcards: () -> Unit, onOpenQuizzes: () -> Unit, onOpenFocus: (String?) -> Unit, onAddTopic: () -> Unit, onImportStudy: () -> Unit, vm: PunlaViewModel
+    queue: List<StudyEngine.QueueItem>, weak: List<StudyEngine.WeakTopic>, decks: List<FlashcardDeck>, cards: List<Flashcard>, quizzes: List<Quiz>, questions: List<QuizQuestion>, attempts: List<QuizAttempt>, notes: List<StudyNote>, formulas: List<FormulaReference>, topics: List<StudyTopic>, mistakes: List<MistakeRecord>, planItems: List<StudyPlanItem>, goals: List<StudyGoal>, reviewProgress: List<StudyReviewProgress>, examDates: Map<String, LocalDate>, streak: Int,
+    onStudyNow: () -> Unit, onOpenFlashcards: (String?, String?, Boolean) -> Unit, onOpenQuizzes: (String?, String?, Boolean) -> Unit, onOpenFocus: (String?) -> Unit, onAddTopic: () -> Unit, onImportStudy: () -> Unit, onOpenReview: (StudyReviewTarget) -> Unit, vm: PunlaViewModel
 ) {
     val hp = punlaScreenHorizontalPadding()
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = hp, end = hp, top = 8.dp, bottom = 110.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -271,16 +290,26 @@ private fun OverviewTab(
                 CourseHubCard(
                     selectedCourse, readiness, due, courseQuizzes.size,
                     notes.count { it.courseCode.equals(selectedCourse, true) }, examDates[selectedCourse.lowercase()],
-                    onOpenFlashcards, onOpenQuizzes, { onOpenFocus(selectedCourse) },
+                    { onOpenFlashcards(selectedCourse, null, false) }, { onOpenQuizzes(selectedCourse, null, false) }, { onOpenFocus(selectedCourse) },
                     onPlanExam = examDates[selectedCourse.lowercase()]?.let { exam -> { vm.generateExamPlan(selectedCourse, exam, 50) } }
                 )
             }
-            val courseTopics = topics.filter { it.courseCode.equals(selectedCourse, true) }
-            if (courseTopics.isNotEmpty()) item {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Topics", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                    courseTopics.forEach { t -> Text("• ${t.name}${t.examDate?.let { " · exam $it" } ?: ""}", style = MaterialTheme.typography.bodyMedium) }
-                }
+            item {
+                CourseLearningPath(
+                    course = selectedCourse,
+                    topics = topics,
+                    notes = notes,
+                    formulas = formulas,
+                    decks = decks,
+                    cards = cards,
+                    quizzes = quizzes,
+                    questions = questions,
+                    attempts = attempts,
+                    reviewProgress = reviewProgress,
+                    onOpenReview = onOpenReview,
+                    onOpenFlashcards = onOpenFlashcards,
+                    onOpenQuizzes = onOpenQuizzes
+                )
             }
         } else {
             item {
@@ -295,8 +324,8 @@ private fun OverviewTab(
         item { SectionLabel("Quick actions", icon = Icons.Default.Bolt) }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onOpenFlashcards, modifier = Modifier.weight(1f)) { Text("Flashcards") }
-                OutlinedButton(onClick = onOpenQuizzes, modifier = Modifier.weight(1f)) { Text("Quizzes") }
+                OutlinedButton(onClick = { onOpenFlashcards(selectedCourse, null, false) }, modifier = Modifier.weight(1f)) { Text("Flashcards") }
+                OutlinedButton(onClick = { onOpenQuizzes(selectedCourse, null, false) }, modifier = Modifier.weight(1f)) { Text("Quizzes") }
             }
         }
         item { OutlinedButton(onClick = onImportStudy, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.FileOpen, null); Spacer(Modifier.width(8.dp)); Text("Import Punla study pack JSON") } }
@@ -304,6 +333,260 @@ private fun OverviewTab(
             val todayPlan = planItems.count { !it.completed && it.plannedDate <= LocalDate.now().toString() }
             val openGoals = goals.count { !it.completed }
             Text("$todayPlan plan item${if (todayPlan == 1) "" else "s"} ready · $openGoals active goal${if (openGoals == 1) "" else "s"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+private data class StudyReviewTarget(
+    val courseCode: String,
+    val topicId: String?,
+    val title: String,
+    val overall: Boolean = false
+)
+
+private fun studyTopicScopeIds(rootTopicId: String, topics: List<StudyTopic>): Set<String> {
+    val ids = linkedSetOf(rootTopicId)
+    var changed = true
+    while (changed) {
+        changed = false
+        topics.forEach { topic ->
+            if (topic.parentTopicId?.let { it in ids } == true && ids.add(topic.id)) changed = true
+        }
+    }
+    return ids
+}
+
+@Composable
+private fun CourseLearningPath(
+    course: String,
+    topics: List<StudyTopic>,
+    notes: List<StudyNote>,
+    formulas: List<FormulaReference>,
+    decks: List<FlashcardDeck>,
+    cards: List<Flashcard>,
+    quizzes: List<Quiz>,
+    questions: List<QuizQuestion>,
+    attempts: List<QuizAttempt>,
+    reviewProgress: List<StudyReviewProgress>,
+    onOpenReview: (StudyReviewTarget) -> Unit,
+    onOpenFlashcards: (String?, String?, Boolean) -> Unit,
+    onOpenQuizzes: (String?, String?, Boolean) -> Unit
+) {
+    val courseTopics = topics.filter { it.courseCode.equals(course, true) }
+    val modules = courseTopics.filter { it.parentTopicId == null }.sortedWith(compareBy<StudyTopic> { it.sortOrder }.thenBy { it.name.lowercase() })
+    val courseDecks = decks.filter { it.courseCode.equals(course, true) }
+    val courseQuizzes = quizzes.filter { it.courseCode.equals(course, true) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Course learning path", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("Review → Flashcards → Quiz for each module, then an overall review. Nothing is locked.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(Icons.Default.Route, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        }
+
+        if (modules.isEmpty()) {
+            Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f)) {
+                Text("Add top-level topics to turn this course into modules. Existing course-level notes, cards and quizzes stay available below as Overall Review material.", modifier = Modifier.padding(14.dp), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+
+        modules.forEachIndexed { index, module ->
+            val scopeIds = studyTopicScopeIds(module.id, courseTopics)
+            val moduleNotes = notes.filter { it.courseCode.equals(course, true) && it.topicId?.let { id -> id in scopeIds } == true }
+            val moduleFormulas = formulas.filter { it.courseCode.equals(course, true) && it.topicId?.let { id -> id in scopeIds } == true }
+            val moduleDecks = courseDecks.filter { it.topicId?.let { id -> id in scopeIds } == true }
+            val deckIds = moduleDecks.mapTo(hashSetOf()) { it.id }
+            val moduleCards = cards.filter { it.deckId in deckIds }
+            val moduleQuizzes = courseQuizzes.filter { it.topicId?.let { id -> id in scopeIds } == true }
+            val moduleQuestionCount = questions.count { q -> moduleQuizzes.any { it.id == q.quizId } }
+            val hasReview = moduleNotes.isNotEmpty() || moduleFormulas.isNotEmpty()
+            val reviewDone = hasReview && reviewProgress.any { it.id == StudyReviewProgress.key(course, module.id) && it.completed }
+            val cardsDone = moduleCards.isNotEmpty() && moduleCards.all { it.reviewCount > 0 }
+            val quizDone = moduleQuizzes.isNotEmpty() && moduleQuizzes.all { quiz -> attempts.any { it.quizId == quiz.id && it.percent() >= quiz.passingScore } }
+            val hasCards = moduleCards.isNotEmpty()
+            val hasQuiz = moduleQuizzes.isNotEmpty()
+            val next = when {
+                hasReview && !reviewDone -> "Review"
+                hasCards && !cardsDone -> "Flashcards"
+                hasQuiz && !quizDone -> "Quiz"
+                hasReview || hasCards || hasQuiz -> "Module complete"
+                else -> "Add study material"
+            }
+
+            Card(shape = RoundedCornerShape(18.dp)) {
+                Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                            Text("${index + 1}", modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(module.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text("${moduleNotes.size} review note${if (moduleNotes.size == 1) "" else "s"} · ${moduleCards.size} cards · $moduleQuestionCount questions", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        StudyStepPill("Review", reviewDone, hasReview, Modifier.weight(1f))
+                        StudyStepPill("Cards", cardsDone, hasCards, Modifier.weight(1f))
+                        StudyStepPill("Quiz", quizDone, hasQuiz, Modifier.weight(1f))
+                    }
+                    Text("Next: $next", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        OutlinedButton(
+                            onClick = { onOpenReview(StudyReviewTarget(course, module.id, "Module ${index + 1} · ${module.name}")) },
+                            enabled = hasReview,
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 6.dp)
+                        ) { Text("Review", maxLines = 1) }
+                        OutlinedButton(
+                            onClick = { onOpenFlashcards(course, module.id, false) },
+                            enabled = hasCards,
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 6.dp)
+                        ) { Text("Cards", maxLines = 1) }
+                        Button(
+                            onClick = { onOpenQuizzes(course, module.id, false) },
+                            enabled = hasQuiz,
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 6.dp)
+                        ) { Text("Quiz", maxLines = 1) }
+                    }
+                }
+            }
+        }
+
+        val overallNotes = notes.filter { it.courseCode.equals(course, true) && it.topicId == null }
+        val overallFormulas = formulas.filter { it.courseCode.equals(course, true) && it.topicId == null }
+        val overallDecks = courseDecks.filter { it.topicId == null }
+        val overallDeckIds = overallDecks.mapTo(hashSetOf()) { it.id }
+        val overallCards = cards.filter { it.deckId in overallDeckIds }
+        val overallQuizzes = courseQuizzes.filter { it.topicId == null }
+        val overallQuestions = questions.count { q -> overallQuizzes.any { it.id == q.quizId } }
+        val hasOverallReview = overallNotes.isNotEmpty() || overallFormulas.isNotEmpty()
+        val overallReviewDone = hasOverallReview && reviewProgress.any { it.id == StudyReviewProgress.key(course, null) && it.completed }
+        val overallCardsDone = overallCards.isNotEmpty() && overallCards.all { it.reviewCount > 0 }
+        val overallQuizDone = overallQuizzes.isNotEmpty() && overallQuizzes.all { quiz -> attempts.any { it.quizId == quiz.id && it.percent() >= quiz.passingScore } }
+
+        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = .72f))) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.AutoStories, contentDescription = null, tint = MaterialTheme.colorScheme.onTertiaryContainer)
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Overall Review", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onTertiaryContainer)
+                        Text("Course-wide consolidation after the modules — still available anytime for cramming.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = .8f))
+                    }
+                }
+                Text("${overallNotes.size} review note${if (overallNotes.size == 1) "" else "s"} · ${overallCards.size} cards · $overallQuestions questions", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    StudyStepPill("Review", overallReviewDone, hasOverallReview, Modifier.weight(1f))
+                    StudyStepPill("Cards", overallCardsDone, overallCards.isNotEmpty(), Modifier.weight(1f))
+                    StudyStepPill("Quiz", overallQuizDone, overallQuizzes.isNotEmpty(), Modifier.weight(1f))
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedButton(onClick = { onOpenReview(StudyReviewTarget(course, null, "$course · Overall Review", overall = true)) }, enabled = hasOverallReview, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 6.dp)) { Text("Review", maxLines = 1) }
+                    OutlinedButton(onClick = { onOpenFlashcards(course, null, true) }, enabled = overallCards.isNotEmpty(), modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 6.dp)) { Text("Cards", maxLines = 1) }
+                    Button(onClick = { onOpenQuizzes(course, null, true) }, enabled = overallQuizzes.isNotEmpty(), modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 6.dp)) { Text("Final quiz", maxLines = 1) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StudyStepPill(label: String, done: Boolean, available: Boolean, modifier: Modifier = Modifier) {
+    val container = when {
+        done -> MaterialTheme.colorScheme.primaryContainer
+        available -> MaterialTheme.colorScheme.surfaceVariant
+        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .35f)
+    }
+    val content = when {
+        done -> MaterialTheme.colorScheme.onPrimaryContainer
+        available -> MaterialTheme.colorScheme.onSurfaceVariant
+        else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .55f)
+    }
+    Surface(modifier = modifier, shape = RoundedCornerShape(999.dp), color = container) {
+        Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+            if (done) { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp), tint = content); Spacer(Modifier.width(4.dp)) }
+            Text(if (available) label else "$label —", style = MaterialTheme.typography.labelSmall, color = content, maxLines = 1)
+        }
+    }
+}
+
+@Composable
+private fun ReviewReadingScreen(
+    target: StudyReviewTarget,
+    notes: List<StudyNote>,
+    formulas: List<FormulaReference>,
+    topics: List<StudyTopic>,
+    reviewProgress: List<StudyReviewProgress>,
+    vm: PunlaViewModel,
+    onExit: () -> Unit
+) {
+    BackHandler(onBack = onExit)
+    val courseTopics = topics.filter { it.courseCode.equals(target.courseCode, true) }
+    val scopeIds = target.topicId?.let { studyTopicScopeIds(it, courseTopics) }
+    val shownNotes = notes.filter { note ->
+        note.courseCode.equals(target.courseCode, true) && if (target.overall) note.topicId == null else note.topicId?.let { id -> id in scopeIds.orEmpty() } == true
+    }.sortedBy { note -> courseTopics.firstOrNull { it.id == note.topicId }?.sortOrder ?: Int.MAX_VALUE }
+    val shownFormulas = formulas.filter { formula ->
+        formula.courseCode.equals(target.courseCode, true) && if (target.overall) formula.topicId == null else formula.topicId?.let { id -> id in scopeIds.orEmpty() } == true
+    }
+    val completed = reviewProgress.any { it.id == StudyReviewProgress.key(target.courseCode, target.topicId) && it.completed }
+    val hp = punlaScreenHorizontalPadding(820.dp)
+
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = hp, end = hp, top = 12.dp, bottom = 110.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onExit) { Icon(Icons.Default.ArrowBack, contentDescription = "Back") }
+                Column(Modifier.weight(1f)) {
+                    Text(target.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                    Text("Read first, then use the module flashcards and quiz for active recall.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        if (shownNotes.isEmpty() && shownFormulas.isEmpty()) {
+            item { EmptyState(Icons.Default.MenuBook, "No reviewer has been attached to this section yet.") }
+        }
+        items(shownNotes, key = { it.id }) { note ->
+            Card(shape = RoundedCornerShape(18.dp)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(note.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    note.topicId?.let { id -> courseTopics.firstOrNull { it.id == id }?.let { Text(studyTopicPath(it, courseTopics), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary) } }
+                    Text(note.body, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+        if (shownFormulas.isNotEmpty()) {
+            item { SectionLabel("Formula / reference sheet", icon = Icons.Default.Functions) }
+            items(shownFormulas, key = { it.id }) { f ->
+                Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f)) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(f.title, fontWeight = FontWeight.SemiBold)
+                        Text(StudyMathText.render(f.expression), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                        f.variables?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                        f.units?.let { Text("Units: $it", style = MaterialTheme.typography.bodySmall) }
+                        f.workedExample?.let { Text("Worked: ${StudyMathText.render(it)}", style = MaterialTheme.typography.bodySmall) }
+                    }
+                }
+            }
+        }
+        item {
+            Button(
+                onClick = { vm.setReviewCompleted(target.courseCode, target.topicId, !completed) },
+                enabled = shownNotes.isNotEmpty() || shownFormulas.isNotEmpty(),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)
+            ) {
+                Icon(if (completed) Icons.Default.Undo else Icons.Default.CheckCircle, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(if (completed) "Mark review incomplete" else "Mark review complete")
+            }
         }
     }
 }
@@ -574,6 +857,7 @@ private fun TopicDialog(
     var name by rememberSaveable { mutableStateOf("") }
     var exam by rememberSaveable { mutableStateOf("") }
     var priority by rememberSaveable { mutableIntStateOf(3) }
+    var sortOrder by rememberSaveable { mutableStateOf("0") }
     var parentId by rememberSaveable { mutableStateOf<String?>(null) }
     val parentOptions = topics.filter { it.courseCode.equals(course, true) }
     val labels = listOf("No parent") + parentOptions.map { it.name }
@@ -594,13 +878,14 @@ private fun TopicDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(exam, { exam = it }, label = { Text("Exam date (optional)") }, singleLine = true)
+                OutlinedTextField(sortOrder, { sortOrder = it.filter(Char::isDigit).take(3) }, label = { Text("Module / topic order") }, supportingText = { Text("Lower numbers appear first in the course learning path.") }, singleLine = true)
                 Text("Priority")
                 SegmentedControl(listOf("1", "2", "3", "4", "5"), priority - 1, { priority = it + 1 })
             }
         },
         confirmButton = {
             TextButton(
-                onClick = { onSave(StudyTopic(courseCode = course.trim(), name = name.trim(), parentTopicId = parentId, examDate = exam.trim().ifBlank { null }, priority = priority)) },
+                onClick = { onSave(StudyTopic(courseCode = course.trim(), name = name.trim(), parentTopicId = parentId, examDate = exam.trim().ifBlank { null }, priority = priority, sortOrder = sortOrder.toIntOrNull() ?: 0)) },
                 enabled = course.isNotBlank() && name.isNotBlank() && (exam.isBlank() || runCatching { LocalDate.parse(exam) }.isSuccess)
             ) { Text("Save") }
         },

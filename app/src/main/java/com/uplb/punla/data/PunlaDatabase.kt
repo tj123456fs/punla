@@ -43,6 +43,7 @@ import com.uplb.punla.data.entity.FormulaReference
 import com.uplb.punla.data.entity.MistakeRecord
 import com.uplb.punla.data.entity.StudyGoal
 import com.uplb.punla.data.entity.StudyPlanItem
+import com.uplb.punla.data.entity.StudyReviewProgress
 import com.uplb.punla.data.entity.QuizAnswerResult
 import com.uplb.punla.data.entity.FlashcardReviewEvent
 import com.uplb.punla.data.entity.QuestionBankItem
@@ -74,13 +75,14 @@ import com.uplb.punla.data.entity.QuestionBankItem
         MistakeRecord::class,
         StudyGoal::class,
         StudyPlanItem::class,
+        StudyReviewProgress::class,
         FlashcardReviewEvent::class,
         QuizAnswerResult::class,
         QuestionBankItem::class
     ],
     // v7 -> v8: per-occurrence attendance history used by the ongoing
     // class notification and the schedule/dashboard attendance controls.
-    version = 11,
+    version = 12,
     exportSchema = false
 )
 abstract class PunlaDatabase : RoomDatabase() {
@@ -364,6 +366,26 @@ abstract class PunlaDatabase : RoomDatabase() {
             }
         }
 
+
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `study_topics` ADD COLUMN `sortOrder` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `flashcard_decks` ADD COLUMN `topicId` TEXT")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_flashcard_decks_courseCode` ON `flashcard_decks` (`courseCode`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_flashcard_decks_topicId` ON `flashcard_decks` (`topicId`)")
+                db.execSQL("ALTER TABLE `quizzes` ADD COLUMN `topicId` TEXT")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_quizzes_courseCode` ON `quizzes` (`courseCode`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_quizzes_topicId` ON `quizzes` (`topicId`)")
+                db.execSQL("""CREATE TABLE IF NOT EXISTS `study_review_progress` (
+                    `id` TEXT NOT NULL, `courseCode` TEXT NOT NULL, `topicId` TEXT, `completed` INTEGER NOT NULL,
+                    `completedAt` INTEGER, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`)
+                )""".trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_study_review_progress_courseCode` ON `study_review_progress` (`courseCode`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_study_review_progress_topicId` ON `study_review_progress` (`topicId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_study_review_progress_completed` ON `study_review_progress` (`completed`)")
+            }
+        }
+
         fun get(context: Context): PunlaDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -371,7 +393,7 @@ abstract class PunlaDatabase : RoomDatabase() {
                     PunlaDatabase::class.java,
                     "punla.db"
                 )
-                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
                     // Very old development installs never had migration specs.
                     // Preserve current v6+ personal data; only pre-v6 schemas
                     // may still be recreated rather than crashing at launch.
