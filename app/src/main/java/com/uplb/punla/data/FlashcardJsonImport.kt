@@ -15,7 +15,9 @@ data class FlashcardJsonCard(
     val tags: String = "",
     val starred: Boolean = false,
     val reverseEnabled: Boolean = false,
-    val cardType: String = FlashcardTypes.BASIC
+    val cardType: String = FlashcardTypes.BASIC,
+    val imageUri: String? = null,
+    val occlusionJson: String = "[]"
 )
 
 data class FlashcardJsonDeck(
@@ -29,7 +31,7 @@ data class FlashcardJsonDeck(
 
 object FlashcardJsonImport {
     const val FILE_ID = PunlaJsonFileIds.FLASHCARD_DECK
-    const val VERSION = 2
+    const val VERSION = 3
     const val MAX_FILE_CHARS = 4_000_000
     const val MAX_CARDS = 5_000
 
@@ -111,11 +113,20 @@ object FlashcardJsonImport {
                 tags = parseTags(obj.opt("tags")).take(1_000),
                 starred = obj.optBoolean("starred", false),
                 reverseEnabled = obj.optBoolean("reverseEnabled", obj.optBoolean("reverse", false)),
-                cardType = if (cardType == FlashcardTypes.CLOZE && com.uplb.punla.data.entity.ClozeText.hasCloze(front)) cardType else FlashcardTypes.BASIC
+                cardType = if (cardType == FlashcardTypes.CLOZE && com.uplb.punla.data.entity.ClozeText.hasCloze(front)) cardType else FlashcardTypes.BASIC,
+                imageUri = firstText(obj, "imageUri", "image", "imageUrl")?.take(5_000),
+                occlusionJson = parseOcclusion(obj.opt("occlusion"))
             )
         }
         if (skipped > 0) warnings += "$skipped invalid card${if (skipped == 1) " was" else "s were"} skipped."
         return cards
+    }
+
+    private fun parseOcclusion(value: Any?): String = when (value) {
+        is JSONArray -> value.toString()
+        is JSONObject -> JSONArray().put(value).toString()
+        is String -> runCatching { JSONArray(value).toString() }.getOrDefault("[]")
+        else -> "[]"
     }
 
     private fun parseTags(value: Any?): String = when (value) {
@@ -159,6 +170,8 @@ object FlashcardJsonExport {
                         if (card.starred) put("starred", true)
                         if (card.reverseEnabled) put("reverseEnabled", true)
                         if (card.cardType != FlashcardTypes.BASIC) put("cardType", card.cardType)
+                        card.imageUri?.let { put("imageUri", it) }
+                        if (card.occlusionJson != "[]") put("occlusion", runCatching { JSONArray(card.occlusionJson) }.getOrDefault(JSONArray()))
                     })
                 }
             })

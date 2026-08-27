@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.NearMe
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -65,7 +66,8 @@ fun DashboardScreen(
     onOpenBudget: () -> Unit = {},
     onOpenDeadlines: () -> Unit = {},
     onOpenChecklist: () -> Unit = {},
-    onOpenPomodoro: (String?) -> Unit = {}
+    onOpenPomodoro: (String?) -> Unit = {},
+    onOpenStudy: () -> Unit = {}
 ) {
     val classes by vm.classes.collectAsState()
     val deadlines by vm.deadlines.collectAsState()
@@ -75,6 +77,9 @@ fun DashboardScreen(
     val checklistItems by vm.checklistItems.collectAsState()
     val studySessions by vm.studySessions.collectAsState()
     val studyStreak by vm.currentStudyStreak.collectAsState()
+    val flashcards by vm.flashcards.collectAsState()
+    val mistakes by vm.mistakeRecords.collectAsState()
+    val studyPlan by vm.studyPlanItems.collectAsState()
     // Roadmap C — gates "No classes scheduled" / "Nothing due" / weekly
     // empty state so they don't flash for one frame before Room's first
     // real emission lands on a cold launch.
@@ -363,6 +368,29 @@ fun DashboardScreen(
                             )
                         }
                     }
+                }
+            }
+        }
+
+        item {
+            val dueCards = flashcards.count { it.isDue() }
+            val dueMistakes = mistakes.count { !it.resolved && it.retryAt <= System.currentTimeMillis() }
+            val duePlan = studyPlan.count { !it.completed && it.plannedDate <= java.time.LocalDate.now().toString() }
+            GlassCard(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp).clickable { onOpenStudy() },
+                contentPadding = PaddingValues(14.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.School, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Study now", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
+                        Text(
+                            if (dueCards + dueMistakes + duePlan == 0) "Open Study Hub to plan your next session." else "$dueCards cards · $dueMistakes mistakes · $duePlan plan items ready",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

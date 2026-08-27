@@ -216,6 +216,11 @@ class PunlaRepository(context: Context) {
         get() = prefs.getBoolean("quiet_hours_enabled", true)
         set(value) = prefs.edit().putBoolean("quiet_hours_enabled", value).apply()
 
+    /** Smart study queue, exam-prep, and before/after-class review nudges. */
+    var studyRemindersEnabled: Boolean
+        get() = prefs.getBoolean("study_reminders_enabled", true)
+        set(value) = prefs.edit().putBoolean("study_reminders_enabled", value).apply()
+
     // ---- Weekly budget (Weekly Budgeting feature) ----
 
     var budgetPeriod: BudgetPeriod

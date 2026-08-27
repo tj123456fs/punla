@@ -53,6 +53,7 @@ import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Style
 import androidx.compose.material.icons.filled.Timer
@@ -103,12 +104,14 @@ import com.uplb.punla.ui.screens.StudyAnalysisScreen
 import com.uplb.punla.ui.screens.AssistantScreen
 import com.uplb.punla.ui.screens.FlashcardsScreen
 import com.uplb.punla.ui.screens.QuizScreen
+import com.uplb.punla.ui.screens.StudyHubScreen
 import com.uplb.punla.ui.theme.appBackground
 import com.uplb.punla.ui.theme.PunlaDisplay
 import com.uplb.punla.ui.theme.PunlaMono
 import com.uplb.punla.ui.theme.PunlaTheme
 import com.uplb.punla.worker.BackupNudgeWorker
 import com.uplb.punla.worker.ClassReminderWorker
+import com.uplb.punla.worker.StudyNudgeWorker
 import com.uplb.punla.worker.ClassDayNotificationScheduler
 import com.uplb.punla.worker.ReminderScheduler
 import kotlinx.coroutines.Dispatchers
@@ -273,6 +276,12 @@ class MainActivity : ComponentActivity() {
             "class_reminder_work",
             ExistingPeriodicWorkPolicy.KEEP,
             classReminderRequest
+        )
+
+        // Contextual study cues (before/after class + one evening queue summary).
+        val studyNudgeRequest = PeriodicWorkRequestBuilder<StudyNudgeWorker>(30, TimeUnit.MINUTES).build()
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "study_nudge_work", ExistingPeriodicWorkPolicy.KEEP, studyNudgeRequest
         )
 
         // One low-priority card evolves from "leave soon" to current class,
@@ -457,6 +466,7 @@ private val DRAWER_ITEMS = listOf(
     Tab("campus", "Campus", Icons.Default.Map),
     Tab("checklist", "Before Classes Start", Icons.Default.Checklist),
     Tab("pomodoro", "Focus", Icons.Default.Timer),
+    Tab("study", "Study Hub", Icons.Default.School),
     Tab("flashcards", "Flashcards", Icons.Default.Style),
     Tab("quizzes", "Quizzes", Icons.Default.Help),
     Tab("assistant", "Assistant", Icons.Default.SmartToy),
@@ -473,7 +483,7 @@ private val ALL_DESTINATIONS = BOTTOM_TABS + DRAWER_ITEMS
 // hidden on those to avoid two FABs stacking in the same corner. Pomodoro
 // has no add-form of its own — its FAB slot doesn't apply, so it's hidden
 // here too rather than showing an unrelated speed dial over the timer.
-private val ROUTES_WITH_OWN_FAB = setOf("budget", "deadlines", "grades", "checklist", "campus/fullmap", "pomodoro", "flashcards", "quizzes", "assistant")
+private val ROUTES_WITH_OWN_FAB = setOf("budget", "deadlines", "grades", "checklist", "campus/fullmap", "pomodoro", "study", "flashcards", "quizzes", "assistant")
 
 private data class QuickAddAction(
     val kind: String,
@@ -522,6 +532,7 @@ fun PunlaApp(
             "campus/fullmap" -> "Campus Map"
             "pomodoro" -> "Focus"
             "study-analysis" -> "Study Analysis"
+            "study" -> "Study Hub"
             "flashcards" -> "Flashcards"
             "quizzes" -> "Quizzes"
             "assistant" -> "Assistant"
@@ -535,9 +546,10 @@ fun PunlaApp(
     // rather than the drawer, but the same logic applies: no bottom-tab
     // "home" to swipe back to, so it needs an explicit Back arrow too.
     // Study Analysis is a drill-down from Pomodoro, same story.
-    val showBackArrow = currentRoute == "settings" || currentRoute == "checklist" ||
-        currentRoute == "campus" || currentRoute == "campus/fullmap" ||
-        currentRoute == "pomodoro" || currentRoute == "study-analysis" || currentRoute == "flashcards" || currentRoute == "quizzes" || currentRoute == "assistant"
+    // Drawer destinations are top-level destinations and keep the hamburger menu.
+    // Only true drill-down screens use a Back arrow; this keeps Quizzes/Study visible
+    // from Flashcards instead of trapping the user behind a back-only top bar.
+    val showBackArrow = currentRoute == "campus/fullmap" || currentRoute == "study-analysis"
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -839,6 +851,7 @@ fun PunlaApp(
                         onOpenBudget = { navigateTo("budget") },
                         onOpenDeadlines = { navigateTo("deadlines") },
                         onOpenChecklist = { navController.navigate("checklist") },
+                        onOpenStudy = { navigateTo("study") },
                         onOpenPomodoro = { course ->
                             if (course != null) {
                                 navController.navigate("pomodoro?course=${android.net.Uri.encode(course)}")
@@ -904,6 +917,17 @@ fun PunlaApp(
                     )
                 }
                 composable("study-analysis") { StudyAnalysisScreen(vm) }
+                composable("study") {
+                    StudyHubScreen(
+                        vm = vm,
+                        onOpenFlashcards = { navigateTo("flashcards") },
+                        onOpenQuizzes = { navigateTo("quizzes") },
+                        onOpenFocus = { course ->
+                            if (course != null) navController.navigate("pomodoro?course=${android.net.Uri.encode(course)}")
+                            else navController.navigate("pomodoro")
+                        }
+                    )
+                }
                 composable("flashcards") { FlashcardsScreen(vm) }
                 composable("quizzes") { QuizScreen(vm) }
                 composable("assistant") {

@@ -27,6 +27,7 @@ object PunlaNotifications {
     const val ID_BUDGET_WEEK = 1302
     const val ID_BACKUP = 1401
     const val ID_MORNING_AGENDA = 1501
+    const val ID_STUDY_NUDGE = 1510
     const val ID_PUSH_BASE = 1600
 
     const val QUIET_START_HOUR = 22

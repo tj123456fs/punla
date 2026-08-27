@@ -1,5 +1,6 @@
 package com.uplb.punla.ui.screens
 
+import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -9,6 +10,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -18,6 +20,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -67,6 +71,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -82,6 +88,9 @@ import com.uplb.punla.data.entity.FlashcardDeck
 import com.uplb.punla.data.entity.FlashcardRating
 import com.uplb.punla.data.entity.FlashcardTypes
 import com.uplb.punla.ui.PunlaViewModel
+import coil.compose.AsyncImage
+import org.json.JSONArray
+import org.json.JSONObject
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -92,18 +101,31 @@ fun FlashcardsScreen(vm: PunlaViewModel) {
     val decks by vm.flashcardDecks.collectAsState()
     val allCards by vm.flashcards.collectAsState()
     var selectedDeckId by rememberSaveable { mutableStateOf<String?>(null) }
-    var studyRequest by remember { mutableStateOf<List<Flashcard>?>(null) }
+    var studyCardIds by rememberSaveable { mutableStateOf<String?>(null) }
+    var studyRunId by rememberSaveable { mutableStateOf<String?>(null) }
 
     val selectedDeck = decks.firstOrNull { it.id == selectedDeckId }
     val selectedCards = selectedDeck?.let { deck -> allCards.filter { it.deckId == deck.id } }.orEmpty()
+    val studyRequest = studyCardIds?.let { encoded ->
+        val byId = selectedCards.associateBy { it.id }
+        encoded.split(',').filter { it.isNotBlank() }.mapNotNull(byId::get)
+    }
+    fun startStudy(cards: List<Flashcard>) {
+        studyCardIds = cards.joinToString(",") { it.id }
+        studyRunId = UUID.randomUUID().toString()
+    }
+    fun clearStudy() {
+        studyCardIds = null
+        studyRunId = null
+    }
 
-    BackHandler(enabled = studyRequest != null || selectedDeckId != null) {
-        if (studyRequest != null) studyRequest = null else selectedDeckId = null
+    BackHandler(enabled = studyCardIds != null || selectedDeckId != null) {
+        if (studyCardIds != null) clearStudy() else selectedDeckId = null
     }
 
     Crossfade(
         targetState = when {
-            studyRequest != null && selectedDeck != null -> "study"
+            studyCardIds != null && selectedDeck != null -> "study"
             selectedDeck != null -> "deck"
             else -> "library"
         },
@@ -114,15 +136,16 @@ fun FlashcardsScreen(vm: PunlaViewModel) {
             "study" -> StudyDeckView(
                 deck = selectedDeck!!,
                 startingCards = studyRequest.orEmpty(),
+                runId = studyRunId ?: "restored-study",
                 onRate = vm::rateFlashcard,
-                onExit = { studyRequest = null }
+                onExit = { clearStudy() }
             )
             "deck" -> DeckDetailView(
                 deck = selectedDeck!!,
                 cards = selectedCards,
                 vm = vm,
                 onBack = { selectedDeckId = null },
-                onStudy = { studyRequest = it }
+                onStudy = { startStudy(it) }
             )
             else -> FlashcardLibraryView(
                 decks = decks,
@@ -684,15 +707,18 @@ private fun FlashcardListItem(card: Flashcard, onToggleStar: () -> Unit, onEdit:
 private fun StudyDeckView(
     deck: FlashcardDeck,
     startingCards: List<Flashcard>,
+    runId: String,
     onRate: (Flashcard, FlashcardRating) -> Unit,
     onExit: () -> Unit
 ) {
-    val queue = remember(deck.id, startingCards.map { it.id }) { startingCards.shuffled() }
-    var index by rememberSaveable(deck.id) { mutableIntStateOf(0) }
-    var revealed by rememberSaveable(deck.id) { mutableStateOf(false) }
-    var goodCount by rememberSaveable(deck.id) { mutableIntStateOf(0) }
-    var hardCount by rememberSaveable(deck.id) { mutableIntStateOf(0) }
-    var againCount by rememberSaveable(deck.id) { mutableIntStateOf(0) }
+    val queue = remember(deck.id, runId, startingCards.map { it.id }) {
+        startingCards.shuffled(kotlin.random.Random("$runId|${deck.id}".hashCode()))
+    }
+    var index by rememberSaveable(deck.id, runId) { mutableIntStateOf(0) }
+    var revealed by rememberSaveable(deck.id, runId) { mutableStateOf(false) }
+    var goodCount by rememberSaveable(deck.id, runId) { mutableIntStateOf(0) }
+    var hardCount by rememberSaveable(deck.id, runId) { mutableIntStateOf(0) }
+    var againCount by rememberSaveable(deck.id, runId) { mutableIntStateOf(0) }
     val horizontalPadding = punlaScreenHorizontalPadding(680.dp)
     val finished = queue.isEmpty() || index >= queue.size
 
@@ -733,6 +759,10 @@ private fun StudyDeckView(
                     Box(Modifier.fillMaxWidth().heightIn(min = 310.dp).padding(26.dp), contentAlignment = Alignment.Center) {
                         AnimatedContent(targetState = revealed, label = "flashcardReveal") { showBack ->
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                if (!card.imageUri.isNullOrBlank()) {
+                                    FlashcardStudyImage(card = card, revealed = showBack)
+                                    Spacer(Modifier.height(14.dp))
+                                }
                                 Text(if (showBack) "ANSWER" else if (isCloze) "FILL THE BLANK" else if (reversed) "REVERSE" else "QUESTION", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                                 Spacer(Modifier.height(18.dp))
                                 Text(if (showBack) answerText else questionText, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
@@ -823,6 +853,15 @@ private fun CardEditorDialog(deckId: String, initial: Flashcard?, onDismiss: () 
     var tags by rememberSaveable(initial?.id) { mutableStateOf(initial?.tags.orEmpty()) }
     var starred by rememberSaveable(initial?.id) { mutableStateOf(initial?.starred ?: false) }
     var reverse by rememberSaveable(initial?.id) { mutableStateOf(initial?.reverseEnabled ?: false) }
+    var imageUri by rememberSaveable(initial?.id) { mutableStateOf(initial?.imageUri) }
+    var occlusionSpec by rememberSaveable(initial?.id) { mutableStateOf(occlusionSpecFromJson(initial?.occlusionJson.orEmpty())) }
+    val context = LocalContext.current
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            imageUri = uri.toString()
+        }
+    }
     var typeIndex by rememberSaveable(initial?.id) { mutableIntStateOf(if (initial?.cardType == FlashcardTypes.CLOZE) 1 else 0) }
     val isCloze = typeIndex == 1
     val valid = front.trim().isNotEmpty() && back.trim().isNotEmpty() && (!isCloze || ClozeText.hasCloze(front))
@@ -841,6 +880,23 @@ private fun CardEditorDialog(deckId: String, initial: Flashcard?, onDismiss: () 
                 item { OutlinedTextField(value = back, onValueChange = { back = it }, label = { Text(if (isCloze) "Explanation / back" else "Back / answer") }, modifier = Modifier.fillMaxWidth(), minLines = 2) }
                 item { OutlinedTextField(value = hint, onValueChange = { hint = it }, label = { Text("Hint (optional)") }, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = tags, onValueChange = { tags = it }, label = { Text("Tags (comma separated)") }, placeholder = { Text("Lecture 3, Midterm, Plant anatomy") }, modifier = Modifier.fillMaxWidth()) }
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { imagePicker.launch(arrayOf("image/*")) }, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Default.Image, contentDescription = null); Spacer(Modifier.width(8.dp)); Text(if (imageUri == null) "Add image / diagram" else "Change image")
+                        }
+                        if (imageUri != null) {
+                            AsyncImage(model = imageUri, contentDescription = "Card image preview", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(12.dp)))
+                            TextButton(onClick = { imageUri = null; occlusionSpec = "" }) { Text("Remove image") }
+                            OutlinedTextField(
+                                value = occlusionSpec, onValueChange = { occlusionSpec = it },
+                                label = { Text("Image occlusion (optional)") },
+                                supportingText = { Text("x,y,width,height in %, e.g. 20,30,35,15. Hidden until reveal.") },
+                                modifier = Modifier.fillMaxWidth(), singleLine = true
+                            )
+                        }
+                    }
+                }
                 item {
                     Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
@@ -868,11 +924,12 @@ private fun CardEditorDialog(deckId: String, initial: Flashcard?, onDismiss: () 
                     val normalizedTags = tags.split(',').map { it.trim() }.filter { it.isNotEmpty() }.distinctBy { it.lowercase() }.joinToString(", ")
                     onSave(initial?.copy(
                         front = front.trim(), back = back.trim(), hint = hint.trim().ifBlank { null }, tags = normalizedTags,
-                        starred = starred, reverseEnabled = reverse && !isCloze, cardType = if (isCloze) FlashcardTypes.CLOZE else FlashcardTypes.BASIC, updatedAt = now
+                        starred = starred, reverseEnabled = reverse && !isCloze, cardType = if (isCloze) FlashcardTypes.CLOZE else FlashcardTypes.BASIC,
+                        imageUri = imageUri, occlusionJson = occlusionJsonFromSpec(occlusionSpec), updatedAt = now
                     ) ?: Flashcard(
                         deckId = deckId, front = front.trim(), back = back.trim(), hint = hint.trim().ifBlank { null }, tags = normalizedTags,
                         starred = starred, reverseEnabled = reverse && !isCloze, cardType = if (isCloze) FlashcardTypes.CLOZE else FlashcardTypes.BASIC,
-                        createdAt = now, updatedAt = now
+                        imageUri = imageUri, occlusionJson = occlusionJsonFromSpec(occlusionSpec), createdAt = now, updatedAt = now
                     ))
                 },
                 enabled = valid
@@ -951,6 +1008,55 @@ private fun FlashcardJsonErrorDialog(message: String, onDismiss: () -> Unit) {
     )
 }
 
+private data class OcclusionRect(val x: Float, val y: Float, val w: Float, val h: Float)
+
+private fun occlusionRects(json: String): List<OcclusionRect> = runCatching {
+    val arr = JSONArray(json.ifBlank { "[]" })
+    buildList {
+        for (i in 0 until minOf(arr.length(), 64)) {
+            val o = arr.optJSONObject(i) ?: continue
+            val rawX = o.optDouble("x", 0.0).toFloat()
+            val rawY = o.optDouble("y", 0.0).toFloat()
+            val rawW = o.optDouble("w", 0.0).toFloat()
+            val rawH = o.optDouble("h", 0.0).toFloat()
+            if (!rawX.isFinite() || !rawY.isFinite() || !rawW.isFinite() || !rawH.isFinite() || rawW <= 0f || rawH <= 0f) continue
+            val x = rawX.coerceIn(0f, 1f)
+            val y = rawY.coerceIn(0f, 1f)
+            val w = rawW.coerceIn(0f, 1f - x)
+            val h = rawH.coerceIn(0f, 1f - y)
+            if (w > 0f && h > 0f) add(OcclusionRect(x, y, w, h))
+        }
+    }
+}.getOrDefault(emptyList())
+
+private fun occlusionJsonFromSpec(spec: String): String {
+    val nums = spec.split(',').mapNotNull { it.trim().toFloatOrNull() }
+    if (nums.size != 4) return "[]"
+    val (x,y,w,h) = nums.map { it.coerceIn(0f,100f) }
+    return JSONArray().put(JSONObject().put("x",x/100f).put("y",y/100f).put("w",w/100f).put("h",h/100f)).toString()
+}
+
+private fun occlusionSpecFromJson(json: String): String {
+    val r = occlusionRects(json).firstOrNull() ?: return ""
+    return listOf(r.x,r.y,r.w,r.h).joinToString(",") { (it*100f).toInt().toString() }
+}
+
+@Composable
+private fun FlashcardStudyImage(card: Flashcard, revealed: Boolean) {
+    BoxWithConstraints(Modifier.fillMaxWidth().height(190.dp).clip(RoundedCornerShape(16.dp))) {
+        AsyncImage(model = card.imageUri, contentDescription = "Study diagram", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        if (!revealed) {
+            occlusionRects(card.occlusionJson).forEach { r ->
+                Surface(
+                    modifier = Modifier.offset(x = maxWidth * r.x, y = maxHeight * r.y).size(width = maxWidth * r.w, height = maxHeight * r.h),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = .92f),
+                    shape = RoundedCornerShape(5.dp)
+                ) {}
+            }
+        }
+    }
+}
+
 private fun importFailureMessage(action: String, error: Throwable): String {
     val detail = error.message?.trim()?.takeIf { it.isNotEmpty() }?.take(240)
     return buildString {
@@ -1011,6 +1117,8 @@ private fun com.uplb.punla.data.FlashcardJsonCard.toEntity(deckId: String, times
     starred = starred,
     reverseEnabled = reverseEnabled,
     cardType = cardType,
+    imageUri = imageUri,
+    occlusionJson = occlusionJson,
     createdAt = timestamp,
     updatedAt = timestamp
 )

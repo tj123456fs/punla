@@ -11,6 +11,11 @@ object QuizQuestionTypes {
     const val MULTIPLE_CHOICE = "MULTIPLE_CHOICE"
     const val TRUE_FALSE = "TRUE_FALSE"
     const val IDENTIFICATION = "IDENTIFICATION"
+    const val MULTI_SELECT = "MULTI_SELECT"
+    const val NUMERIC = "NUMERIC"
+    const val ORDERING = "ORDERING"
+    const val MATCHING = "MATCHING"
+    const val IMAGE_IDENTIFICATION = "IMAGE_IDENTIFICATION"
 }
 
 @Entity(tableName = "quizzes")
@@ -22,6 +27,10 @@ data class Quiz(
     val passingScore: Int = 70,
     val shuffleQuestions: Boolean = true,
     val shuffleChoices: Boolean = true,
+    /** Null/0 means untimed. */
+    val timeLimitMinutes: Int? = null,
+    /** IMMEDIATE shows explanations per question; AFTER keeps a mock-exam feel. */
+    val feedbackMode: String = "IMMEDIATE",
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )
@@ -49,6 +58,10 @@ data class QuizQuestion(
     val correctAnswer: String,
     val explanation: String? = null,
     val tags: String = "",
+    /** Optional JSON for numeric tolerance, matching pairs, ordering rules, etc. */
+    val metadataJson: String = "{}",
+    /** Persistable content URI for image/diagram questions. */
+    val imageUri: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 ) {

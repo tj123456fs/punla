@@ -32,6 +32,7 @@ import com.uplb.punla.data.entity.Flashcard
 import com.uplb.punla.data.entity.FlashcardDeck
 import com.uplb.punla.data.entity.FlashcardRating
 import com.uplb.punla.data.entity.FlashcardReviewScheduler
+import com.uplb.punla.data.entity.FlashcardReviewEvent
 import com.uplb.punla.data.entity.FlashcardTypes
 import com.uplb.punla.data.entity.ClozeText
 import com.uplb.punla.data.entity.Quiz
@@ -42,6 +43,19 @@ import com.uplb.punla.data.entity.JsonImportRecord
 import com.uplb.punla.data.entity.Semester
 import com.uplb.punla.data.entity.StudySession
 import com.uplb.punla.data.entity.StudySuggestionEvent
+import com.uplb.punla.data.entity.StudyTopic
+import com.uplb.punla.data.entity.StudyNote
+import com.uplb.punla.data.entity.FormulaReference
+import com.uplb.punla.data.entity.MistakeRecord
+import com.uplb.punla.data.entity.MistakeSourceTypes
+import com.uplb.punla.data.entity.StudyConfidence
+import com.uplb.punla.data.entity.StudyGoal
+import com.uplb.punla.data.entity.StudyGoalTypes
+import com.uplb.punla.data.entity.StudyPlanItem
+import com.uplb.punla.data.entity.QuizAnswerResult
+import com.uplb.punla.data.entity.QuestionBankItem
+import com.uplb.punla.data.StudyEngine
+import com.uplb.punla.data.StudyJsonBundle
 import com.uplb.punla.widget.WidgetRefresher
 import com.uplb.punla.worker.ClassDayNotificationScheduler
 import com.uplb.punla.ml.StudySlotFeatures
@@ -110,6 +124,27 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val quizAttempts: StateFlow<List<QuizAttempt>> = db.quizDao().observeAllAttempts()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+
+    val studyTopics: StateFlow<List<StudyTopic>> = db.studyMaterialDao().observeTopics()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val studyNotes: StateFlow<List<StudyNote>> = db.studyMaterialDao().observeNotes()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val formulaReferences: StateFlow<List<FormulaReference>> = db.studyMaterialDao().observeFormulas()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val mistakeRecords: StateFlow<List<MistakeRecord>> = db.studyMaterialDao().observeMistakes()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val studyGoals: StateFlow<List<StudyGoal>> = db.studyMaterialDao().observeGoals()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val studyPlanItems: StateFlow<List<StudyPlanItem>> = db.studyMaterialDao().observePlanItems()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val flashcardReviewEvents: StateFlow<List<FlashcardReviewEvent>> = db.studyMaterialDao().observeFlashcardReviewEvents()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val quizAnswerResults: StateFlow<List<QuizAnswerResult>> = db.studyMaterialDao().observeAnswerResults()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val questionBank: StateFlow<List<QuestionBankItem>> = db.studyMaterialDao().observeQuestionBank()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun flashcardsFlow(deckId: String): Flow<List<Flashcard>> = db.flashcardDao().observeCards(deckId)
@@ -287,6 +322,8 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
 
     var quietHoursEnabled by mutableStateOf(repo.quietHoursEnabled)
         private set
+    var studyRemindersEnabled by mutableStateOf(repo.studyRemindersEnabled)
+        private set
 
     var termStartDate by mutableStateOf(repo.termStartDate)
         private set
@@ -383,6 +420,11 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         repo.quietHoursEnabled = enabled
         quietHoursEnabled = enabled
         com.uplb.punla.worker.ReminderScheduler.scheduleDaily(getApplication(), updateExisting = true)
+    }
+
+    fun updateStudyRemindersEnabled(enabled: Boolean) {
+        repo.studyRemindersEnabled = enabled
+        studyRemindersEnabled = enabled
     }
 
     fun updateBudgetPeriod(period: BudgetPeriod) {
@@ -675,7 +717,55 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     fun toggleFlashcardStar(card: Flashcard) = upsertFlashcard(card.copy(starred = !card.starred))
 
     fun rateFlashcard(card: Flashcard, rating: FlashcardRating) = viewModelScope.launch {
-        db.flashcardDao().upsertCard(FlashcardReviewScheduler.reviewed(card, rating))
+        val now = System.currentTimeMillis()
+        val reviewed = FlashcardReviewScheduler.reviewed(card, rating, now)
+        db.withTransaction {
+            db.flashcardDao().upsertCard(reviewed)
+            val deck = flashcardDecks.value.firstOrNull { it.id == card.deckId }
+            db.studyMaterialDao().upsertFlashcardReviewEvent(
+                FlashcardReviewEvent(
+                    cardId = card.id,
+                    deckId = card.deckId,
+                    courseCode = deck?.courseCode,
+                    rating = rating.name,
+                    reviewedAt = now
+                )
+            )
+            val existing = mistakeRecords.value.firstOrNull {
+                !it.resolved && it.sourceType == MistakeSourceTypes.FLASHCARD && it.sourceId == card.id
+            }
+            if (rating == FlashcardRating.AGAIN) {
+                db.studyMaterialDao().upsertMistake(
+                    existing?.copy(
+                        prompt = card.front,
+                        correctAnswer = card.back,
+                        explanation = card.hint,
+                        missedAt = now,
+                        retryAt = now + 10L * 60L * 1000L,
+                        timesMissed = existing.timesMissed + 1,
+                        resolved = false
+                    ) ?: MistakeRecord(
+                        sourceType = MistakeSourceTypes.FLASHCARD,
+                        sourceId = card.id,
+                        courseCode = deck?.courseCode,
+                        topicTag = card.tagList().firstOrNull(),
+                        prompt = card.front,
+                        correctAnswer = card.back,
+                        explanation = card.hint,
+                        missedAt = now,
+                        retryAt = now + 10L * 60L * 1000L
+                    )
+                )
+            } else if (rating == FlashcardRating.GOOD && existing != null) {
+                db.studyMaterialDao().upsertMistake(existing.copy(resolved = true))
+            }
+            advanceStudyGoals(
+                goalType = StudyGoalTypes.FLASHCARDS,
+                amount = 1,
+                courseCode = deck?.courseCode,
+                topicTags = card.tagList()
+            )
+        }
     }
 
     // ---- Quizzes ----
@@ -710,6 +800,130 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
 
     fun recordQuizAttempt(attempt: QuizAttempt) = viewModelScope.launch { db.quizDao().insertAttempt(attempt) }
 
+    /** Stores an attempt, per-question confidence results, and mistake notebook entries atomically. */
+    suspend fun recordQuizAttemptWithResults(
+        attempt: QuizAttempt,
+        answers: List<QuizAnswerResult>,
+        questionLookup: Map<String, QuizQuestion>,
+        quiz: Quiz
+    ): Result<Unit> = runCatching {
+        db.withTransaction {
+            db.quizDao().insertAttempt(attempt)
+            db.studyMaterialDao().upsertAnswerResults(answers)
+
+            // Fetch once for the whole attempt. Besides avoiding an O(answers ×
+            // mistakes) query pattern, keeping a mutable lookup ensures later
+            // answers in this transaction see the state we just wrote.
+            val activeQuizMistakes = db.studyMaterialDao().getMistakes()
+                .filter { !it.resolved && it.sourceType == MistakeSourceTypes.QUIZ }
+                .associateBy { it.sourceId }
+                .toMutableMap()
+
+            answers.forEach { result ->
+                val q = questionLookup[result.questionId] ?: return@forEach
+                val existing = activeQuizMistakes[q.id]
+
+                when {
+                    // A confident correct retry clears an existing notebook item.
+                    result.correct && result.confidence == StudyConfidence.CONFIDENT -> {
+                        if (existing != null) {
+                            val resolved = existing.copy(
+                                userAnswer = result.userAnswer,
+                                confidence = result.confidence,
+                                resolved = true
+                            )
+                            db.studyMaterialDao().upsertMistake(resolved)
+                            activeQuizMistakes.remove(q.id)
+                        }
+                    }
+
+                    // Correct-but-unsure/guessed answers stay in weak review, but
+                    // they do not increment "times missed" because they were not misses.
+                    result.correct -> {
+                        val retryDelay = if (result.confidence == StudyConfidence.GUESSED) {
+                            12L * 60L * 60L * 1000L
+                        } else {
+                            18L * 60L * 60L * 1000L
+                        }
+                        val weakRecord = existing?.copy(
+                            userAnswer = result.userAnswer,
+                            correctAnswer = result.correctAnswer,
+                            explanation = q.explanation,
+                            confidence = result.confidence,
+                            missedAt = result.answeredAt,
+                            retryAt = result.answeredAt + retryDelay,
+                            resolved = false
+                        ) ?: MistakeRecord(
+                            sourceType = MistakeSourceTypes.QUIZ,
+                            sourceId = q.id,
+                            courseCode = quiz.courseCode,
+                            topicTag = q.tagList().firstOrNull(),
+                            prompt = q.prompt,
+                            userAnswer = result.userAnswer,
+                            correctAnswer = result.correctAnswer,
+                            explanation = q.explanation,
+                            confidence = result.confidence,
+                            missedAt = result.answeredAt,
+                            retryAt = result.answeredAt + retryDelay,
+                            timesMissed = 0
+                        )
+                        db.studyMaterialDao().upsertMistake(weakRecord)
+                        activeQuizMistakes[q.id] = weakRecord
+                    }
+
+                    // Wrong answers increment true miss history and re-enter review.
+                    else -> {
+                        val retryDelay = when (result.confidence) {
+                            StudyConfidence.GUESSED -> 12L * 60L * 60L * 1000L
+                            StudyConfidence.UNSURE -> 18L * 60L * 60L * 1000L
+                            else -> 24L * 60L * 60L * 1000L
+                        }
+                        val missedRecord = existing?.copy(
+                            userAnswer = result.userAnswer,
+                            correctAnswer = result.correctAnswer,
+                            explanation = q.explanation,
+                            confidence = result.confidence,
+                            missedAt = result.answeredAt,
+                            retryAt = result.answeredAt + retryDelay,
+                            timesMissed = existing.timesMissed + 1,
+                            resolved = false
+                        ) ?: MistakeRecord(
+                            sourceType = MistakeSourceTypes.QUIZ,
+                            sourceId = q.id,
+                            courseCode = quiz.courseCode,
+                            topicTag = q.tagList().firstOrNull(),
+                            prompt = q.prompt,
+                            userAnswer = result.userAnswer,
+                            correctAnswer = result.correctAnswer,
+                            explanation = q.explanation,
+                            confidence = result.confidence,
+                            missedAt = result.answeredAt,
+                            retryAt = result.answeredAt + retryDelay
+                        )
+                        db.studyMaterialDao().upsertMistake(missedRecord)
+                        activeQuizMistakes[q.id] = missedRecord
+                    }
+                }
+            }
+
+            val answeredTags = answers.mapNotNull { result -> questionLookup[result.questionId] }
+                .flatMap { it.tagList() }
+            advanceStudyGoals(
+                goalType = StudyGoalTypes.QUESTIONS,
+                amount = answers.size,
+                courseCode = quiz.courseCode,
+                topicTags = answeredTags
+            )
+            advanceStudyGoals(
+                goalType = StudyGoalTypes.SCORE,
+                amount = attempt.percent(),
+                courseCode = quiz.courseCode,
+                topicTags = answeredTags,
+                useMaximum = true
+            )
+        }
+    }
+
     /** Turns missed quiz questions into a fresh flashcard deck for spaced repetition. */
     fun createFlashcardsFromQuizMistakes(quiz: Quiz, questions: List<QuizQuestion>, onCreated: (FlashcardDeck) -> Unit = {}) = viewModelScope.launch {
         if (questions.isEmpty()) return@launch
@@ -729,12 +943,341 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
                 hint = q.explanation,
                 tags = q.tags,
                 starred = true,
+                imageUri = q.imageUri,
                 createdAt = now,
                 updatedAt = now
             )
         }
         db.flashcardDao().importDeck(deck, cards)
         onCreated(deck)
+    }
+
+    // ---- Study System 3.0 ----
+    fun upsertStudyTopic(item: StudyTopic) = viewModelScope.launch { db.studyMaterialDao().upsertTopic(item.copy(updatedAt = System.currentTimeMillis())) }
+    fun deleteStudyTopic(item: StudyTopic) = viewModelScope.launch {
+        db.withTransaction {
+            db.studyMaterialDao().clearChildParentReferences(item.id, System.currentTimeMillis())
+            db.studyMaterialDao().deleteTopic(item)
+        }
+    }
+    fun upsertStudyNote(item: StudyNote) = viewModelScope.launch { db.studyMaterialDao().upsertNote(item.copy(updatedAt = System.currentTimeMillis())) }
+    fun deleteStudyNote(item: StudyNote) = viewModelScope.launch { db.studyMaterialDao().deleteNote(item) }
+    fun upsertFormula(item: FormulaReference) = viewModelScope.launch { db.studyMaterialDao().upsertFormula(item.copy(updatedAt = System.currentTimeMillis())) }
+    fun deleteFormula(item: FormulaReference) = viewModelScope.launch { db.studyMaterialDao().deleteFormula(item) }
+    fun upsertStudyGoal(item: StudyGoal) = viewModelScope.launch { db.studyMaterialDao().upsertGoal(item.copy(updatedAt = System.currentTimeMillis())) }
+    fun deleteStudyGoal(item: StudyGoal) = viewModelScope.launch { db.studyMaterialDao().deleteGoal(item) }
+
+    /** Advances active goals from real study activity. Global goals accept any
+     * course; course/topic goals only accept matching work. SCORE stores the
+     * best percentage instead of adding percentages together. */
+    private suspend fun advanceStudyGoals(
+        goalType: String,
+        amount: Int,
+        courseCode: String? = null,
+        topicTags: Collection<String> = emptyList(),
+        useMaximum: Boolean = false
+    ) {
+        if (amount <= 0) return
+        val now = System.currentTimeMillis()
+        val normalizedTags = topicTags.map { it.trim().lowercase() }.filter { it.isNotEmpty() }.toSet()
+        db.studyMaterialDao().getGoals()
+            .filter { goal ->
+                !goal.completed &&
+                    goal.goalType == goalType &&
+                    (goal.courseCode.isNullOrBlank() || goal.courseCode.equals(courseCode, true)) &&
+                    (goal.topicTag.isNullOrBlank() || goal.topicTag.trim().lowercase() in normalizedTags)
+            }
+            .forEach { goal ->
+                val progress = if (useMaximum) maxOf(goal.progressValue, amount)
+                else goal.progressValue + amount
+                db.studyMaterialDao().upsertGoal(
+                    goal.copy(
+                        progressValue = progress.coerceAtMost(goal.targetValue),
+                        completed = progress >= goal.targetValue,
+                        updatedAt = now
+                    )
+                )
+            }
+    }
+    fun upsertStudyPlanItem(item: StudyPlanItem) = viewModelScope.launch { db.studyMaterialDao().upsertPlanItem(item.copy(updatedAt = System.currentTimeMillis())) }
+    fun deleteStudyPlanItem(item: StudyPlanItem) = viewModelScope.launch { db.studyMaterialDao().deletePlanItem(item) }
+    fun resolveMistake(item: MistakeRecord, resolved: Boolean = true) = viewModelScope.launch { db.studyMaterialDao().upsertMistake(item.copy(resolved = resolved)) }
+    fun deleteMistake(item: MistakeRecord) = viewModelScope.launch { db.studyMaterialDao().deleteMistake(item.id) }
+    fun upsertQuestionBankItem(item: QuestionBankItem) = viewModelScope.launch { db.studyMaterialDao().upsertBankItem(item.copy(updatedAt = System.currentTimeMillis())) }
+    fun deleteQuestionBankItem(item: QuestionBankItem) = viewModelScope.launch { db.studyMaterialDao().deleteBankItem(item) }
+
+    /** Imports a complete ChatGPT/Punla study bundle atomically. */
+    suspend fun importStudyBundle(bundle: StudyJsonBundle): Result<Unit> = importResult("Study bundle import") {
+        db.withTransaction {
+            val now = System.currentTimeMillis()
+            val effectiveCourse = bundle.courseCode?.takeIf { it.isNotBlank() } ?: "General"
+            // JSON topic keys are case-insensitive by contract. Normalize once
+            // so `Photosynthesis` and a parent/topic reference `photosynthesis`
+            // still link to the same imported node.
+            val topicIds = bundle.topics.associate {
+                it.key.lowercase() to java.util.UUID.randomUUID().toString()
+            }
+            fun topicId(key: String?): String? = key?.lowercase()?.let(topicIds::get)
+            val topicRows = bundle.topics.map { t ->
+                StudyTopic(
+                    id = topicIds.getValue(t.key.lowercase()),
+                    courseCode = effectiveCourse,
+                    name = t.name,
+                    parentTopicId = topicId(t.parentKey),
+                    examDate = t.examDate,
+                    priority = t.priority,
+                    createdAt = now, updatedAt = now
+                )
+            }
+            if (topicRows.isNotEmpty()) db.studyMaterialDao().upsertTopics(topicRows)
+            val notes = bundle.notes.map { n ->
+                StudyNote(courseCode = effectiveCourse, topicId = topicId(n.topicKey), title = n.title, body = n.body, tags = n.tags, createdAt = now, updatedAt = now)
+            }
+            if (notes.isNotEmpty()) db.studyMaterialDao().upsertNotes(notes)
+            val formulas = bundle.formulas.map { f ->
+                FormulaReference(courseCode = effectiveCourse, topicId = topicId(f.topicKey), title = f.title, expression = f.expression, variables = f.variables, units = f.units, workedExample = f.workedExample, createdAt = now, updatedAt = now)
+            }
+            if (formulas.isNotEmpty()) db.studyMaterialDao().upsertFormulas(formulas)
+            bundle.decks.forEach { d ->
+                val deck = FlashcardDeck(name = d.name, courseCode = effectiveCourse, description = d.description ?: bundle.description, createdAt = now, updatedAt = now)
+                val cards = d.cards.map { c ->
+                    Flashcard(
+                        deckId = deck.id,
+                        front = c.front,
+                        back = c.back,
+                        hint = c.hint,
+                        tags = c.tags,
+                        starred = c.starred,
+                        reverseEnabled = c.reverseEnabled,
+                        cardType = c.cardType,
+                        imageUri = c.imageUri,
+                        occlusionJson = c.occlusionJson,
+                        createdAt = now,
+                        updatedAt = now
+                    )
+                }
+                db.flashcardDao().importDeck(deck, cards)
+            }
+            bundle.quizzes.forEach { q ->
+                val quiz = Quiz(title = q.title, courseCode = effectiveCourse, description = q.description ?: bundle.description, passingScore = q.passingScore, createdAt = now, updatedAt = now)
+                val qs = q.questions.map { x ->
+                    QuizQuestion(
+                        quizId = quiz.id,
+                        type = x.type,
+                        prompt = x.prompt,
+                        optionsJson = QuizQuestion.encodeOptions(x.options),
+                        correctAnswer = x.correctAnswer,
+                        explanation = x.explanation,
+                        tags = x.tags,
+                        metadataJson = x.metadataJson,
+                        imageUri = x.imageUri,
+                        createdAt = now,
+                        updatedAt = now
+                    )
+                }
+                db.quizDao().upsertQuiz(quiz); db.quizDao().upsertQuestions(qs)
+            }
+            db.jsonImportDao().upsert(JsonImportRecord(bundle.fileId, bundle.contentId, destinationId = effectiveCourse))
+        }
+    }
+
+    /** Converts explicit reviewer lines into cards. Supported lines: Question :: Answer, plus {{cloze}} lines. */
+    fun createFlashcardsFromNote(note: StudyNote, onCreated: (FlashcardDeck?) -> Unit = {}) = viewModelScope.launch {
+        val parsed = note.body.lines().mapNotNull { raw ->
+            val line = raw.trim().removePrefix("- ").removePrefix("• ")
+            when {
+                line.contains("::") -> {
+                    val parts = line.split("::", limit = 2).map { it.trim() }
+                    if (parts.size == 2 && parts.all { it.isNotBlank() }) Triple(parts[0], parts[1], FlashcardTypes.BASIC) else null
+                }
+                ClozeText.hasCloze(line) -> Triple(line, ClozeText.answers(line).joinToString(" / "), FlashcardTypes.CLOZE)
+                else -> null
+            }
+        }.distinctBy { it.first.trim().lowercase() to it.second.trim().lowercase() }
+        if (parsed.isEmpty()) { onCreated(null); return@launch }
+        val now = System.currentTimeMillis()
+        val deck = FlashcardDeck(
+            name = "${note.title} — Reviewer",
+            courseCode = note.courseCode,
+            description = "Created from Punla reviewer note '${note.title}'.",
+            createdAt = now,
+            updatedAt = now
+        )
+        val cards = parsed.map { (front, back, type) ->
+            Flashcard(deckId = deck.id, front = front, back = back, cardType = type, tags = note.tags, createdAt = now, updatedAt = now)
+        }
+        db.flashcardDao().importDeck(deck, cards)
+        onCreated(deck)
+    }
+
+    /** Creates identification questions from the same explicit reviewer pairs/cloze lines. */
+    fun createQuizFromNote(note: StudyNote, onCreated: (Quiz?) -> Unit = {}) = viewModelScope.launch {
+        val parsed = note.body.lines().mapNotNull { raw ->
+            val line = raw.trim().removePrefix("- ").removePrefix("• ")
+            when {
+                line.contains("::") -> line.split("::", limit = 2).map { it.trim() }.takeIf { it.size == 2 && it.all { part -> part.isNotBlank() } }?.let { it[0] to it[1] }
+                ClozeText.hasCloze(line) -> ClozeText.question(line) to ClozeText.answers(line).joinToString(" / ")
+                else -> null
+            }
+        }.distinctBy { it.first.trim().lowercase() to it.second.trim().lowercase() }
+        if (parsed.isEmpty()) { onCreated(null); return@launch }
+        val now = System.currentTimeMillis()
+        val quiz = Quiz(
+            title = "${note.title} — Recall Quiz",
+            courseCode = note.courseCode,
+            description = "Generated from Punla reviewer note '${note.title}'.",
+            passingScore = 70,
+            shuffleQuestions = true,
+            shuffleChoices = false,
+            createdAt = now,
+            updatedAt = now
+        )
+        val questions = parsed.map { (prompt, answer) ->
+            QuizQuestion(quizId = quiz.id, type = QuizQuestionTypes.IDENTIFICATION, prompt = prompt, correctAnswer = answer, tags = note.tags, createdAt = now, updatedAt = now)
+        }
+        db.withTransaction { db.quizDao().upsertQuiz(quiz); db.quizDao().upsertQuestions(questions) }
+        onCreated(quiz)
+    }
+
+    /** Copies every quiz question into the reusable question bank without changing the quiz. */
+    fun addQuizToQuestionBank(quiz: Quiz, questions: List<QuizQuestion>) = viewModelScope.launch {
+        val now = System.currentTimeMillis()
+        db.studyMaterialDao().upsertBankItems(questions.map { q ->
+            QuestionBankItem(
+                id = "quiz:${q.id}", courseCode = quiz.courseCode, type = q.type, prompt = q.prompt, optionsJson = q.optionsJson,
+                correctAnswer = q.correctAnswer, explanation = q.explanation, tags = q.tags, metadataJson = q.metadataJson,
+                imageUri = q.imageUri, createdAt = now, updatedAt = now
+            )
+        })
+    }
+
+    /** Atomically refreshes the reusable bank from every current quiz. */
+    fun syncQuizzesToQuestionBank(onComplete: (Int) -> Unit = {}) = viewModelScope.launch {
+        val now = System.currentTimeMillis()
+        val quizById = quizzes.value.associateBy { it.id }
+        val existingById = questionBank.value.associateBy { it.id }
+        val items = quizQuestions.value.mapNotNull { q ->
+            val quiz = quizById[q.quizId] ?: return@mapNotNull null
+            val id = "quiz:${q.id}"
+            QuestionBankItem(
+                id = id,
+                courseCode = quiz.courseCode,
+                type = q.type,
+                prompt = q.prompt,
+                optionsJson = q.optionsJson,
+                correctAnswer = q.correctAnswer,
+                explanation = q.explanation,
+                tags = q.tags,
+                metadataJson = q.metadataJson,
+                imageUri = q.imageUri,
+                createdAt = existingById[id]?.createdAt ?: now,
+                updatedAt = now
+            )
+        }
+        db.studyMaterialDao().upsertBankItems(items)
+        onComplete(items.size)
+    }
+
+    /** Generates an interleaved practice test from the question bank and existing quiz questions. */
+    fun createPracticeTest(
+        courseCode: String?,
+        count: Int = 20,
+        recallOnly: Boolean = false,
+        onCreated: (Quiz) -> Unit = {}
+    ) = viewModelScope.launch {
+        val now = System.currentTimeMillis()
+        val bank = questionBank.value.filter {
+            courseCode.isNullOrBlank() || it.courseCode.equals(courseCode, true)
+        }
+        val fromQuizzes = quizQuestions.value.mapNotNull { q ->
+            val sourceQuiz = quizzes.value.firstOrNull { it.id == q.quizId } ?: return@mapNotNull null
+            if (!courseCode.isNullOrBlank() && !sourceQuiz.courseCode.equals(courseCode, true)) return@mapNotNull null
+            QuestionBankItem(
+                id = "live:${q.id}",
+                courseCode = sourceQuiz.courseCode,
+                type = q.type,
+                prompt = q.prompt,
+                optionsJson = q.optionsJson,
+                correctAnswer = q.correctAnswer,
+                explanation = q.explanation,
+                tags = q.tags,
+                metadataJson = q.metadataJson,
+                imageUri = q.imageUri
+            )
+        }
+
+        // Current quiz rows win over a potentially stale bank snapshot.
+        var sourcePool = (fromQuizzes + bank).distinctBy {
+            it.prompt.trim().lowercase() to it.correctAnswer.trim().lowercase()
+        }
+
+        // Recall mode must have a scalar answer. Multi-select/order/matching
+        // store JSON structures, which would otherwise create impossible
+        // identification questions that expect raw JSON text.
+        if (recallOnly) {
+            sourcePool = sourcePool.filter {
+                it.type in setOf(
+                    QuizQuestionTypes.MULTIPLE_CHOICE,
+                    QuizQuestionTypes.TRUE_FALSE,
+                    QuizQuestionTypes.IDENTIFICATION,
+                    QuizQuestionTypes.NUMERIC,
+                    QuizQuestionTypes.IMAGE_IDENTIFICATION
+                )
+            }
+        }
+
+        val pool = sourcePool.shuffled().take(count.coerceIn(5, 100))
+        if (pool.isEmpty()) return@launch
+
+        val quiz = Quiz(
+            title = if (recallOnly) "Recall Practice" else "Practice Test",
+            courseCode = courseCode,
+            description = "Generated from Punla's question bank.",
+            passingScore = 70,
+            shuffleQuestions = true,
+            shuffleChoices = !recallOnly,
+            createdAt = now,
+            updatedAt = now
+        )
+        val qs = pool.map { item ->
+            val recallType = when {
+                !recallOnly -> item.type
+                item.type == QuizQuestionTypes.NUMERIC -> QuizQuestionTypes.NUMERIC
+                item.type == QuizQuestionTypes.IMAGE_IDENTIFICATION -> QuizQuestionTypes.IMAGE_IDENTIFICATION
+                else -> QuizQuestionTypes.IDENTIFICATION
+            }
+            QuizQuestion(
+                quizId = quiz.id,
+                type = recallType,
+                prompt = item.prompt,
+                optionsJson = if (recallOnly) "[]" else item.optionsJson,
+                correctAnswer = item.correctAnswer,
+                explanation = item.explanation,
+                tags = item.tags,
+                metadataJson = item.metadataJson,
+                imageUri = item.imageUri,
+                createdAt = now,
+                updatedAt = now
+            )
+        }
+        db.withTransaction {
+            db.quizDao().upsertQuiz(quiz)
+            db.quizDao().upsertQuestions(qs)
+        }
+        onCreated(quiz)
+    }
+
+    /** Builds/rebuilds a daily exam plan from a course target and its known tags/topics. */
+    fun generateExamPlan(courseCode: String, examDate: java.time.LocalDate, minutesPerDay: Int = 50) = viewModelScope.launch {
+        val topicNames = buildList {
+            addAll(studyTopics.value.filter { it.courseCode.equals(courseCode, true) }.map { it.name })
+            addAll(flashcards.value.filter { c -> flashcardDecks.value.firstOrNull { it.id == c.deckId }?.courseCode.equals(courseCode, true) }.flatMap { it.tagList() })
+            addAll(quizQuestions.value.filter { q -> quizzes.value.firstOrNull { it.id == q.quizId }?.courseCode.equals(courseCode, true) }.flatMap { it.tagList() })
+        }.distinct()
+        db.withTransaction {
+            db.studyMaterialDao().clearGeneratedExamPlan(courseCode)
+            db.studyMaterialDao().upsertPlanItems(StudyEngine.generateExamPlan(courseCode, examDate, topicNames, minutesPerDay))
+        }
     }
 
     /** Creates an identification quiz from the selected flashcard deck. */
@@ -755,11 +1298,12 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
             val answer = if (isCloze) ClozeText.answers(card.front).joinToString(" / ").ifBlank { card.back } else card.back
             QuizQuestion(
                 quizId = quiz.id,
-                type = QuizQuestionTypes.IDENTIFICATION,
+                type = if (!card.imageUri.isNullOrBlank()) QuizQuestionTypes.IMAGE_IDENTIFICATION else QuizQuestionTypes.IDENTIFICATION,
                 prompt = prompt,
                 correctAnswer = answer,
                 explanation = if (isCloze) listOf(ClozeText.revealed(card.front), card.back).filter { it.isNotBlank() }.joinToString("\n\n") else card.hint,
                 tags = card.tags,
+                imageUri = card.imageUri,
                 createdAt = now,
                 updatedAt = now
             )
@@ -930,6 +1474,14 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
             classDayNotificationEnabled = repo.classDayNotificationEnabled
             morningAgendaEnabled = repo.morningAgendaEnabled
             quietHoursEnabled = repo.quietHoursEnabled
+            studyRemindersEnabled = repo.studyRemindersEnabled
+            dailyStudyGoalMinutes = repo.dailyStudyGoalMinutes
+            weeklyStudyGoalMinutes = repo.weeklyStudyGoalMinutes
+            dailyStudyGoalFlow.value = repo.dailyStudyGoalMinutes
+            budgetPeriod = repo.budgetPeriod
+            weekStartDay = repo.weekStartDay
+            weeklyBudgetOverride = repo.weeklyBudgetOverride
+            weeklyRolloverEnabled = repo.weeklyRolloverEnabled
             termStartDate = repo.termStartDate
             termEndDate = repo.termEndDate
             cloudAssistantEnabled = repo.cloudAssistantEnabled
@@ -1537,6 +2089,11 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
                 suggestionId = suggestionId
             )
             repo.logStudySession(session)
+            advanceStudyGoals(
+                goalType = StudyGoalTypes.MINUTES,
+                amount = actualSeconds / 60,
+                courseCode = courseCode
+            )
             if (suggestionId != null) {
                 val source = repo.latestStudySuggestionEvent(suggestionId)
                 if (source != null) {

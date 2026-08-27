@@ -12,6 +12,8 @@ object PunlaJsonImportReader {
     fun readText(context: Context, uri: Uri, maxChars: Int): String {
         require(maxChars > 0) { "maxChars must be positive." }
         val resolver = context.contentResolver
+        val approxMb = (maxChars / 1_000_000).coerceAtLeast(1)
+        val tooLargeMessage = "This JSON file is too large for Punla. Keep imports under about ${approxMb} MB."
 
         // Provider lengths are optional and byte-based, while parser limits are
         // character-based. Use this only as an early rejection for obviously
@@ -20,7 +22,7 @@ object PunlaJsonImportReader {
             val length = descriptor.length
             val generousByteCeiling = maxChars.toLong() * 4L + 4096L
             if (length >= 0L && length > generousByteCeiling) {
-                throw IllegalArgumentException("This JSON file is too large for Punla. Keep imports under about 4 MB.")
+                throw IllegalArgumentException(tooLargeMessage)
             }
         }
 
@@ -33,7 +35,7 @@ object PunlaJsonImportReader {
                 val read = reader.read(buffer)
                 if (read < 0) break
                 if (out.length + read > maxChars) {
-                    throw IllegalArgumentException("This JSON file is too large for Punla. Keep imports under about 4 MB.")
+                    throw IllegalArgumentException(tooLargeMessage)
                 }
                 out.append(buffer, 0, read)
             }

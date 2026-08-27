@@ -52,7 +52,11 @@ data class Flashcard(
     /** Alternates front/back direction between reviews when enabled. */
     val reverseEnabled: Boolean = false,
     /** BASIC or CLOZE. Cloze markup uses {{answer}} in [front]. */
-    val cardType: String = FlashcardTypes.BASIC
+    val cardType: String = FlashcardTypes.BASIC,
+    /** Persistable content URI for image/diagram cards. */
+    val imageUri: String? = null,
+    /** JSON array of normalized occlusion rectangles: {x,y,w,h,label}. */
+    val occlusionJson: String = "[]"
 ) {
     fun tagList(): List<String> = tags.split(',').map { it.trim() }.filter { it.isNotEmpty() }.distinct()
     fun isNew(): Boolean = reviewCount == 0

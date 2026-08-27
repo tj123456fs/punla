@@ -16,6 +16,7 @@ import com.uplb.punla.data.dao.FlashcardDao
 import com.uplb.punla.data.dao.QuizDao
 import com.uplb.punla.data.dao.JsonImportDao
 import com.uplb.punla.data.dao.StudySessionDao
+import com.uplb.punla.data.dao.StudyMaterialDao
 import com.uplb.punla.data.dao.IntelligenceDao
 import com.uplb.punla.data.entity.Archive
 import com.uplb.punla.data.entity.AttendanceRecord
@@ -36,6 +37,15 @@ import com.uplb.punla.data.entity.Semester
 import com.uplb.punla.data.entity.StudySession
 import com.uplb.punla.data.entity.StudySuggestionEvent
 import com.uplb.punla.data.entity.NotificationEvent
+import com.uplb.punla.data.entity.StudyTopic
+import com.uplb.punla.data.entity.StudyNote
+import com.uplb.punla.data.entity.FormulaReference
+import com.uplb.punla.data.entity.MistakeRecord
+import com.uplb.punla.data.entity.StudyGoal
+import com.uplb.punla.data.entity.StudyPlanItem
+import com.uplb.punla.data.entity.QuizAnswerResult
+import com.uplb.punla.data.entity.FlashcardReviewEvent
+import com.uplb.punla.data.entity.QuestionBankItem
 
 @Database(
     entities = [
@@ -57,11 +67,20 @@ import com.uplb.punla.data.entity.NotificationEvent
         Quiz::class,
         QuizQuestion::class,
         QuizAttempt::class,
-        JsonImportRecord::class
+        JsonImportRecord::class,
+        StudyTopic::class,
+        StudyNote::class,
+        FormulaReference::class,
+        MistakeRecord::class,
+        StudyGoal::class,
+        StudyPlanItem::class,
+        FlashcardReviewEvent::class,
+        QuizAnswerResult::class,
+        QuestionBankItem::class
     ],
     // v7 -> v8: per-occurrence attendance history used by the ongoing
     // class notification and the schedule/dashboard attendance controls.
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 abstract class PunlaDatabase : RoomDatabase() {
@@ -76,6 +95,7 @@ abstract class PunlaDatabase : RoomDatabase() {
     abstract fun flashcardDao(): FlashcardDao
     abstract fun quizDao(): QuizDao
     abstract fun jsonImportDao(): JsonImportDao
+    abstract fun studyMaterialDao(): StudyMaterialDao
 
     companion object {
         @Volatile private var INSTANCE: PunlaDatabase? = null
@@ -248,6 +268,102 @@ abstract class PunlaDatabase : RoomDatabase() {
             }
         }
 
+
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `flashcards` ADD COLUMN `imageUri` TEXT")
+                db.execSQL("ALTER TABLE `flashcards` ADD COLUMN `occlusionJson` TEXT NOT NULL DEFAULT '[]'")
+                db.execSQL("ALTER TABLE `quiz_questions` ADD COLUMN `metadataJson` TEXT NOT NULL DEFAULT '{}'")
+                db.execSQL("ALTER TABLE `quiz_questions` ADD COLUMN `imageUri` TEXT")
+                db.execSQL("ALTER TABLE `quizzes` ADD COLUMN `timeLimitMinutes` INTEGER")
+                db.execSQL("ALTER TABLE `quizzes` ADD COLUMN `feedbackMode` TEXT NOT NULL DEFAULT 'IMMEDIATE'")
+
+                db.execSQL("""CREATE TABLE IF NOT EXISTS `study_topics` (
+                    `id` TEXT NOT NULL, `courseCode` TEXT NOT NULL, `name` TEXT NOT NULL, `parentTopicId` TEXT,
+                    `examDate` TEXT, `priority` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL,
+                    PRIMARY KEY(`id`)
+                )""".trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_study_topics_courseCode` ON `study_topics` (`courseCode`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_study_topics_parentTopicId` ON `study_topics` (`parentTopicId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_study_topics_examDate` ON `study_topics` (`examDate`)")
+
+                db.execSQL("""CREATE TABLE IF NOT EXISTS `study_notes` (
+                    `id` TEXT NOT NULL, `courseCode` TEXT, `topicId` TEXT, `title` TEXT NOT NULL, `body` TEXT NOT NULL, `tags` TEXT NOT NULL,
+                    `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`),
+                    FOREIGN KEY(`topicId`) REFERENCES `study_topics`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL
+                )""".trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_study_notes_courseCode` ON `study_notes` (`courseCode`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_study_notes_topicId` ON `study_notes` (`topicId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_study_notes_updatedAt` ON `study_notes` (`updatedAt`)")
+
+                db.execSQL("""CREATE TABLE IF NOT EXISTS `formula_references` (
+                    `id` TEXT NOT NULL, `courseCode` TEXT, `topicId` TEXT, `title` TEXT NOT NULL, `expression` TEXT NOT NULL,
+                    `variables` TEXT, `units` TEXT, `workedExample` TEXT, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`),
+                    FOREIGN KEY(`topicId`) REFERENCES `study_topics`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL
+                )""".trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_formula_references_courseCode` ON `formula_references` (`courseCode`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_formula_references_topicId` ON `formula_references` (`topicId`)")
+
+                db.execSQL("""CREATE TABLE IF NOT EXISTS `mistake_records` (
+                    `id` TEXT NOT NULL, `sourceType` TEXT NOT NULL, `sourceId` TEXT NOT NULL, `courseCode` TEXT, `topicTag` TEXT,
+                    `prompt` TEXT NOT NULL, `userAnswer` TEXT, `correctAnswer` TEXT NOT NULL, `explanation` TEXT, `confidence` TEXT NOT NULL,
+                    `missedAt` INTEGER NOT NULL, `retryAt` INTEGER NOT NULL, `resolved` INTEGER NOT NULL, `timesMissed` INTEGER NOT NULL, PRIMARY KEY(`id`)
+                )""".trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_mistake_records_sourceType` ON `mistake_records` (`sourceType`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_mistake_records_sourceId` ON `mistake_records` (`sourceId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_mistake_records_courseCode` ON `mistake_records` (`courseCode`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_mistake_records_topicTag` ON `mistake_records` (`topicTag`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_mistake_records_retryAt` ON `mistake_records` (`retryAt`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_mistake_records_resolved` ON `mistake_records` (`resolved`)")
+
+                db.execSQL("""CREATE TABLE IF NOT EXISTS `study_goals` (
+                    `id` TEXT NOT NULL, `courseCode` TEXT, `topicTag` TEXT, `title` TEXT NOT NULL, `goalType` TEXT NOT NULL,
+                    `targetValue` INTEGER NOT NULL, `progressValue` INTEGER NOT NULL, `dueDate` TEXT, `completed` INTEGER NOT NULL,
+                    `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`)
+                )""".trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_study_goals_courseCode` ON `study_goals` (`courseCode`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_study_goals_dueDate` ON `study_goals` (`dueDate`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_study_goals_completed` ON `study_goals` (`completed`)")
+
+                db.execSQL("""CREATE TABLE IF NOT EXISTS `study_plan_items` (
+                    `id` TEXT NOT NULL, `courseCode` TEXT, `topicTag` TEXT, `title` TEXT NOT NULL, `plannedDate` TEXT NOT NULL,
+                    `minutes` INTEGER NOT NULL, `kind` TEXT NOT NULL, `completed` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`)
+                )""".trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_study_plan_items_plannedDate` ON `study_plan_items` (`plannedDate`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_study_plan_items_courseCode` ON `study_plan_items` (`courseCode`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_study_plan_items_topicTag` ON `study_plan_items` (`topicTag`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_study_plan_items_completed` ON `study_plan_items` (`completed`)")
+
+                db.execSQL("""CREATE TABLE IF NOT EXISTS `flashcard_review_events` (
+                    `id` TEXT NOT NULL, `cardId` TEXT NOT NULL, `deckId` TEXT, `courseCode` TEXT, `rating` TEXT NOT NULL,
+                    `reviewedAt` INTEGER NOT NULL, PRIMARY KEY(`id`)
+                )""".trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_flashcard_review_events_cardId` ON `flashcard_review_events` (`cardId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_flashcard_review_events_courseCode` ON `flashcard_review_events` (`courseCode`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_flashcard_review_events_reviewedAt` ON `flashcard_review_events` (`reviewedAt`)")
+
+                db.execSQL("""CREATE TABLE IF NOT EXISTS `quiz_answer_results` (
+                    `id` TEXT NOT NULL, `attemptId` TEXT NOT NULL, `quizId` TEXT NOT NULL, `questionId` TEXT NOT NULL, `userAnswer` TEXT NOT NULL,
+                    `correctAnswer` TEXT NOT NULL, `correct` INTEGER NOT NULL, `confidence` TEXT NOT NULL, `answeredAt` INTEGER NOT NULL, PRIMARY KEY(`id`),
+                    FOREIGN KEY(`attemptId`) REFERENCES `quiz_attempts`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`questionId`) REFERENCES `quiz_questions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                )""".trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_quiz_answer_results_attemptId` ON `quiz_answer_results` (`attemptId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_quiz_answer_results_questionId` ON `quiz_answer_results` (`questionId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_quiz_answer_results_answeredAt` ON `quiz_answer_results` (`answeredAt`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_quiz_answer_results_correct` ON `quiz_answer_results` (`correct`)")
+
+                db.execSQL("""CREATE TABLE IF NOT EXISTS `question_bank` (
+                    `id` TEXT NOT NULL, `courseCode` TEXT, `type` TEXT NOT NULL, `prompt` TEXT NOT NULL, `optionsJson` TEXT NOT NULL,
+                    `correctAnswer` TEXT NOT NULL, `explanation` TEXT, `tags` TEXT NOT NULL, `metadataJson` TEXT NOT NULL, `imageUri` TEXT,
+                    `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`id`)
+                )""".trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_question_bank_courseCode` ON `question_bank` (`courseCode`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_question_bank_tags` ON `question_bank` (`tags`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_question_bank_updatedAt` ON `question_bank` (`updatedAt`)")
+            }
+        }
+
         fun get(context: Context): PunlaDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -255,7 +371,7 @@ abstract class PunlaDatabase : RoomDatabase() {
                     PunlaDatabase::class.java,
                     "punla.db"
                 )
-                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
                     // Very old development installs never had migration specs.
                     // Preserve current v6+ personal data; only pre-v6 schemas
                     // may still be recreated rather than crashing at launch.

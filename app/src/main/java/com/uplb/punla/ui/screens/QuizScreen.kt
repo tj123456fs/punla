@@ -1,5 +1,6 @@
 package com.uplb.punla.ui.screens
 
+import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -17,17 +18,22 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Help
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Save
@@ -58,10 +64,13 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -71,20 +80,48 @@ import com.uplb.punla.data.QuizJsonExport
 import com.uplb.punla.data.QuizJsonImport
 import com.uplb.punla.data.QuizJsonPayload
 import com.uplb.punla.data.PunlaJsonImportReader
+import com.uplb.punla.data.StudyEngine
 import com.uplb.punla.data.entity.Flashcard
 import com.uplb.punla.data.entity.FlashcardDeck
 import com.uplb.punla.data.entity.Quiz
 import com.uplb.punla.data.entity.QuizAttempt
+import com.uplb.punla.data.entity.QuizAnswerResult
+import com.uplb.punla.data.entity.StudyConfidence
 import com.uplb.punla.data.entity.QuizQuestion
 import com.uplb.punla.data.entity.QuizQuestionTypes
 import com.uplb.punla.ui.PunlaViewModel
 import org.json.JSONArray
+import org.json.JSONObject
+import coil.compose.AsyncImage
 import java.util.UUID
+import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private data class QuizRunRequest(val questions: List<QuizQuestion>, val label: String, val id: String = UUID.randomUUID().toString())
+private data class QuizRunRequest(val questionIds: List<String>, val label: String, val examMode: Boolean = false, val id: String = UUID.randomUUID().toString())
+
+private val QUIZ_TYPE_OPTIONS = listOf("Multiple choice", "True / False", "Identification", "Multi-select", "Numeric", "Ordering", "Matching", "Image ID")
+private fun quizTypeFromIndex(index: Int): String = when (index) {
+    1 -> QuizQuestionTypes.TRUE_FALSE
+    2 -> QuizQuestionTypes.IDENTIFICATION
+    3 -> QuizQuestionTypes.MULTI_SELECT
+    4 -> QuizQuestionTypes.NUMERIC
+    5 -> QuizQuestionTypes.ORDERING
+    6 -> QuizQuestionTypes.MATCHING
+    7 -> QuizQuestionTypes.IMAGE_IDENTIFICATION
+    else -> QuizQuestionTypes.MULTIPLE_CHOICE
+}
+private fun quizTypeIndex(type: String): Int = when (type) {
+    QuizQuestionTypes.TRUE_FALSE -> 1
+    QuizQuestionTypes.IDENTIFICATION -> 2
+    QuizQuestionTypes.MULTI_SELECT -> 3
+    QuizQuestionTypes.NUMERIC -> 4
+    QuizQuestionTypes.ORDERING -> 5
+    QuizQuestionTypes.MATCHING -> 6
+    QuizQuestionTypes.IMAGE_IDENTIFICATION -> 7
+    else -> 0
+}
 
 @Composable
 fun QuizScreen(vm: PunlaViewModel) {
@@ -94,14 +131,44 @@ fun QuizScreen(vm: PunlaViewModel) {
     val decks by vm.flashcardDecks.collectAsState()
     val flashcards by vm.flashcards.collectAsState()
     var selectedQuizId by rememberSaveable { mutableStateOf<String?>(null) }
-    var runRequest by remember { mutableStateOf<QuizRunRequest?>(null) }
+    // Store the active run as primitives so an in-progress quiz survives
+    // rotation/process recreation instead of falling back to the detail screen.
+    var runQuestionIds by rememberSaveable { mutableStateOf<String?>(null) }
+    var runLabel by rememberSaveable { mutableStateOf("") }
+    var runExamMode by rememberSaveable { mutableStateOf(false) }
+    var runId by rememberSaveable { mutableStateOf<String?>(null) }
+    val runRequest = runQuestionIds?.let { encoded ->
+        QuizRunRequest(
+            questionIds = encoded.split(',').filter { it.isNotBlank() },
+            label = runLabel,
+            examMode = runExamMode,
+            id = runId ?: "restored-run"
+        )
+    }
+
+    fun startRun(questions: List<QuizQuestion>, label: String, examMode: Boolean = false) {
+        runQuestionIds = questions.joinToString(",") { it.id }
+        runLabel = label
+        runExamMode = examMode
+        runId = UUID.randomUUID().toString()
+    }
+    fun clearRun() {
+        runQuestionIds = null
+        runLabel = ""
+        runExamMode = false
+        runId = null
+    }
 
     val selectedQuiz = quizzes.firstOrNull { it.id == selectedQuizId }
     val selectedQuestions = selectedQuiz?.let { quiz -> allQuestions.filter { it.quizId == quiz.id } }.orEmpty()
     val selectedAttempts = selectedQuiz?.let { quiz -> allAttempts.filter { it.quizId == quiz.id }.sortedByDescending { it.completedAt } }.orEmpty()
+    val runQuestions = runRequest?.let { request ->
+        val byId = selectedQuestions.associateBy { it.id }
+        request.questionIds.mapNotNull(byId::get)
+    }.orEmpty()
 
     BackHandler(enabled = runRequest != null || selectedQuizId != null) {
-        if (runRequest != null) runRequest = null else selectedQuizId = null
+        if (runRequest != null) clearRun() else selectedQuizId = null
     }
 
     Crossfade(
@@ -117,9 +184,10 @@ fun QuizScreen(vm: PunlaViewModel) {
             "take" -> TakeQuizView(
                 quiz = selectedQuiz!!,
                 request = runRequest!!,
+                questions = runQuestions,
                 vm = vm,
-                onExit = { runRequest = null },
-                onRetryMistakes = { missed -> runRequest = QuizRunRequest(missed, "Retry mistakes") }
+                onExit = { clearRun() },
+                onRetryMistakes = { missed -> startRun(missed, "Retry mistakes") }
             )
             "detail" -> QuizDetailView(
                 quiz = selectedQuiz!!,
@@ -127,7 +195,7 @@ fun QuizScreen(vm: PunlaViewModel) {
                 attempts = selectedAttempts,
                 vm = vm,
                 onBack = { selectedQuizId = null },
-                onStart = { questions, label -> runRequest = QuizRunRequest(questions, label) }
+                onStart = { questions, label, examMode -> startRun(questions, label, examMode) }
             )
             else -> QuizLibraryView(
                 quizzes = quizzes,
@@ -287,6 +355,8 @@ private fun QuizLibraryView(
                     passingScore = imported.passingScore,
                     shuffleQuestions = imported.shuffleQuestions,
                     shuffleChoices = imported.shuffleChoices,
+                    timeLimitMinutes = imported.timeLimitMinutes,
+                    feedbackMode = imported.feedbackMode,
                     createdAt = now,
                     updatedAt = now
                 )
@@ -299,6 +369,8 @@ private fun QuizLibraryView(
                         correctAnswer = q.correctAnswer,
                         explanation = q.explanation,
                         tags = q.tags,
+                        metadataJson = q.metadataJson,
+                        imageUri = q.imageUri,
                         createdAt = now,
                         updatedAt = now
                     )
@@ -356,7 +428,7 @@ private fun QuizDetailView(
     attempts: List<QuizAttempt>,
     vm: PunlaViewModel,
     onBack: () -> Unit,
-    onStart: (List<QuizQuestion>, String) -> Unit
+    onStart: (List<QuizQuestion>, String, Boolean) -> Unit
 ) {
     var showQuizDialog by rememberSaveable(quiz.id) { mutableStateOf(false) }
     var showQuestionDialog by rememberSaveable(quiz.id) { mutableStateOf(false) }
@@ -407,13 +479,18 @@ private fun QuizDetailView(
             }
             if (questions.isNotEmpty()) {
                 item {
-                    Button(onClick = { onStart(questions, "Full quiz") }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
+                    Button(onClick = { onStart(questions, "Full quiz", false) }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
                         Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.size(6.dp)); Text("Start ${questions.size}-question quiz")
+                    }
+                }
+                item {
+                    OutlinedButton(onClick = { onStart(questions, "Practice test", true) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                        Icon(Icons.Default.Assignment, null); Spacer(Modifier.size(6.dp)); Text("Practice test mode · feedback at end")
                     }
                 }
                 if (latestMissed.isNotEmpty()) {
                     item {
-                        OutlinedButton(onClick = { onStart(latestMissed, "Retry mistakes") }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                        OutlinedButton(onClick = { onStart(latestMissed, "Retry mistakes", false) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                             Text("Retry ${latestMissed.size} mistake${if (latestMissed.size == 1) "" else "s"} from last attempt")
                         }
                     }
@@ -512,39 +589,127 @@ private fun QuestionListCard(question: QuizQuestion, onEdit: () -> Unit, onDelet
 private fun TakeQuizView(
     quiz: Quiz,
     request: QuizRunRequest,
+    questions: List<QuizQuestion>,
     vm: PunlaViewModel,
     onExit: () -> Unit,
     onRetryMistakes: (List<QuizQuestion>) -> Unit
 ) {
-    val queue = remember(quiz.id, request.id, request.questions.map { it.id }) {
-        if (quiz.shuffleQuestions) request.questions.shuffled() else request.questions
+    if (questions.isEmpty() && request.questionIds.isNotEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("Loading quiz…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        return
     }
-    val startedAt = remember(quiz.id, request.id, queue.map { it.id }) { System.currentTimeMillis() }
+    val queueIds = rememberSaveable(quiz.id, request.id) {
+        if (quiz.shuffleQuestions) request.questionIds.shuffled(Random(request.id.hashCode())) else request.questionIds
+    }
+    val requestQuestionsById = remember(questions.map { it.id }) { questions.associateBy { it.id } }
+    val queue = remember(queueIds, requestQuestionsById) { queueIds.mapNotNull(requestQuestionsById::get) }
+    val startedAt = rememberSaveable(quiz.id, request.id) { System.currentTimeMillis() }
+    val attemptId = rememberSaveable(quiz.id, request.id) { UUID.randomUUID().toString() }
     var index by rememberSaveable(quiz.id, request.id) { mutableIntStateOf(0) }
     var answer by rememberSaveable(quiz.id, request.id) { mutableStateOf("") }
     var submitted by rememberSaveable(quiz.id, request.id) { mutableStateOf(false) }
+    var answerQuestionId by rememberSaveable(quiz.id, request.id) { mutableStateOf<String?>(null) }
     var score by rememberSaveable(quiz.id, request.id) { mutableIntStateOf(0) }
-    var missedIds by remember(quiz.id, request.id) { mutableStateOf(listOf<String>()) }
+    var missedIds by rememberSaveable(quiz.id, request.id) { mutableStateOf(listOf<String>()) }
+    val answerResultsSaver = remember {
+        listSaver<List<QuizAnswerResult>, Any>(
+            save = { results ->
+                results.flatMap { result ->
+                    listOf(
+                        result.id, result.attemptId, result.quizId, result.questionId,
+                        result.userAnswer, result.correctAnswer, result.correct,
+                        result.confidence, result.answeredAt
+                    )
+                }
+            },
+            restore = { saved ->
+                saved.chunked(9).mapNotNull { values ->
+                    if (values.size != 9) return@mapNotNull null
+                    QuizAnswerResult(
+                        id = values[0] as String,
+                        attemptId = values[1] as String,
+                        quizId = values[2] as String,
+                        questionId = values[3] as String,
+                        userAnswer = values[4] as String,
+                        correctAnswer = values[5] as String,
+                        correct = values[6] as Boolean,
+                        confidence = values[7] as String,
+                        answeredAt = values[8] as Long
+                    )
+                }
+            }
+        )
+    }
+    var answerResults by rememberSaveable(quiz.id, request.id, stateSaver = answerResultsSaver) {
+        mutableStateOf(listOf<QuizAnswerResult>())
+    }
+    var confidence by rememberSaveable(quiz.id, request.id) { mutableStateOf(StudyConfidence.UNSURE) }
     var attemptSaved by rememberSaveable(quiz.id, request.id) { mutableStateOf(false) }
+    var attemptSaving by remember(quiz.id, request.id) { mutableStateOf(false) }
+    var attemptSaveError by remember(quiz.id, request.id) { mutableStateOf<String?>(null) }
     var mistakesSavedAsCards by rememberSaveable(quiz.id, request.id) { mutableStateOf(false) }
+    var elapsedSeconds by rememberSaveable(quiz.id, request.id) { mutableIntStateOf(0) }
+    var timedOut by rememberSaveable(quiz.id, request.id) { mutableStateOf(false) }
     val finished = queue.isEmpty() || index >= queue.size
     val horizontalPadding = punlaScreenHorizontalPadding(720.dp)
+    val effectiveTimeLimitMinutes = quiz.timeLimitMinutes?.takeIf { it > 0 }
+        ?: if (request.examMode) queue.size.coerceAtLeast(1) else null
+    val remainingSeconds = effectiveTimeLimitMinutes?.let { (it * 60 - elapsedSeconds).coerceAtLeast(0) }
+    val timeExpired = timedOut || (remainingSeconds == 0 && effectiveTimeLimitMinutes != null && !finished)
+    val deferredFeedback = request.examMode || quiz.feedbackMode == "AFTER"
 
-    if (finished && queue.isNotEmpty() && !attemptSaved) {
-        LaunchedEffect(queue, score, missedIds) {
+    LaunchedEffect(startedAt, effectiveTimeLimitMinutes, finished) {
+        while (!finished) {
+            kotlinx.coroutines.delay(1_000L)
+            elapsedSeconds = ((System.currentTimeMillis() - startedAt) / 1000L).toInt().coerceAtLeast(0)
+            if (effectiveTimeLimitMinutes != null && elapsedSeconds >= effectiveTimeLimitMinutes * 60) {
+                timedOut = true
+                val alreadyAnswered = answerResults.mapTo(hashSetOf()) { it.questionId }
+                val unanswered = queue.drop(index).filter { it.id !in alreadyAnswered }
+                if (unanswered.isNotEmpty()) {
+                    missedIds = (missedIds + unanswered.map { it.id }).distinct()
+                    val answeredAt = System.currentTimeMillis()
+                    answerResults = answerResults + unanswered.map { q ->
+                        QuizAnswerResult(
+                            attemptId = attemptId,
+                            quizId = quiz.id,
+                            questionId = q.id,
+                            userAnswer = "",
+                            correctAnswer = q.correctAnswer,
+                            correct = false,
+                            confidence = StudyConfidence.UNSET,
+                            answeredAt = answeredAt
+                        )
+                    }
+                }
+                index = queue.size
+                break
+            }
+        }
+    }
+
+    if (finished && queue.isNotEmpty() && !attemptSaved && !attemptSaving && attemptSaveError == null) {
+        LaunchedEffect(queue, score, missedIds, answerResults) {
+            attemptSaving = true
             val completedAt = System.currentTimeMillis()
-            vm.recordQuizAttempt(
-                QuizAttempt(
-                    quizId = quiz.id,
-                    startedAt = startedAt,
-                    completedAt = completedAt,
-                    score = score,
-                    total = queue.size,
-                    durationMs = completedAt - startedAt,
-                    incorrectQuestionIdsJson = JSONArray(missedIds).toString()
-                )
+            val attempt = QuizAttempt(
+                id = attemptId,
+                quizId = quiz.id,
+                startedAt = startedAt,
+                completedAt = completedAt,
+                score = score,
+                total = queue.size,
+                durationMs = completedAt - startedAt,
+                incorrectQuestionIdsJson = JSONArray(missedIds.distinct()).toString()
             )
-            attemptSaved = true
+            vm.recordQuizAttemptWithResults(attempt, answerResults, queue.associateBy { it.id }, quiz)
+                .onSuccess { attemptSaved = true }
+                .onFailure { error ->
+                    attemptSaveError = error.message ?: "Punla couldn't save this quiz attempt."
+                }
+            attemptSaving = false
         }
     }
 
@@ -557,55 +722,166 @@ private fun TakeQuizView(
                 IconButton(onClick = onExit) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Exit quiz") }
                 Column(Modifier.weight(1f)) {
                     Text(quiz.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text(if (finished) request.label else "${request.label} · Question ${index + 1} of ${queue.size}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        if (finished) request.label else "${request.label} · Question ${index + 1} of ${queue.size}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                remainingSeconds?.let {
+                    Text("%02d:%02d".format(it / 60, it % 60), color = if (it <= 60) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                 }
             }
             if (!finished) {
                 LinearProgressIndicator(progress = { (index + 1).toFloat() / queue.size.toFloat() }, modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.size(18.dp))
                 val question = queue[index]
-                val options = remember(question.id) {
-                    val base = when (question.type) {
+                // Choice/order shuffles are deterministic for this attempt so
+                // rotation/recomposition cannot silently reshuffle the active question.
+                val baseOptions = remember(question.id, request.id, attemptId) {
+                    val seed = "$attemptId|${question.id}|options".hashCode()
+                    when (question.type) {
                         QuizQuestionTypes.TRUE_FALSE -> listOf("True", "False")
-                        QuizQuestionTypes.MULTIPLE_CHOICE -> question.options()
-                        else -> emptyList()
+                        QuizQuestionTypes.MULTIPLE_CHOICE, QuizQuestionTypes.MULTI_SELECT -> {
+                            val base = question.options()
+                            if (quiz.shuffleChoices) base.shuffled(Random(seed)) else base
+                        }
+                        QuizQuestionTypes.ORDERING -> question.options().shuffled(Random(seed))
+                        else -> question.options()
                     }
-                    if (quiz.shuffleChoices && question.type == QuizQuestionTypes.MULTIPLE_CHOICE) base.shuffled() else base
                 }
+                LaunchedEffect(question.id, answerQuestionId) {
+                    // LaunchedEffect runs again after a configuration change. The
+                    // saved question id prevents it from wiping an in-progress answer.
+                    if (answerQuestionId != question.id) {
+                        answer = when (question.type) {
+                            QuizQuestionTypes.ORDERING -> JSONArray(baseOptions).toString()
+                            QuizQuestionTypes.MATCHING -> "{}"
+                            else -> ""
+                        }
+                        submitted = false
+                        confidence = StudyConfidence.UNSURE
+                        answerQuestionId = question.id
+                    }
+                }
+                val currentCorrect = StudyEngine.evaluate(question, answer)
+
                 Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(Modifier.padding(20.dp)) {
                         Tag(questionTypeLabel(question.type), MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
                         Spacer(Modifier.size(12.dp))
+                        if (!question.imageUri.isNullOrBlank()) {
+                            AsyncImage(model = question.imageUri, contentDescription = "Question diagram", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxWidth().heightIn(min = 150.dp, max = 260.dp).clip(RoundedCornerShape(14.dp)))
+                            Spacer(Modifier.size(12.dp))
+                        }
                         Text(question.prompt, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.size(18.dp))
-                        if (question.type == QuizQuestionTypes.IDENTIFICATION) {
-                            OutlinedTextField(value = answer, onValueChange = { if (!submitted) answer = it }, label = { Text("Your answer") }, modifier = Modifier.fillMaxWidth(), enabled = !submitted, minLines = 1)
-                        } else {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                options.forEach { option ->
-                                    FilterChip(
-                                        selected = answer == option,
-                                        onClick = { if (!submitted) answer = option },
-                                        label = { Text(option) },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        enabled = !submitted
-                                    )
+
+                        when (question.type) {
+                            QuizQuestionTypes.IDENTIFICATION, QuizQuestionTypes.IMAGE_IDENTIFICATION, QuizQuestionTypes.NUMERIC -> {
+                                OutlinedTextField(
+                                    value = answer,
+                                    onValueChange = { if (!submitted) answer = it },
+                                    label = { Text(if (question.type == QuizQuestionTypes.NUMERIC) "Numeric answer" else "Your answer") },
+                                    modifier = Modifier.fillMaxWidth(), enabled = !submitted, minLines = 1
+                                )
+                                if (question.type == QuizQuestionTypes.NUMERIC) {
+                                    val tolerance = runCatching { JSONObject(question.metadataJson).optDouble("tolerance", 0.0) }.getOrDefault(0.0)
+                                    if (tolerance > 0) Text("Accepted tolerance: ±$tolerance", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                            QuizQuestionTypes.MULTI_SELECT -> {
+                                val selected = decodeJsonStringList(answer).toMutableSet()
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    baseOptions.forEach { option ->
+                                        FilterChip(
+                                            selected = selected.any { QuizQuestion.normalizeAnswer(it) == QuizQuestion.normalizeAnswer(option) },
+                                            onClick = {
+                                                if (!submitted) {
+                                                    val match = selected.firstOrNull { QuizQuestion.normalizeAnswer(it) == QuizQuestion.normalizeAnswer(option) }
+                                                    if (match != null) selected.remove(match) else selected.add(option)
+                                                    answer = JSONArray(selected.toList()).toString()
+                                                }
+                                            }, label = { Text(option) }, modifier = Modifier.fillMaxWidth(), enabled = !submitted
+                                        )
+                                    }
+                                }
+                            }
+                            QuizQuestionTypes.ORDERING -> {
+                                val ordered = decodeJsonStringList(answer).ifEmpty { baseOptions }
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    ordered.forEachIndexed { pos, item ->
+                                        Surface(shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f)) {
+                                            Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                Text("${pos + 1}.", modifier = Modifier.padding(end = 8.dp), fontWeight = FontWeight.Bold)
+                                                Text(item, modifier = Modifier.weight(1f))
+                                                IconButton(enabled = !submitted && pos > 0, onClick = { answer = JSONArray(ordered.toMutableList().apply { val v = removeAt(pos); add(pos - 1, v) }).toString() }) { Icon(Icons.Default.KeyboardArrowUp, "Move up") }
+                                                IconButton(enabled = !submitted && pos < ordered.lastIndex, onClick = { answer = JSONArray(ordered.toMutableList().apply { val v = removeAt(pos); add(pos + 1, v) }).toString() }) { Icon(Icons.Default.KeyboardArrowDown, "Move down") }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            QuizQuestionTypes.MATCHING -> {
+                                val correctMap = decodeMatchingPairs(question.correctAnswer)
+                                val current = decodeMatchingPairs(answer).toMutableMap()
+                                val rights = remember(question.id, request.id, attemptId) {
+                                    correctMap.values.distinct().shuffled(Random("$attemptId|${question.id}|matching".hashCode()))
+                                }
+                                Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                                    correctMap.keys.forEach { left ->
+                                        PunlaDropdownField(
+                                            label = left,
+                                            selectedLabel = current[left] ?: "Choose match",
+                                            options = rights,
+                                            onSelect = { selected ->
+                                                if (!submitted) {
+                                                    current[left] = rights[selected]
+                                                    answer = JSONObject(current as Map<*, *>).toString()
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    }
+                                }
+                            }
+                            else -> {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    baseOptions.forEach { option ->
+                                        FilterChip(selected = answer == option, onClick = { if (!submitted) answer = option }, label = { Text(option) }, modifier = Modifier.fillMaxWidth(), enabled = !submitted)
+                                    }
                                 }
                             }
                         }
-                        if (submitted) {
+
+                        if (!submitted) {
                             Spacer(Modifier.size(16.dp))
-                            val correct = question.isCorrect(answer)
+                            Text("How sure are you?", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.size(6.dp))
+                            SegmentedControl(
+                                listOf("Guessed", "Unsure", "Confident"),
+                                when (confidence) { StudyConfidence.GUESSED -> 0; StudyConfidence.CONFIDENT -> 2; else -> 1 },
+                                { confidence = when (it) { 0 -> StudyConfidence.GUESSED; 2 -> StudyConfidence.CONFIDENT; else -> StudyConfidence.UNSURE } },
+                                Modifier.fillMaxWidth()
+                            )
+                        }
+
+                        if (submitted && !deferredFeedback) {
+                            Spacer(Modifier.size(16.dp))
                             Surface(
                                 shape = RoundedCornerShape(14.dp),
-                                color = if (correct) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.tertiaryContainer,
-                                contentColor = if (correct) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onTertiaryContainer
+                                color = if (currentCorrect) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.tertiaryContainer,
+                                contentColor = if (currentCorrect) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onTertiaryContainer
                             ) {
                                 Column(Modifier.padding(12.dp)) {
-                                    Text(if (correct) "Correct" else "Answer: ${question.correctAnswer}", fontWeight = FontWeight.SemiBold)
-                                    question.explanation?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp)) }
+                                    Text(if (currentCorrect) "Correct" else "Answer: ${displayCorrectAnswer(question)}", fontWeight = FontWeight.SemiBold)
+                                    question.explanation?.takeIf { it.isNotBlank() }?.let {
+                                        Spacer(Modifier.height(6.dp)); Text(it, style = MaterialTheme.typography.bodyMedium)
+                                    }
                                 }
                             }
+                        } else if (submitted && deferredFeedback) {
+                            Spacer(Modifier.size(12.dp)); Text("Answer locked. Feedback will appear after the test.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -613,15 +889,21 @@ private fun TakeQuizView(
                 if (!submitted) {
                     Button(
                         onClick = {
+                            val correct = StudyEngine.evaluate(question, answer)
                             submitted = true
-                            if (question.isCorrect(answer)) score++ else missedIds = missedIds + question.id
+                            if (correct) score++ else missedIds = missedIds + question.id
+                            answerResults = answerResults + QuizAnswerResult(
+                                attemptId = attemptId, quizId = quiz.id, questionId = question.id,
+                                userAnswer = answer, correctAnswer = question.correctAnswer, correct = correct,
+                                confidence = confidence, answeredAt = System.currentTimeMillis()
+                            )
                         },
-                        enabled = answer.trim().isNotEmpty(),
+                        enabled = answerReady(question, answer) && !timeExpired,
                         modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)
-                    ) { Text("Check answer") }
+                    ) { Text(if (request.examMode) "Lock answer" else "Check answer") }
                 } else {
                     Button(
-                        onClick = { index++; answer = ""; submitted = false },
+                        onClick = { index++; answer = ""; submitted = false; confidence = StudyConfidence.UNSURE },
                         modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)
                     ) { Text(if (index == queue.lastIndex) "See results" else "Next question") }
                 }
@@ -633,21 +915,41 @@ private fun TakeQuizView(
                     Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Default.AutoAwesome, null, modifier = Modifier.size(42.dp), tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.size(10.dp))
-                        Text(if (passed) "Quiz complete" else "Review and try again", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                        Text(if (timeExpired) "Time is up" else if (passed) "Quiz complete" else "Review and try again", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                         Text("$score/${queue.size} · $percent%", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(top = 8.dp))
-                        Text("Passing score: ${quiz.passingScore}%", style = MaterialTheme.typography.bodySmall)
+                        Text("${formatDuration((elapsedSeconds * 1000L))} · passing ${quiz.passingScore}%", style = MaterialTheme.typography.bodySmall)
+                        when {
+                            attemptSaving -> Text("Saving attempt…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+                            attemptSaveError != null -> {
+                                Spacer(Modifier.height(8.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.errorContainer,
+                                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                                ) {
+                                    Column(Modifier.fillMaxWidth().padding(10.dp)) {
+                                        Text(attemptSaveError ?: "Couldn't save attempt.", style = MaterialTheme.typography.bodySmall)
+                                        TextButton(onClick = { attemptSaveError = null }) { Text("Retry save") }
+                                    }
+                                }
+                            }
+                        }
+                        val guessedCorrect = answerResults.count { it.correct && it.confidence == StudyConfidence.GUESSED }
+                        if (guessedCorrect > 0) Text("$guessedCorrect correct answer${if (guessedCorrect == 1) " was" else "s were"} guessed and added to weak-review signals.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
                         val missed = queue.filter { it.id in missedIds }
+                        if (deferredFeedback && missed.isNotEmpty()) {
+                            Spacer(Modifier.size(16.dp)); Text("Mistake review", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                            missed.take(6).forEach { q ->
+                                Text("• ${q.prompt}\n  ${displayCorrectAnswer(q)}${q.explanation?.let { " — $it" } ?: ""}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
+                            }
+                        }
                         if (missed.isNotEmpty()) {
                             Spacer(Modifier.size(16.dp))
                             OutlinedButton(onClick = { onRetryMistakes(missed) }, modifier = Modifier.fillMaxWidth()) { Text("Retry ${missed.size} mistakes") }
                             Spacer(Modifier.size(8.dp))
                             OutlinedButton(
-                                onClick = {
-                                    vm.createFlashcardsFromQuizMistakes(quiz, missed)
-                                    mistakesSavedAsCards = true
-                                },
-                                enabled = !mistakesSavedAsCards,
-                                modifier = Modifier.fillMaxWidth()
+                                onClick = { vm.createFlashcardsFromQuizMistakes(quiz, missed); mistakesSavedAsCards = true },
+                                enabled = !mistakesSavedAsCards, modifier = Modifier.fillMaxWidth()
                             ) { Text(if (mistakesSavedAsCards) "Mistakes saved to Flashcards" else "Make flashcards from mistakes") }
                         }
                         Spacer(Modifier.size(8.dp))
@@ -667,6 +969,8 @@ private fun QuizEditorDialog(initial: Quiz?, onDismiss: () -> Unit, onSave: (Qui
     var passing by rememberSaveable(initial?.id) { mutableStateOf((initial?.passingScore ?: 70).toString()) }
     var shuffleQuestions by rememberSaveable(initial?.id) { mutableStateOf(initial?.shuffleQuestions ?: true) }
     var shuffleChoices by rememberSaveable(initial?.id) { mutableStateOf(initial?.shuffleChoices ?: true) }
+    var timeLimit by rememberSaveable(initial?.id) { mutableStateOf(initial?.timeLimitMinutes?.toString().orEmpty()) }
+    var feedbackAfter by rememberSaveable(initial?.id) { mutableStateOf(initial?.feedbackMode == "AFTER") }
     val passingInt = passing.toIntOrNull()
     val valid = title.trim().isNotBlank() && passingInt != null && passingInt in 1..100
     AlertDialog(
@@ -678,6 +982,13 @@ private fun QuizEditorDialog(initial: Quiz?, onDismiss: () -> Unit, onSave: (Qui
                 item { OutlinedTextField(course, { course = it }, label = { Text("Course code (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
                 item { OutlinedTextField(description, { description = it }, label = { Text("Description (optional)") }, modifier = Modifier.fillMaxWidth(), minLines = 2) }
                 item { OutlinedTextField(passing, { passing = it.filter(Char::isDigit).take(3) }, label = { Text("Passing score %") }, modifier = Modifier.fillMaxWidth(), singleLine = true, isError = passing.isNotBlank() && (passingInt == null || passingInt !in 1..100)) }
+                item { OutlinedTextField(timeLimit, { timeLimit = it.filter(Char::isDigit).take(3) }, label = { Text("Time limit minutes (optional)") }, supportingText = { Text("Leave blank for untimed. Practice-test mode defaults to roughly 1 minute/question if blank.") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
+                item {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) { Text("Feedback after quiz"); Text("Hide answers/explanations until the end", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        Switch(feedbackAfter, { feedbackAfter = it })
+                    }
+                }
                 item {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) { Text("Shuffle questions"); Text("Randomize question order on each attempt", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -695,8 +1006,8 @@ private fun QuizEditorDialog(initial: Quiz?, onDismiss: () -> Unit, onSave: (Qui
         confirmButton = {
             TextButton(onClick = {
                 val now = System.currentTimeMillis()
-                onSave(initial?.copy(title = title.trim(), courseCode = course.trim().ifBlank { null }, description = description.trim().ifBlank { null }, passingScore = passingInt ?: 70, shuffleQuestions = shuffleQuestions, shuffleChoices = shuffleChoices, updatedAt = now)
-                    ?: Quiz(title = title.trim(), courseCode = course.trim().ifBlank { null }, description = description.trim().ifBlank { null }, passingScore = passingInt ?: 70, shuffleQuestions = shuffleQuestions, shuffleChoices = shuffleChoices, createdAt = now, updatedAt = now))
+                onSave(initial?.copy(title = title.trim(), courseCode = course.trim().ifBlank { null }, description = description.trim().ifBlank { null }, passingScore = passingInt ?: 70, shuffleQuestions = shuffleQuestions, shuffleChoices = shuffleChoices, timeLimitMinutes = timeLimit.toIntOrNull()?.takeIf { it > 0 }, feedbackMode = if (feedbackAfter) "AFTER" else "IMMEDIATE", updatedAt = now)
+                    ?: Quiz(title = title.trim(), courseCode = course.trim().ifBlank { null }, description = description.trim().ifBlank { null }, passingScore = passingInt ?: 70, shuffleQuestions = shuffleQuestions, shuffleChoices = shuffleChoices, timeLimitMinutes = timeLimit.toIntOrNull()?.takeIf { it > 0 }, feedbackMode = if (feedbackAfter) "AFTER" else "IMMEDIATE", createdAt = now, updatedAt = now))
             }, enabled = valid) { Text("Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
@@ -705,12 +1016,7 @@ private fun QuizEditorDialog(initial: Quiz?, onDismiss: () -> Unit, onSave: (Qui
 
 @Composable
 private fun QuestionEditorDialog(quizId: String, initial: QuizQuestion?, onDismiss: () -> Unit, onSave: (QuizQuestion) -> Unit) {
-    val initialType = when (initial?.type) {
-        QuizQuestionTypes.TRUE_FALSE -> 1
-        QuizQuestionTypes.IDENTIFICATION -> 2
-        else -> 0
-    }
-    var typeIndex by rememberSaveable(initial?.id) { mutableIntStateOf(initialType) }
+    var typeIndex by rememberSaveable(initial?.id) { mutableIntStateOf(quizTypeIndex(initial?.type ?: QuizQuestionTypes.MULTIPLE_CHOICE)) }
     var prompt by rememberSaveable(initial?.id) { mutableStateOf(initial?.prompt.orEmpty()) }
     val initialOptions = initial?.options().orEmpty()
     var a by rememberSaveable(initial?.id) { mutableStateOf(initialOptions.getOrNull(0).orEmpty()) }
@@ -720,49 +1026,130 @@ private fun QuestionEditorDialog(quizId: String, initial: QuizQuestion?, onDismi
     var correctChoice by rememberSaveable(initial?.id) {
         mutableIntStateOf(initialOptions.indexOfFirst { QuizQuestion.normalizeAnswer(it) == QuizQuestion.normalizeAnswer(initial?.correctAnswer.orEmpty()) }.coerceAtLeast(0))
     }
+    var multiCorrectCsv by rememberSaveable(initial?.id) {
+        mutableStateOf(if (initial?.type == QuizQuestionTypes.MULTI_SELECT) decodeJsonStringList(initial.correctAnswer).mapNotNull { ans -> initialOptions.indexOfFirst { QuizQuestion.normalizeAnswer(it) == QuizQuestion.normalizeAnswer(ans) }.takeIf { it >= 0 } }.joinToString(",") else "")
+    }
     var trueFalseIndex by rememberSaveable(initial?.id) { mutableIntStateOf(if (initial?.correctAnswer.equals("False", true)) 1 else 0) }
-    var identificationAnswer by rememberSaveable(initial?.id) { mutableStateOf(if (initial?.type == QuizQuestionTypes.IDENTIFICATION) initial?.correctAnswer.orEmpty() else "") }
+    var typedAnswer by rememberSaveable(initial?.id) {
+        mutableStateOf(if (initial?.type in setOf(QuizQuestionTypes.IDENTIFICATION, QuizQuestionTypes.NUMERIC, QuizQuestionTypes.IMAGE_IDENTIFICATION)) initial.correctAnswer else "")
+    }
+    var numericTolerance by rememberSaveable(initial?.id) {
+        mutableStateOf(runCatching { JSONObject(initial?.metadataJson ?: "{}").optDouble("tolerance", 0.0).toString() }.getOrDefault("0.0"))
+    }
+    var orderingText by rememberSaveable(initial?.id) {
+        mutableStateOf(if (initial?.type == QuizQuestionTypes.ORDERING) decodeJsonStringList(initial.correctAnswer).joinToString("\n") else initialOptions.joinToString("\n"))
+    }
+    var matchingText by rememberSaveable(initial?.id) {
+        mutableStateOf(if (initial?.type == QuizQuestionTypes.MATCHING) decodeMatchingPairs(initial.correctAnswer).entries.joinToString("\n") { "${it.key} :: ${it.value}" } else "")
+    }
     var explanation by rememberSaveable(initial?.id) { mutableStateOf(initial?.explanation.orEmpty()) }
     var tags by rememberSaveable(initial?.id) { mutableStateOf(initial?.tags.orEmpty()) }
-    val type = when (typeIndex) { 1 -> QuizQuestionTypes.TRUE_FALSE; 2 -> QuizQuestionTypes.IDENTIFICATION; else -> QuizQuestionTypes.MULTIPLE_CHOICE }
+    var imageUri by rememberSaveable(initial?.id) { mutableStateOf(initial?.imageUri) }
+    val context = LocalContext.current
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            imageUri = uri.toString()
+            typeIndex = 7
+        }
+    }
+
+    val type = quizTypeFromIndex(typeIndex)
     val rawChoices = listOf(a, b, c, d).map { it.trim() }
     val choices = rawChoices.filter { it.isNotEmpty() }
+    val choicesAreUnique = choices.map(QuizQuestion::normalizeAnswer).distinct().size == choices.size
+    val multiSelected = multiCorrectCsv.split(',').mapNotNull { it.trim().toIntOrNull() }.toSet()
+    val orderItems = orderingText.lines().map { it.trim() }.filter { it.isNotEmpty() }
+    val orderItemsAreUnique = orderItems.map(QuizQuestion::normalizeAnswer).distinct().size == orderItems.size
+    val matchPairs = parseMatchingEditor(matchingText)
+    val matchKeysAreUnique = matchPairs.keys.map(QuizQuestion::normalizeAnswer).distinct().size == matchPairs.size
+    val matchValuesAreUnique = matchPairs.values.map(QuizQuestion::normalizeAnswer).distinct().size == matchPairs.size
     val valid = prompt.trim().isNotEmpty() && when (type) {
-        QuizQuestionTypes.MULTIPLE_CHOICE -> choices.size >= 2 && rawChoices.getOrNull(correctChoice).orEmpty().isNotBlank()
-        QuizQuestionTypes.IDENTIFICATION -> identificationAnswer.trim().isNotEmpty()
-        else -> true
+        QuizQuestionTypes.MULTIPLE_CHOICE -> choices.size >= 2 && choicesAreUnique && rawChoices.getOrNull(correctChoice).orEmpty().isNotBlank()
+        QuizQuestionTypes.MULTI_SELECT -> choices.size >= 2 && choicesAreUnique && multiSelected.isNotEmpty() && multiSelected.all { it in rawChoices.indices && rawChoices[it].isNotBlank() }
+        QuizQuestionTypes.TRUE_FALSE -> true
+        QuizQuestionTypes.IDENTIFICATION, QuizQuestionTypes.IMAGE_IDENTIFICATION -> typedAnswer.trim().isNotEmpty() && (type != QuizQuestionTypes.IMAGE_IDENTIFICATION || !imageUri.isNullOrBlank())
+        QuizQuestionTypes.NUMERIC -> typedAnswer.toDoubleOrNull() != null && (numericTolerance.toDoubleOrNull()?.let { it >= 0.0 } == true)
+        QuizQuestionTypes.ORDERING -> orderItems.size >= 2 && orderItemsAreUnique
+        QuizQuestionTypes.MATCHING -> matchPairs.size >= 2 && matchKeysAreUnique && matchValuesAreUnique
+        else -> false
     }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initial == null) "Add question" else "Edit question") },
         text = {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                item { SegmentedControl(listOf("Multiple choice", "True / False", "Identification"), typeIndex, { typeIndex = it }, Modifier.fillMaxWidth()) }
+                item {
+                    PunlaDropdownField(
+                        label = "Question type",
+                        selectedLabel = QUIZ_TYPE_OPTIONS[typeIndex],
+                        options = QUIZ_TYPE_OPTIONS,
+                        onSelect = { typeIndex = it },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
                 item { OutlinedTextField(prompt, { prompt = it }, label = { Text("Question") }, modifier = Modifier.fillMaxWidth(), minLines = 2) }
-                if (type == QuizQuestionTypes.MULTIPLE_CHOICE) {
-                    item { Text("Choices — tap the chip beside the correct one", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+
+                if (type in setOf(QuizQuestionTypes.MULTIPLE_CHOICE, QuizQuestionTypes.MULTI_SELECT)) {
+                    item { Text(if (type == QuizQuestionTypes.MULTI_SELECT) "Choices — select every correct answer" else "Choices — select the correct answer", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     listOf("A" to a, "B" to b, "C" to c, "D" to d).forEachIndexed { idx, pair ->
                         item {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                FilterChip(selected = correctChoice == idx, onClick = { correctChoice = idx }, label = { Text(pair.first) })
+                                FilterChip(
+                                    selected = if (type == QuizQuestionTypes.MULTI_SELECT) idx in multiSelected else correctChoice == idx,
+                                    onClick = {
+                                        if (type == QuizQuestionTypes.MULTI_SELECT) {
+                                            val next = multiSelected.toMutableSet().apply { if (!add(idx)) remove(idx) }
+                                            multiCorrectCsv = next.sorted().joinToString(",")
+                                        } else correctChoice = idx
+                                    },
+                                    label = { Text(pair.first) }
+                                )
                                 Spacer(Modifier.size(8.dp))
                                 OutlinedTextField(
                                     value = pair.second,
                                     onValueChange = { value -> when (idx) { 0 -> a = value; 1 -> b = value; 2 -> c = value; else -> d = value } },
-                                    label = { Text("Choice ${pair.first}") },
-                                    modifier = Modifier.weight(1f),
-                                    singleLine = true
+                                    label = { Text("Choice ${pair.first}") }, modifier = Modifier.weight(1f), singleLine = true
                                 )
                             }
                         }
                     }
                 } else if (type == QuizQuestionTypes.TRUE_FALSE) {
                     item { SegmentedControl(listOf("True", "False"), trueFalseIndex, { trueFalseIndex = it }, Modifier.fillMaxWidth()) }
-                } else {
-                    item { OutlinedTextField(identificationAnswer, { identificationAnswer = it }, label = { Text("Correct answer") }, modifier = Modifier.fillMaxWidth(), minLines = 1) }
-                    item { Text("Identification checking ignores capitalization and repeated spaces, but otherwise expects the same answer.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                } else if (type in setOf(QuizQuestionTypes.IDENTIFICATION, QuizQuestionTypes.IMAGE_IDENTIFICATION)) {
+                    if (type == QuizQuestionTypes.IMAGE_IDENTIFICATION) {
+                        item {
+                            OutlinedButton(onClick = { imagePicker.launch(arrayOf("image/*")) }, modifier = Modifier.fillMaxWidth()) {
+                                Icon(Icons.Default.Image, null); Spacer(Modifier.width(8.dp)); Text(if (imageUri == null) "Choose diagram / image" else "Change image")
+                            }
+                        }
+                        if (imageUri != null) item { AsyncImage(model = imageUri, contentDescription = "Question image", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxWidth().heightIn(min = 150.dp, max = 220.dp).clip(RoundedCornerShape(12.dp))) }
+                    }
+                    item { OutlinedTextField(typedAnswer, { typedAnswer = it }, label = { Text("Correct answer") }, modifier = Modifier.fillMaxWidth()) }
+                    item { Text("Typed checking ignores capitalization and repeated spaces.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                } else if (type == QuizQuestionTypes.NUMERIC) {
+                    item { OutlinedTextField(typedAnswer, { typedAnswer = it }, label = { Text("Correct numeric answer") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
+                    item { OutlinedTextField(numericTolerance, { numericTolerance = it }, label = { Text("Accepted ± tolerance") }, supportingText = { Text("0 means exact. Example: 0.01 accepts 9.80–9.82 for 9.81.") }, modifier = Modifier.fillMaxWidth(), singleLine = true) }
+                } else if (type == QuizQuestionTypes.ORDERING) {
+                    item { OutlinedTextField(orderingText, { orderingText = it }, label = { Text("Correct order — one item per line") }, supportingText = { Text("Punla shuffles these during the quiz; the learner moves them back into order.") }, modifier = Modifier.fillMaxWidth(), minLines = 5) }
+                } else if (type == QuizQuestionTypes.MATCHING) {
+                    item { OutlinedTextField(matchingText, { matchingText = it }, label = { Text("Pairs — one per line") }, supportingText = { Text("Use: term :: matching answer") }, modifier = Modifier.fillMaxWidth(), minLines = 5) }
                 }
-                item { OutlinedTextField(explanation, { explanation = it }, label = { Text("Explanation / feedback (optional)") }, modifier = Modifier.fillMaxWidth(), minLines = 2) }
+
+                if ((type in setOf(QuizQuestionTypes.MULTIPLE_CHOICE, QuizQuestionTypes.MULTI_SELECT) && !choicesAreUnique) ||
+                    (type == QuizQuestionTypes.ORDERING && !orderItemsAreUnique) ||
+                    (type == QuizQuestionTypes.MATCHING && (!matchKeysAreUnique || !matchValuesAreUnique))) {
+                    item {
+                        Text(
+                            "Choices/items must be unique (capitalization and extra spaces do not make a duplicate different).",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+
+                item { OutlinedTextField(explanation, { explanation = it }, label = { Text("Explanation / worked solution (optional)") }, modifier = Modifier.fillMaxWidth(), minLines = 2) }
                 item { OutlinedTextField(tags, { tags = it }, label = { Text("Tags (comma separated)") }, modifier = Modifier.fillMaxWidth()) }
             }
         },
@@ -770,14 +1157,34 @@ private fun QuestionEditorDialog(quizId: String, initial: QuizQuestion?, onDismi
             TextButton(onClick = {
                 val now = System.currentTimeMillis()
                 val normalizedTags = tags.split(',').map { it.trim() }.filter { it.isNotEmpty() }.distinctBy { it.lowercase() }.joinToString(", ")
-                val options = when (type) { QuizQuestionTypes.TRUE_FALSE -> listOf("True", "False"); QuizQuestionTypes.MULTIPLE_CHOICE -> choices; else -> emptyList() }
+                val options = when (type) {
+                    QuizQuestionTypes.TRUE_FALSE -> listOf("True", "False")
+                    QuizQuestionTypes.MULTIPLE_CHOICE, QuizQuestionTypes.MULTI_SELECT -> choices
+                    QuizQuestionTypes.ORDERING -> orderItems
+                    QuizQuestionTypes.MATCHING -> matchPairs.keys.toList() + matchPairs.values.toList()
+                    else -> emptyList()
+                }
                 val correct = when (type) {
                     QuizQuestionTypes.TRUE_FALSE -> if (trueFalseIndex == 0) "True" else "False"
-                    QuizQuestionTypes.IDENTIFICATION -> identificationAnswer.trim()
+                    QuizQuestionTypes.IDENTIFICATION, QuizQuestionTypes.IMAGE_IDENTIFICATION, QuizQuestionTypes.NUMERIC -> typedAnswer.trim()
+                    QuizQuestionTypes.MULTI_SELECT -> JSONArray(multiSelected.sorted().mapNotNull { rawChoices.getOrNull(it)?.takeIf { choice -> choice.isNotBlank() } }).toString()
+                    QuizQuestionTypes.ORDERING -> JSONArray(orderItems).toString()
+                    QuizQuestionTypes.MATCHING -> JSONObject(matchPairs as Map<*, *>).toString()
                     else -> rawChoices.getOrElse(correctChoice) { choices.firstOrNull().orEmpty() }
                 }
-                onSave(initial?.copy(type = type, prompt = prompt.trim(), optionsJson = QuizQuestion.encodeOptions(options), correctAnswer = correct, explanation = explanation.trim().ifBlank { null }, tags = normalizedTags, updatedAt = now)
-                    ?: QuizQuestion(quizId = quizId, type = type, prompt = prompt.trim(), optionsJson = QuizQuestion.encodeOptions(options), correctAnswer = correct, explanation = explanation.trim().ifBlank { null }, tags = normalizedTags, createdAt = now, updatedAt = now))
+                val metadata = JSONObject().apply {
+                    if (type == QuizQuestionTypes.NUMERIC) put("tolerance", numericTolerance.toDoubleOrNull() ?: 0.0)
+                    if (type == QuizQuestionTypes.MATCHING) put("rightOptions", JSONArray(matchPairs.values.toList()))
+                }.toString()
+                onSave(initial?.copy(
+                    type = type, prompt = prompt.trim(), optionsJson = QuizQuestion.encodeOptions(options), correctAnswer = correct,
+                    explanation = explanation.trim().ifBlank { null }, tags = normalizedTags, metadataJson = metadata,
+                    imageUri = if (type == QuizQuestionTypes.IMAGE_IDENTIFICATION) imageUri else null, updatedAt = now
+                ) ?: QuizQuestion(
+                    quizId = quizId, type = type, prompt = prompt.trim(), optionsJson = QuizQuestion.encodeOptions(options), correctAnswer = correct,
+                    explanation = explanation.trim().ifBlank { null }, tags = normalizedTags, metadataJson = metadata,
+                    imageUri = if (type == QuizQuestionTypes.IMAGE_IDENTIFICATION) imageUri else null, createdAt = now, updatedAt = now
+                ))
             }, enabled = valid) { Text("Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
@@ -860,7 +1267,47 @@ private fun QuizWarning(message: String) {
 private fun questionTypeLabel(type: String): String = when (type) {
     QuizQuestionTypes.TRUE_FALSE -> "True / False"
     QuizQuestionTypes.IDENTIFICATION -> "Identification"
+    QuizQuestionTypes.MULTI_SELECT -> "Multi-select"
+    QuizQuestionTypes.NUMERIC -> "Numeric"
+    QuizQuestionTypes.ORDERING -> "Ordering"
+    QuizQuestionTypes.MATCHING -> "Matching"
+    QuizQuestionTypes.IMAGE_IDENTIFICATION -> "Image ID"
     else -> "Multiple choice"
+}
+
+private fun decodeJsonStringList(raw: String): List<String> = runCatching {
+    val arr = JSONArray(raw)
+    List(arr.length()) { arr.optString(it) }.filter { it.isNotBlank() }
+}.getOrElse { raw.split('|').map { it.trim() }.filter { it.isNotEmpty() } }
+
+private fun decodeMatchingPairs(raw: String): Map<String, String> = runCatching {
+    val obj = JSONObject(raw)
+    obj.keys().asSequence().associateWith { obj.optString(it) }
+}.getOrElse { emptyMap() }
+
+private fun parseMatchingEditor(raw: String): LinkedHashMap<String, String> {
+    val out = linkedMapOf<String, String>()
+    raw.lines().forEach { line ->
+        val parts = line.split("::", limit = 2).map { it.trim() }
+        if (parts.size == 2 && parts[0].isNotBlank() && parts[1].isNotBlank()) out[parts[0]] = parts[1]
+    }
+    return out
+}
+
+private fun answerReady(question: QuizQuestion, answer: String): Boolean = when (question.type) {
+    QuizQuestionTypes.MULTI_SELECT, QuizQuestionTypes.ORDERING -> decodeJsonStringList(answer).isNotEmpty()
+    QuizQuestionTypes.MATCHING -> {
+        val expected = decodeMatchingPairs(question.correctAnswer)
+        val actual = decodeMatchingPairs(answer)
+        expected.isNotEmpty() && expected.keys.all { !actual[it].isNullOrBlank() }
+    }
+    else -> answer.trim().isNotEmpty()
+}
+
+private fun displayCorrectAnswer(question: QuizQuestion): String = when (question.type) {
+    QuizQuestionTypes.MULTI_SELECT, QuizQuestionTypes.ORDERING -> decodeJsonStringList(question.correctAnswer).joinToString(" · ")
+    QuizQuestionTypes.MATCHING -> decodeMatchingPairs(question.correctAnswer).entries.joinToString(" · ") { "${it.key} → ${it.value}" }
+    else -> question.correctAnswer
 }
 
 private fun formatDuration(ms: Long): String {

@@ -6,11 +6,15 @@ import java.util.UUID
 object PunlaJsonFileIds {
     const val FLASHCARD_DECK = "punla.flashcards.deck"
     const val QUIZ = "punla.quiz"
+    const val STUDY_NOTES = "punla.study.notes"
+    const val STUDY_BUNDLE = "punla.study.bundle"
     const val BACKUP = "punla.backup"
 
     fun label(fileId: String): String = when (fileId) {
         FLASHCARD_DECK -> "flashcard deck"
         QUIZ -> "quiz"
+        STUDY_NOTES -> "study notes"
+        STUDY_BUNDLE -> "study bundle"
         BACKUP -> "backup"
         else -> "unknown Punla JSON"
     }
@@ -31,6 +35,7 @@ object PunlaJsonFileIds {
     private fun destinationName(fileId: String): String = when (fileId) {
         FLASHCARD_DECK -> "Flashcards"
         QUIZ -> "Quizzes"
+        STUDY_NOTES, STUDY_BUNDLE -> "Study Hub"
         BACKUP -> "Settings → Backup"
         else -> "matching importer"
     }

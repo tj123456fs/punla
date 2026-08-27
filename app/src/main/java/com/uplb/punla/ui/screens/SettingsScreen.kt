@@ -334,6 +334,30 @@ fun SettingsScreen(
                         )
                     }
 
+                    Spacer(Modifier.height(10.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Smart study reminders", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                "Course-linked pre-class refreshers, after-class review prompts, exam-plan nudges, and evening study summaries.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Switch(
+                            checked = vm.studyRemindersEnabled && vm.notificationsEnabled && notificationPermissionGranted,
+                            enabled = vm.notificationsEnabled && notificationPermissionGranted,
+                            onCheckedChange = vm::updateStudyRemindersEnabled
+                        )
+                    }
+
                     Spacer(Modifier.height(6.dp))
                     TextButton(
                         onClick = {

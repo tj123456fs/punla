@@ -14,7 +14,9 @@ data class QuizJsonQuestion(
     val options: List<String>,
     val correctAnswer: String,
     val explanation: String? = null,
-    val tags: String = ""
+    val tags: String = "",
+    val metadataJson: String = "{}",
+    val imageUri: String? = null
 )
 
 data class QuizJsonPayload(
@@ -25,13 +27,15 @@ data class QuizJsonPayload(
     val passingScore: Int = 70,
     val shuffleQuestions: Boolean = true,
     val shuffleChoices: Boolean = true,
+    val timeLimitMinutes: Int? = null,
+    val feedbackMode: String = "IMMEDIATE",
     val questions: List<QuizJsonQuestion>,
     val warnings: List<String> = emptyList()
 )
 
 object QuizJsonImport {
     const val FILE_ID = PunlaJsonFileIds.QUIZ
-    const val VERSION = 1
+    const val VERSION = 2
     const val MAX_FILE_CHARS = 4_000_000
     const val MAX_QUESTIONS = 1_000
 
@@ -43,9 +47,7 @@ object QuizJsonImport {
             throw IllegalArgumentException("Punla couldn't read this quiz JSON. Check that it is valid JSON.", e)
         }
         val actualFileId = root.optString("punlaFileId").trim()
-        require(actualFileId.isNotEmpty()) {
-            "This JSON has no Punla file ID. For safety, Quizzes accepts only JSON generated specifically for Punla Quiz."
-        }
+        require(actualFileId.isNotEmpty()) { "This JSON has no Punla file ID. For safety, Quizzes accepts only JSON generated specifically for Punla Quiz." }
         if (actualFileId != FILE_ID) throw PunlaJsonFileIds.wrongImporter(actualFileId, FILE_ID)
         val version = root.optInt("schemaVersion", -1)
         require(version in 1..VERSION) {
@@ -60,21 +62,13 @@ object QuizJsonImport {
         val passingScore = quiz.optInt("passingScore", 70).coerceIn(1, 100)
         val shuffleQuestions = quiz.optBoolean("shuffleQuestions", true)
         val shuffleChoices = quiz.optBoolean("shuffleChoices", true)
+        val timeLimitMinutes = quiz.optInt("timeLimitMinutes", 0).takeIf { it > 0 }?.coerceAtMost(600)
+        val feedbackMode = if (quiz.optString("feedbackMode").equals("after", true) || quiz.optString("feedbackMode").equals("AFTER", true)) "AFTER" else "IMMEDIATE"
         val array = root.optJSONArray("questions") ?: throw IllegalArgumentException("This quiz JSON has no 'questions' array.")
         val warnings = mutableListOf<String>()
         val questions = parseQuestions(array, warnings)
         require(questions.isNotEmpty()) { "No valid quiz questions were found in this JSON file." }
-        return QuizJsonPayload(
-            contentId = contentId,
-            title = title.take(120),
-            courseCode = courseCode?.take(60),
-            description = description?.take(1_000),
-            passingScore = passingScore,
-            shuffleQuestions = shuffleQuestions,
-            shuffleChoices = shuffleChoices,
-            questions = questions,
-            warnings = warnings
-        )
+        return QuizJsonPayload(contentId, title.take(120), courseCode?.take(60), description?.take(1_000), passingScore, shuffleQuestions, shuffleChoices, timeLimitMinutes, feedbackMode, questions, warnings)
     }
 
     private fun parseQuestions(array: JSONArray, warnings: MutableList<String>): List<QuizJsonQuestion> {
@@ -84,98 +78,170 @@ object QuizJsonImport {
         var skipped = 0
         for (index in 0 until limit) {
             val obj = array.optJSONObject(index)
-            if (obj == null) { skipped++; continue }
-            val prompt = firstText(obj, "question", "prompt", "stem")
-            if (prompt.isNullOrBlank()) { skipped++; continue }
-            val rawType = firstText(obj, "type")?.lowercase().orEmpty()
-            val type = when (rawType) {
-                "multiple_choice", "multiple-choice", "mcq", "choice" -> QuizQuestionTypes.MULTIPLE_CHOICE
-                "true_false", "true-false", "boolean", "tf" -> QuizQuestionTypes.TRUE_FALSE
-                "identification", "short_answer", "short-answer", "typed", "text" -> QuizQuestionTypes.IDENTIFICATION
-                else -> {
-                    if (obj.optJSONArray("choices") != null || obj.optJSONArray("options") != null) QuizQuestionTypes.MULTIPLE_CHOICE
-                    else QuizQuestionTypes.IDENTIFICATION
-                }
+            if (obj == null) {
+                skipped++
+                continue
             }
+            val prompt = firstText(obj, "question", "prompt", "stem")
+            if (prompt == null) {
+                skipped++
+                continue
+            }
+            val type = parseType(firstText(obj, "type")?.lowercase().orEmpty(), obj)
             val options = when (type) {
                 QuizQuestionTypes.TRUE_FALSE -> listOf("True", "False")
-                QuizQuestionTypes.MULTIPLE_CHOICE -> parseOptions(obj.optJSONArray("choices") ?: obj.optJSONArray("options"))
+                QuizQuestionTypes.MULTIPLE_CHOICE, QuizQuestionTypes.MULTI_SELECT, QuizQuestionTypes.ORDERING -> parseOptions(obj.optJSONArray("choices") ?: obj.optJSONArray("options") ?: obj.optJSONArray("items"))
                 else -> emptyList()
             }
-            if (type == QuizQuestionTypes.MULTIPLE_CHOICE && options.size < 2) { skipped++; continue }
+            if (type in setOf(QuizQuestionTypes.MULTIPLE_CHOICE, QuizQuestionTypes.MULTI_SELECT, QuizQuestionTypes.ORDERING) && options.size < 2) { skipped++; continue }
+            if (type in setOf(QuizQuestionTypes.MULTIPLE_CHOICE, QuizQuestionTypes.MULTI_SELECT, QuizQuestionTypes.ORDERING) &&
+                options.map(QuizQuestion::normalizeAnswer).distinct().size != options.size
+            ) {
+                warnings += "Question ${index + 1} had duplicate choices/items after normalization and was skipped."
+                skipped++; continue
+            }
             val answer = parseAnswer(obj, type, options)
-            if (answer.isNullOrBlank()) { skipped++; continue }
+            if (answer == null) {
+                skipped++
+                continue
+            }
             if (type == QuizQuestionTypes.MULTIPLE_CHOICE && options.none { QuizQuestion.normalizeAnswer(it) == QuizQuestion.normalizeAnswer(answer) }) {
-                warnings += "Question ${index + 1} had an answer that did not match any choice and was skipped."
-                skipped++
-                continue
+                warnings += "Question ${index + 1} had an answer that did not match any choice and was skipped."; skipped++; continue
             }
-            if (type == QuizQuestionTypes.TRUE_FALSE && answer.lowercase() !in setOf("true", "false")) {
-                skipped++
-                continue
+            if (type == QuizQuestionTypes.TRUE_FALSE && answer.lowercase() !in setOf("true", "false")) { skipped++; continue }
+            if (type == QuizQuestionTypes.NUMERIC && answer.toDoubleOrNull() == null) { skipped++; continue }
+            if (type == QuizQuestionTypes.MULTI_SELECT) {
+                val chosen = runCatching {
+                    val arr = JSONArray(answer)
+                    List(arr.length()) { arr.optString(it).trim() }.filter { it.isNotEmpty() }
+                }.getOrNull()
+                val valid = chosen != null && chosen.isNotEmpty() && chosen.all { selected ->
+                    options.any { QuizQuestion.normalizeAnswer(it) == QuizQuestion.normalizeAnswer(selected) }
+                }
+                if (!valid) {
+                    warnings += "Question ${index + 1} had an invalid multi-select answer and was skipped."
+                    skipped++; continue
+                }
             }
+            if (type == QuizQuestionTypes.ORDERING) {
+                val ordered = runCatching {
+                    val arr = JSONArray(answer)
+                    List(arr.length()) { arr.optString(it).trim() }.filter { it.isNotEmpty() }
+                }.getOrNull()
+                val optionSet = options.map { QuizQuestion.normalizeAnswer(it) }.toSet()
+                val orderedSet = ordered?.map { QuizQuestion.normalizeAnswer(it) }?.toSet()
+                if (ordered == null || ordered.size != options.size || orderedSet != optionSet) {
+                    warnings += "Question ${index + 1} had an invalid ordering answer and was skipped."
+                    skipped++; continue
+                }
+            }
+            if (type == QuizQuestionTypes.MATCHING && runCatching { JSONObject(answer).length() >= 2 }.getOrDefault(false).not()) { skipped++; continue }
+            val imageUri = firstText(obj, "imageUri", "image", "imageUrl")?.take(5_000)
+            if (type == QuizQuestionTypes.IMAGE_IDENTIFICATION && imageUri.isNullOrBlank()) {
+                warnings += "Question ${index + 1} was an image question without an image and was skipped."
+                skipped++; continue
+            }
+
+            val metadata = JSONObject().apply {
+                if (obj.has("tolerance")) put("tolerance", obj.optDouble("tolerance", 0.0).coerceAtLeast(0.0))
+                obj.optJSONObject("metadata")?.let { m -> m.keys().forEach { key -> put(key, m.opt(key)) } }
+            }.toString()
             out += QuizJsonQuestion(
                 type = type,
                 prompt = prompt.take(20_000),
-                options = options.take(8),
-                correctAnswer = when (type) {
-                    QuizQuestionTypes.TRUE_FALSE -> if (answer.equals("true", true)) "True" else "False"
-                    else -> answer.take(10_000)
-                },
-                explanation = firstText(obj, "explanation", "feedback", "rationale")?.take(20_000),
-                tags = parseTags(obj.opt("tags")).take(1_000)
+                options = options.take(30),
+                correctAnswer = if (type == QuizQuestionTypes.TRUE_FALSE) if (answer.equals("true", true)) "True" else "False" else answer.take(30_000),
+                explanation = firstText(obj, "explanation", "feedback", "rationale", "workedSolution")?.take(30_000),
+                tags = parseTags(obj.opt("tags")).take(1_000),
+                metadataJson = metadata,
+                imageUri = imageUri
             )
         }
         if (skipped > 0) warnings += "$skipped invalid question${if (skipped == 1) " was" else "s were"} skipped."
         return out
     }
 
+    private fun parseType(raw: String, obj: JSONObject): String = when (raw) {
+        "multiple_choice", "multiple-choice", "mcq", "choice" -> QuizQuestionTypes.MULTIPLE_CHOICE
+        "true_false", "true-false", "boolean", "tf" -> QuizQuestionTypes.TRUE_FALSE
+        "identification", "short_answer", "short-answer", "typed", "text" -> QuizQuestionTypes.IDENTIFICATION
+        "multi_select", "multiple_select", "select_all", "select-all" -> QuizQuestionTypes.MULTI_SELECT
+        "numeric", "number", "calculation" -> QuizQuestionTypes.NUMERIC
+        "ordering", "order", "sequence" -> QuizQuestionTypes.ORDERING
+        "matching", "match" -> QuizQuestionTypes.MATCHING
+        "image_identification", "image-id", "diagram", "image" -> QuizQuestionTypes.IMAGE_IDENTIFICATION
+        else -> if (obj.optJSONArray("choices") != null || obj.optJSONArray("options") != null) QuizQuestionTypes.MULTIPLE_CHOICE else QuizQuestionTypes.IDENTIFICATION
+    }
+
     private fun parseOptions(array: JSONArray?): List<String> {
         if (array == null) return emptyList()
         val out = mutableListOf<String>()
-        for (i in 0 until minOf(array.length(), 8)) {
-            array.optString(i).trim().takeIf { it.isNotEmpty() }?.let { if (it !in out) out += it }
+        for (i in 0 until minOf(array.length(), 30)) {
+            array.optString(i).trim().takeIf { it.isNotEmpty() }?.let(out::add)
         }
+        // Keep duplicates until validation so answer indexes/letters can never
+        // shift silently; parseQuestions rejects normalized duplicates.
         return out
     }
 
     private fun parseAnswer(obj: JSONObject, type: String, options: List<String>): String? {
+        if (type == QuizQuestionTypes.MATCHING) {
+            val pairs = obj.optJSONObject("pairs") ?: obj.optJSONObject("correctAnswer") ?: obj.optJSONObject("answer")
+            return pairs?.takeIf { it.length() >= 2 }?.toString()
+        }
         val raw = when {
             obj.has("correctAnswer") -> obj.opt("correctAnswer")
             obj.has("answer") -> obj.opt("answer")
             obj.has("correct") -> obj.opt("correct")
             else -> null
         } ?: return null
-        return when (raw) {
-            is Number -> {
-                if (type != QuizQuestionTypes.MULTIPLE_CHOICE) raw.toString()
-                else options.getOrNull(raw.toInt())
+        if (raw is JSONArray) {
+            if (type == QuizQuestionTypes.MULTI_SELECT) {
+                val tokens = List(raw.length()) { raw.optString(it).trim() }.filter { it.isNotEmpty() }
+                val resolved = tokens.mapNotNull { token ->
+                    if (token.length == 1 && token[0].uppercaseChar() in 'A'..'H') {
+                        options.getOrNull(token[0].uppercaseChar() - 'A')
+                    } else {
+                        options.firstOrNull { QuizQuestion.normalizeAnswer(it) == QuizQuestion.normalizeAnswer(token) }
+                    }
+                }.distinct()
+                // Never silently drop a bad token and accept a partial answer key.
+                if (tokens.isEmpty() || resolved.size != tokens.distinctBy { it.lowercase() }.size) return null
+                return JSONArray(resolved).toString()
             }
+            if (type == QuizQuestionTypes.ORDERING) {
+                val tokens = List(raw.length()) { raw.optString(it).trim() }.filter { it.isNotEmpty() }
+                val resolved = tokens.mapNotNull { token ->
+                    if (token.length == 1 && token[0].uppercaseChar() in 'A'..'H') {
+                        options.getOrNull(token[0].uppercaseChar() - 'A')
+                    } else {
+                        options.firstOrNull { QuizQuestion.normalizeAnswer(it) == QuizQuestion.normalizeAnswer(token) }
+                    }
+                }
+                if (resolved.size != tokens.size) return null
+                return JSONArray(resolved).toString()
+            }
+            return raw.toString()
+        }
+        return when (raw) {
+            is Number -> if (type == QuizQuestionTypes.MULTIPLE_CHOICE) options.getOrNull(raw.toInt()) else raw.toString()
             is Boolean -> if (raw) "True" else "False"
             else -> {
                 val text = raw.toString().trim()
-                if (type == QuizQuestionTypes.MULTIPLE_CHOICE && text.length == 1 && text[0].uppercaseChar() in 'A'..'H') {
-                    options.getOrNull(text[0].uppercaseChar() - 'A') ?: text
-                } else text
+                if (type == QuizQuestionTypes.MULTIPLE_CHOICE && text.length == 1 && text[0].uppercaseChar() in 'A'..'H') options.getOrNull(text[0].uppercaseChar() - 'A') ?: text else text
             }
         }
     }
 
     private fun parseTags(value: Any?): String = when (value) {
-        is JSONArray -> buildList {
-            for (i in 0 until value.length()) value.optString(i).trim().takeIf { it.isNotEmpty() }?.let(::add)
-        }.distinct().joinToString(", ")
+        is JSONArray -> buildList { for (i in 0 until value.length()) value.optString(i).trim().takeIf { it.isNotEmpty() }?.let(::add) }.distinct().joinToString(", ")
         is String -> value.split(',').map { it.trim() }.filter { it.isNotEmpty() }.distinct().joinToString(", ")
         else -> ""
     }
 
     private fun firstText(obj: JSONObject?, vararg keys: String): String? {
         if (obj == null) return null
-        for (key in keys) {
-            if (!obj.has(key) || obj.isNull(key)) continue
-            val value = obj.optString(key).trim()
-            if (value.isNotEmpty()) return value
-        }
+        for (key in keys) { if (!obj.has(key) || obj.isNull(key)) continue; val value = obj.optString(key).trim(); if (value.isNotEmpty()) return value }
         return null
     }
 }
@@ -192,6 +258,8 @@ object QuizJsonExport {
             put("passingScore", quiz.passingScore)
             put("shuffleQuestions", quiz.shuffleQuestions)
             put("shuffleChoices", quiz.shuffleChoices)
+            quiz.timeLimitMinutes?.let { put("timeLimitMinutes", it) }
+            put("feedbackMode", quiz.feedbackMode.lowercase())
         })
         put("questions", JSONArray().apply {
             questions.forEach { question ->
@@ -199,11 +267,25 @@ object QuizJsonExport {
                     put("type", when (question.type) {
                         QuizQuestionTypes.TRUE_FALSE -> "true_false"
                         QuizQuestionTypes.IDENTIFICATION -> "identification"
+                        QuizQuestionTypes.MULTI_SELECT -> "multi_select"
+                        QuizQuestionTypes.NUMERIC -> "numeric"
+                        QuizQuestionTypes.ORDERING -> "ordering"
+                        QuizQuestionTypes.MATCHING -> "matching"
+                        QuizQuestionTypes.IMAGE_IDENTIFICATION -> "image_identification"
                         else -> "multiple_choice"
                     })
                     put("question", question.prompt)
-                    if (question.type == QuizQuestionTypes.MULTIPLE_CHOICE) put("choices", JSONArray(question.options()))
-                    put("correctAnswer", question.correctAnswer)
+                    if (question.type in setOf(QuizQuestionTypes.MULTIPLE_CHOICE, QuizQuestionTypes.MULTI_SELECT, QuizQuestionTypes.ORDERING)) put("choices", JSONArray(question.options()))
+                    when (question.type) {
+                        QuizQuestionTypes.MULTI_SELECT, QuizQuestionTypes.ORDERING -> put("correctAnswer", runCatching { JSONArray(question.correctAnswer) }.getOrElse { JSONArray().put(question.correctAnswer) })
+                        QuizQuestionTypes.MATCHING -> put("pairs", runCatching { JSONObject(question.correctAnswer) }.getOrElse { JSONObject() })
+                        else -> put("correctAnswer", question.correctAnswer)
+                    }
+                    if (question.type == QuizQuestionTypes.NUMERIC) {
+                        val tolerance = runCatching { JSONObject(question.metadataJson).optDouble("tolerance", 0.0) }.getOrDefault(0.0)
+                        if (tolerance > 0.0) put("tolerance", tolerance)
+                    }
+                    question.imageUri?.let { put("imageUri", it) }
                     question.explanation?.let { put("explanation", it) }
                     if (question.tags.isNotBlank()) put("tags", JSONArray(question.tagList()))
                 })
