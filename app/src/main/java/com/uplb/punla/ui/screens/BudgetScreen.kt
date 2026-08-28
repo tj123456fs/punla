@@ -50,7 +50,7 @@ fun getCategoryColor(category: String, palette: PunlaPalette): Color = when (cat
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BudgetScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
+fun BudgetScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false, quickAddToken: String = "") {
     val expenses by vm.expenses.collectAsState()
     val expenseRules by vm.expenseRules.collectAsState()
     // Roadmap C — withhold "No expenses logged yet" until Room's first
@@ -68,16 +68,23 @@ fun BudgetScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
 
     // Quick-add: when launched from the global quick-add FAB, jump straight
     // into the "new expense" form instead of making the user tap + again.
-    LaunchedEffect(openFormOnStart) {
-        if (openFormOnStart) showForm = true
+    var initialQuickAddHandled by rememberSaveable(quickAddToken) { mutableStateOf(false) }
+    LaunchedEffect(openFormOnStart, quickAddToken, initialQuickAddHandled) {
+        if (openFormOnStart && !initialQuickAddHandled) {
+            initialQuickAddHandled = true
+            showForm = true
+        }
     }
 
     val now = LocalDate.now()
     val currentYearMonth = YearMonth.now()
+    // Keep legacy/corrupted non-finite rows visible for deletion/editing, but
+    // never let them poison totals, charts, pace, or recommendation math.
+    val safeExpenses = remember(expenses) { expenses.filter { it.amount.isFinite() && it.amount >= 0.0 } }
     val daysInMonth = currentYearMonth.lengthOfMonth()
     val currentDayOfMonth = now.dayOfMonth
 
-    val currentMonthExpenses = expenses.filter {
+    val currentMonthExpenses = safeExpenses.filter {
         val d = runCatching { LocalDate.parse(it.date) }.getOrNull()
         d != null && d.year == now.year && d.monthValue == now.monthValue
     }
@@ -103,11 +110,11 @@ fun BudgetScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
     // screen and the widget never compute it two different ways.
     val period = vm.budgetPeriod
     val weekStart = remember(now, vm.weekStartDay) { vm.repo.currentWeekStart(now) }
-    val weeklyBudgetAmt = remember(expenses, weekStart, vm.weeklyBudgetOverride, vm.weeklyRolloverEnabled, budget) {
-        vm.repo.weeklyBudgetAmountFromList(expenses, weekStart)
+    val weeklyBudgetAmt = remember(safeExpenses, weekStart, vm.weeklyBudgetOverride, vm.weeklyRolloverEnabled, budget) {
+        vm.repo.weeklyBudgetAmountFromList(safeExpenses, weekStart)
     }
-    val weeklySpent = remember(expenses, weekStart) {
-        vm.repo.weeklyBudgetSpentFromList(expenses, weekStart)
+    val weeklySpent = remember(safeExpenses, weekStart) {
+        vm.repo.weeklyBudgetSpentFromList(safeExpenses, weekStart)
     }
     val weeklyRemaining = weeklyBudgetAmt - weeklySpent
     val weeklyOverBudget = weeklyRemaining < 0
@@ -131,10 +138,10 @@ fun BudgetScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
     // `currentMonthExpenses`) already holds the full history via the
     // reactive Room Flow, so this is a plain in-memory group-by keyed on the
     // "YYYY-MM" prefix of each ISO date rather than a second DB query.
-    val monthlyTrend = remember(expenses) {
+    val monthlyTrend = remember(safeExpenses) {
         (5 downTo 0).map { offset ->
             val ym = currentYearMonth.minusMonths(offset.toLong())
-            val total = expenses.filter {
+            val total = safeExpenses.filter {
                 val d = runCatching { LocalDate.parse(it.date) }.getOrNull()
                 d != null && YearMonth.from(d) == ym
             }.sumOf { it.amount }
@@ -146,8 +153,8 @@ fun BudgetScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
     // the Insights card can talk about trends and comparisons instead of
     // just this month's raw numbers.
     val prevYearMonth = remember(currentYearMonth) { currentYearMonth.minusMonths(1) }
-    val prevMonthExpenses = remember(expenses, prevYearMonth) {
-        expenses.filter {
+    val prevMonthExpenses = remember(safeExpenses, prevYearMonth) {
+        safeExpenses.filter {
             val d = runCatching { LocalDate.parse(it.date) }.getOrNull()
             d != null && YearMonth.from(d) == prevYearMonth
         }
@@ -166,8 +173,8 @@ fun BudgetScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
         categoryTotals.map { (cat, amt) -> Triple(cat, amt, amt - (prevCategoryTotals[cat] ?: 0.0)) }
             .maxByOrNull { (_, _, delta) -> kotlin.math.abs(delta) }
     } else null
-    val recurringCandidates = remember(expenses, expenseRules, vm.dismissedExpensePatternKeys) {
-        recurringExpenseCandidates(expenses, expenseRules, vm.dismissedExpensePatternKeys).take(3)
+    val recurringCandidates = remember(safeExpenses, expenseRules, vm.dismissedExpensePatternKeys) {
+        recurringExpenseCandidates(safeExpenses, expenseRules.filter { it.amount.isFinite() && it.amount > 0.0 }, vm.dismissedExpensePatternKeys).take(3)
     }
 
     // Budget 2.0 — reserve future fixed recurring commitments before
@@ -200,8 +207,8 @@ fun BudgetScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
             else -> "week"
         }
     }
-    val todaySpent = remember(expenses, now) {
-        expenses.filter { it.date == now.toString() && !it.isFixed }.sumOf { it.amount }
+    val todaySpent = remember(safeExpenses, now) {
+        safeExpenses.filter { it.date == now.toString() && !it.isFixed }.sumOf { it.amount }
     }
     val categoryLimits = vm.categoryBudgetLimits
     val categorySpentMap = remember(categoryTotals) { categoryTotals.toMap() }
@@ -286,7 +293,7 @@ fun BudgetScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
                             }
                             Spacer(Modifier.height(16.dp))
                             val parsedBudget = budgetInput.toDoubleOrNull()
-                            val invalidBudget = budgetTouched && (parsedBudget == null || parsedBudget < 0)
+                            val invalidBudget = budgetTouched && (parsedBudget == null || !parsedBudget.isFinite() || parsedBudget < 0 || parsedBudget > Float.MAX_VALUE.toDouble())
                             Row(verticalAlignment = Alignment.Top) {
                                 OutlinedTextField(
                                     value = budgetInput,
@@ -1040,7 +1047,7 @@ private fun ExpenseFormDialog(
 
     val parsedAmount = amount.toDoubleOrNull()
     val parsedDate = runCatching { LocalDate.parse(date.trim()) }.getOrNull()
-    val invalidAmount = amountTouched && (parsedAmount == null || parsedAmount <= 0)
+    val invalidAmount = amountTouched && (parsedAmount == null || !parsedAmount.isFinite() || parsedAmount <= 0)
     val invalidDate = dateTouched && (parsedDate == null || parsedDate.isAfter(todayDate))
     val isEditing = initialExpense != null
     val isDirty = if (initialExpense == null) {

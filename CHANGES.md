@@ -1066,3 +1066,39 @@ A full Android build was not run because this editing environment lacks Gradle a
 - Added `onPictureInPictureRequested()` fallback handling alongside Android 12+ auto-enter.
 - Restores the live timer notification after app/process recreation, device reboot, or app update.
 - Cancels the live notification when paused, stopped, or completed.
+
+## Session 34c — Quiz attempt save lifecycle fix
+- Fixed quiz-completion saves cancelling themselves when `attemptSaving` triggered recomposition.
+- Retry Save now explicitly restarts a stable save effect.
+- Coroutine cancellation is rethrown instead of being surfaced as a database-save error.
+
+## Session 34d — Quiz back-navigation crash fix
+- Fixed a crash when leaving the completed quiz/result screen with **Back to quiz**.
+- Removed transition-time force unwraps of `runRequest` and `selectedQuiz` inside the quiz `Crossfade`.
+- Also protects the quiz-detail → quiz-library back path from the same animation/recomposition race.
+
+## Session 34e — Study flow debug hardening
+- Fixed the flashcard study/deck back-navigation crash caused by force-unwrapping `selectedDeck` during a Compose `Crossfade` transition.
+- Moved completed quiz persistence into `viewModelScope` so navigating away from results cannot cancel a valid save.
+- Added attempt-id idempotency before quiz side effects, preventing rotation/recomposition from double-counting mistake history or study-goal progress.
+- Added a direct `QuizDao.getAttempt()` lookup used as the transaction idempotency guard.
+- Retains the Session 34c save-lifecycle fix and Session 34d quiz back-navigation fix.
+- Bumped app version to 2.8.1 (versionCode 21).
+
+
+## Session 34f — Full debug hardening
+- Bumped app to **2.8.2 / versionCode 22**.
+- Replaced Room `REPLACE`-style upserts with `@Upsert` so editing parent rows no longer risks foreign-key cascade data loss.
+- Kept quiz saves alive outside result-screen composition and made quiz-attempt side effects idempotent by attempt ID.
+- Removed quiz and flashcard transition-time null crashes and remaining force-unwrapped nullable references in the main source.
+- Hardened complete-backup restore: all major IDs, relationships, dates/times, numeric values, quiz/study metadata, topic hierarchies, attendance, recurrence metadata, and preference values are validated before the destructive Room transaction begins.
+- Backup format is now v9 and preserves theme preset, custom color, background style, font choice, study goals, and Pomodoro preferences while continuing to exclude encrypted API-key storage.
+- Added Android backup/data-extraction exclusions for the encrypted secret preference file and disabled cleartext traffic.
+- Made recurring-expense/deadline and semester multi-write operations transactional; runtime recurrence now ignores invalid/corrupt cursors, priorities, and intervals instead of propagating bad state.
+- Hardened numeric inputs/calculations against NaN/Infinity and oversized Float-backed preference values.
+- Hardened Study Pack module hierarchy import against unknown parents, self-parenting, and cycles, and surfaces unknown material-module links as warnings.
+- Converted repeated widget/notification/Quick Add navigation to one-shot request tokens so the same route can be invoked repeatedly.
+- Audited broadcast receivers: async receiver work uses `goAsync()`, and the boot/update receiver is exported for system broadcasts while internal action/alarm receivers remain non-exported.
+- Fixed the duplicated `studyNotes` restore declaration and duplicate question-bank validation introduced during the debug pass.
+- Final source validation: Kotlin delimiter/string/comment structural scan passed; Android XML and bundled JSON parse cleanly; representative Room v11→v12 migration SQL passed; no main-source `!!` or `OnConflictStrategy.REPLACE` remains.
+- A full Android/KSP compile still requires the Android SDK/Gradle dependency environment (GitHub Actions is the final compile/install check).

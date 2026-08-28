@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.room.withTransaction
 import com.uplb.punla.data.entity.Archive
 import com.uplb.punla.data.entity.AttendanceRecord
+import com.uplb.punla.data.entity.AttendanceLog
 import com.uplb.punla.data.entity.ClassSession
 import com.uplb.punla.data.entity.Deadline
 import com.uplb.punla.data.entity.DeadlineRule
@@ -38,6 +39,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+import java.time.LocalDate
+import java.time.LocalTime
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -51,7 +55,7 @@ import kotlinx.coroutines.withContext
  */
 object BackupManager {
 
-    const val CURRENT_VERSION = 8
+    const val CURRENT_VERSION = 9
     private const val MAX_BACKUP_FILE_CHARS = 20_000_000
 
     /** Suggested filename, mirrors the web app's punla-backup-YYYY-MM-DD.json. */
@@ -140,6 +144,10 @@ object BackupManager {
             put("userName", repo.userName)
             put("chedTarget", repo.chedTarget)
             put("theme", repo.themeMode.name.lowercase())
+            put("themePreset", repo.themePreset.name.lowercase())
+            put("customSeedColor", repo.customSeedColor)
+            put("backgroundStyle", repo.backgroundStyle.storageKey)
+            put("fontChoice", repo.fontChoice.name.lowercase())
             put("notificationsEnabled", repo.notificationsEnabled)
             put("classDayNotificationEnabled", repo.classDayNotificationEnabled)
             put("morningAgendaEnabled", repo.morningAgendaEnabled)
@@ -161,6 +169,17 @@ object BackupManager {
             put("preferredReminderHour", repo.preferredReminderHour)
             put("dismissedExpensePatternKeys", JSONArray(repo.dismissedExpensePatternKeys.toList()))
             put("studySlotModel", studySlotModelToJson(repo.studySlotModelState))
+            put("pomodoroWorkMinutes", repo.pomodoroWorkMinutes)
+            put("pomodoroShortBreakMinutes", repo.pomodoroShortBreakMinutes)
+            put("pomodoroLongBreakMinutes", repo.pomodoroLongBreakMinutes)
+            put("pomodoroCyclesBeforeLongBreak", repo.pomodoroCyclesBeforeLongBreak)
+            put("pomodoroAutoStartNext", repo.pomodoroAutoStartNext)
+            put("pomodoroPictureInPicture", repo.pomodoroPictureInPicture)
+            put("pomodoroTimerNotification", repo.pomodoroTimerNotification)
+            put("pomodoroAlarmSoundEnabled", repo.pomodoroAlarmSoundEnabled)
+            put("pomodoroAlarmVibrationEnabled", repo.pomodoroAlarmVibrationEnabled)
+            put("pomodoroWorkSoundUri", repo.pomodoroWorkSoundUri)
+            put("pomodoroBreakSoundUri", repo.pomodoroBreakSoundUri)
         }
         return root.toString(2)
     }
@@ -193,12 +212,16 @@ object BackupManager {
 
     suspend fun importFrom(context: Context, uri: Uri) {
         val root = withContext(Dispatchers.IO) {
-            val text = runCatching {
+            val text = try {
                 PunlaJsonImportReader.readText(context, uri, MAX_BACKUP_FILE_CHARS)
-            }.getOrElse { error ->
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
                 throw InvalidBackupException(error.message ?: "Couldn't read the selected file.")
             }
-            runCatching { JSONObject(text) }.getOrElse {
+            try {
+                JSONObject(text)
+            } catch (error: Exception) {
                 throw InvalidBackupException("That file isn't valid JSON.")
             }
         }
@@ -259,6 +282,335 @@ object BackupManager {
         val flashcardReviewEvents = root.optJSONArray("flashcardReviewEvents")?.mapObjects(::flashcardReviewEventFromJson) ?: emptyList()
         val quizAnswerResults = root.optJSONArray("quizAnswerResults")?.mapObjects(::quizAnswerResultFromJson) ?: emptyList()
         val questionBank = root.optJSONArray("questionBank")?.mapObjects(::questionBankItemFromJson) ?: emptyList()
+
+        // Validate the complete restore set before the destructive Room transaction begins.
+        // A malformed backup should never clear healthy local data and then fail halfway through.
+        fun invalid(message: String): Nothing = throw InvalidBackupException(message)
+        fun requireBackup(condition: Boolean, message: String) { if (!condition) invalid(message) }
+        fun requireUnique(label: String, ids: List<String>) {
+            requireBackup(ids.none { it.isBlank() }, "$label contains a blank ID.")
+            requireBackup(ids.size == ids.toSet().size, "$label contains duplicate IDs.")
+        }
+        fun validDate(raw: String): Boolean = try { LocalDate.parse(raw); true } catch (_: Exception) { false }
+        fun validTime(raw: String): Boolean = try { LocalTime.parse(raw); true } catch (_: Exception) { false }
+        fun validScheduleTime(raw: String): Boolean = Regex("\\d{2}:\\d{2}").matches(raw) && validTime(raw)
+        fun validJsonArray(raw: String): Boolean = try { JSONArray(raw); true } catch (_: Exception) { false }
+        fun validJsonObject(raw: String): Boolean = try { JSONObject(raw); true } catch (_: Exception) { false }
+
+        requireUnique("Schedule", schedule.map { it.id })
+        requireUnique("Expenses", expenses.map { it.id })
+        requireUnique("Expense rules", expenseRules.map { it.id })
+        requireUnique("Deadlines", deadlines.map { it.id })
+        requireUnique("Deadline rules", deadlineRules.map { it.id })
+        requireUnique("Semesters", semesters.map { it.id })
+        requireUnique("Courses", courses.map { it.id })
+        requireUnique("Archives", archives.map { it.id })
+        requireUnique("Study sessions", studySessions.map { it.id })
+        requireUnique("Study suggestion events", studySuggestionEvents.map { it.id })
+        requireUnique("Notification events", notificationEvents.map { it.id })
+        requireUnique("Attendance records", attendanceRecords.map { it.occurrenceKey })
+        requireUnique("Flashcard decks", flashcardDecks.map { it.id })
+        requireUnique("Flashcards", flashcards.map { it.id })
+        requireUnique("Quizzes", quizzes.map { it.id })
+        requireUnique("Quiz questions", quizQuestions.map { it.id })
+        requireUnique("Quiz attempts", quizAttempts.map { it.id })
+        requireUnique("Study topics", studyTopics.map { it.id })
+        requireUnique("Study notes", studyNotes.map { it.id })
+        requireUnique("Formula references", formulaReferences.map { it.id })
+        requireUnique("Mistake records", mistakeRecords.map { it.id })
+        requireUnique("Study goals", studyGoals.map { it.id })
+        requireUnique("Study plan items", studyPlanItems.map { it.id })
+        requireUnique("Study review progress", studyReviewProgress.map { it.id })
+        requireUnique("Flashcard review events", flashcardReviewEvents.map { it.id })
+        requireUnique("Quiz answer results", quizAnswerResults.map { it.id })
+        requireUnique("Question bank", questionBank.map { it.id })
+        val importKeys = jsonImportRecords.map { "${it.fileType}\u0000${it.contentId}" }
+        requireBackup(importKeys.none { it.startsWith("\u0000") || it.endsWith("\u0000") }, "Import history contains a blank key.")
+        requireBackup(importKeys.size == importKeys.toSet().size, "Import history contains duplicate keys.")
+
+        val allowedDays = setOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+        schedule.forEach { item ->
+            requireBackup(item.code.isNotBlank(), "A class has a blank course code.")
+            requireBackup(item.day in allowedDays, "Class ${item.code} has an invalid day.")
+            requireBackup(item.type in setOf("lec", "lab"), "Class ${item.code} has an invalid class type.")
+            requireBackup(validScheduleTime(item.start) && validScheduleTime(item.end), "Class ${item.code} has an invalid time.")
+            requireBackup(LocalTime.parse(item.end).isAfter(LocalTime.parse(item.start)), "Class ${item.code} ends before it starts.")
+            requireBackup(item.absences >= 0, "Class ${item.code} has an invalid absence count.")
+        }
+
+        val expenseRuleIds = expenseRules.mapTo(hashSetOf()) { it.id }
+        expenseRules.forEach { rule ->
+            requireBackup(rule.amount.isFinite() && rule.amount > 0.0, "An expense rule has an invalid amount.")
+            requireBackup(rule.category.isNotBlank(), "An expense rule has a blank category.")
+            requireBackup(validDate(rule.startDate) && validDate(rule.lastGenerated), "An expense rule has an invalid date.")
+            requireBackup(!LocalDate.parse(rule.lastGenerated).isBefore(LocalDate.parse(rule.startDate)), "An expense rule cursor predates its start date.")
+            requireBackup(rule.repeat in setOf("weekly", "monthly"), "An expense rule has an invalid repeat interval.")
+        }
+        expenses.forEach { expense ->
+            requireBackup(expense.amount.isFinite() && expense.amount > 0.0, "An expense has an invalid amount.")
+            requireBackup(expense.category.isNotBlank(), "An expense has a blank category.")
+            requireBackup(validDate(expense.date), "An expense has an invalid date.")
+            requireBackup(expense.ruleId == null || expense.ruleId in expenseRuleIds, "An expense references a missing recurrence rule.")
+            requireBackup(expense.isRecurring == (expense.ruleId != null), "An expense has inconsistent recurrence metadata.")
+        }
+
+        val deadlineRuleIds = deadlineRules.mapTo(hashSetOf()) { it.id }
+        deadlineRules.forEach { rule ->
+            requireBackup(rule.title.isNotBlank() && rule.type.isNotBlank(), "A deadline rule is missing required text.")
+            requireBackup(rule.priority in setOf("Low", "Medium", "High"), "A deadline rule has an invalid priority.")
+            requireBackup(validDate(rule.startDate), "A deadline rule has an invalid start date.")
+            requireBackup(rule.repeat in setOf("weekly", "monthly"), "A deadline rule has an invalid repeat interval.")
+        }
+        deadlines.forEach { deadline ->
+            requireBackup(deadline.title.isNotBlank() && deadline.type.isNotBlank(), "A deadline is missing required text.")
+            requireBackup(deadline.priority in setOf("Low", "Medium", "High"), "A deadline has an invalid priority.")
+            requireBackup(validDate(deadline.due), "A deadline has an invalid due date.")
+            requireBackup(deadline.ruleId == null || deadline.ruleId in deadlineRuleIds, "A deadline references a missing recurrence rule.")
+            requireBackup(deadline.isRecurring == (deadline.ruleId != null), "A deadline has inconsistent recurrence metadata.")
+        }
+
+        val semesterIds = semesters.mapTo(hashSetOf()) { it.id }
+        semesters.forEach { requireBackup(it.label.isNotBlank(), "A semester has a blank label.") }
+        courses.forEach { course ->
+            requireBackup(course.semesterId in semesterIds, "Course ${course.code} references a missing semester.")
+            requireBackup(course.code.isNotBlank(), "A course has a blank code.")
+            requireBackup(course.units.isFinite() && course.units >= 0.0, "Course ${course.code} has invalid units.")
+            val numericGrade = course.grade.toDoubleOrNull()
+            requireBackup(
+                course.grade.isBlank() || course.grade in setOf("INC", "DRP", "W") || (numericGrade != null && numericGrade.isFinite() && numericGrade in 1.0..5.0),
+                "Course ${course.code} has an invalid grade."
+            )
+        }
+        archives.forEach { archive ->
+            requireBackup(archive.label.isNotBlank(), "An archive has a blank label.")
+            requireBackup(validJsonArray(archive.scheduleJson) && validJsonArray(archive.deadlinesJson), "An archive contains malformed JSON.")
+        }
+
+        studySessions.forEach { session ->
+            requireBackup(session.startedAt >= 0L && session.endedAt >= session.startedAt, "A study session has invalid timestamps.")
+            requireBackup(session.plannedMinutes in 1..1440, "A study session has invalid planned minutes.")
+            requireBackup(session.actualSeconds in 0..86_400 && session.cyclesInSession in 1..10_000, "A study session has invalid counters.")
+            requireBackup(session.endReason in setOf("COMPLETED", "STOPPED_EARLY"), "A study session has an invalid end reason.")
+        }
+        studySuggestionEvents.forEach { event ->
+            requireBackup(event.suggestionId.isNotBlank() && event.occurredAt >= 0L, "A study suggestion event has invalid identity/timing data.")
+            requireBackup(event.outcome in setOf("SHOWN", "DISMISSED", "STARTED", "COMPLETED", "STOPPED"), "A study suggestion event has an invalid outcome.")
+            requireBackup(event.slotHour in 0..23 && event.dayOfWeek in 1..7 && event.availableMinutes in 0..1440, "A study suggestion event has invalid time data.")
+        }
+        notificationEvents.forEach { event ->
+            requireBackup(event.notificationKey.isNotBlank() && event.workerName.isNotBlank() && event.notificationType.isNotBlank(), "A notification event is missing required text.")
+            requireBackup(event.occurredAt >= 0L && event.localHour in 0..23, "A notification event has invalid timing data.")
+            requireBackup(event.outcome in setOf("FIRED", "OPENED", "DISMISSED", "ACTION_USED", "EXPIRED"), "A notification event has an invalid outcome.")
+        }
+
+        val sessionById = schedule.associateBy { it.id }
+        val attendanceOccurrenceKeys = hashSetOf<String>()
+        attendanceRecords.forEach { record ->
+            if (sessionById[record.sessionId] == null) invalid("An attendance record references a missing class.")
+            requireBackup(validDate(record.occurrenceDate) && validScheduleTime(record.scheduledStart), "An attendance record has an invalid date or time.")
+            requireBackup(record.status in setOf("ATTENDED", "ABSENT"), "An attendance record has an invalid status.")
+            requireBackup(record.loggedAt >= 0L && record.source.isNotBlank(), "An attendance record has invalid metadata.")
+            val occurrenceDate = LocalDate.parse(record.occurrenceDate)
+            requireBackup(
+                record.occurrenceKey == AttendanceLog.occurrenceKey(record.sessionId, occurrenceDate, record.scheduledStart),
+                "An attendance record has an inconsistent occurrence key."
+            )
+            val key = "${record.sessionId}\u0000${record.occurrenceDate}\u0000${record.scheduledStart}"
+            requireBackup(attendanceOccurrenceKeys.add(key), "Attendance contains duplicate class occurrences.")
+        }
+
+        val topicIds = studyTopics.mapTo(hashSetOf()) { it.id }
+        val topicById = studyTopics.associateBy { it.id }
+        studyTopics.forEach { topic ->
+            requireBackup(topic.courseCode.isNotBlank() && topic.name.isNotBlank(), "A study topic is missing required text.")
+            requireBackup(topic.priority in 1..5 && topic.sortOrder >= 0, "A study topic has invalid priority/order data.")
+            requireBackup(topic.createdAt >= 0L && topic.updatedAt >= topic.createdAt, "A study topic has invalid timestamps.")
+            requireBackup(topic.examDate == null || validDate(topic.examDate), "A study topic has an invalid exam date.")
+            requireBackup(topic.parentTopicId == null || topic.parentTopicId in topicIds, "A study topic references a missing parent.")
+            requireBackup(topic.parentTopicId != topic.id, "A study topic cannot be its own parent.")
+            val seen = hashSetOf(topic.id)
+            var parentId = topic.parentTopicId
+            while (parentId != null) {
+                requireBackup(seen.add(parentId), "Study topics contain a parent cycle.")
+                parentId = topicById[parentId]?.parentTopicId
+            }
+        }
+
+        val deckIds = flashcardDecks.mapTo(hashSetOf()) { it.id }
+        flashcardDecks.forEach { deck ->
+            requireBackup(deck.name.isNotBlank(), "A flashcard deck has a blank name.")
+            requireBackup(deck.topicId == null || deck.topicId in topicIds, "A flashcard deck references a missing study topic.")
+            deck.topicId?.let { topicId ->
+                val topic = topicById.getValue(topicId)
+                requireBackup(deck.courseCode.isNullOrBlank() || deck.courseCode.equals(topic.courseCode, ignoreCase = true), "A flashcard deck is assigned to a topic from another course.")
+            }
+        }
+        flashcards.forEach { card ->
+            requireBackup(card.deckId in deckIds, "A flashcard references a missing deck.")
+            requireBackup(card.front.isNotBlank() && card.back.isNotBlank(), "A flashcard is missing front/back text.")
+            requireBackup(card.reviewCount >= 0 && card.correctCount in 0..card.reviewCount && card.mastery in 0..5, "A flashcard has invalid review statistics.")
+            requireBackup(card.cardType in setOf("BASIC", "CLOZE"), "A flashcard has an invalid card type.")
+            requireBackup(validJsonArray(card.occlusionJson), "A flashcard has malformed occlusion JSON.")
+        }
+
+        val quizIds = quizzes.mapTo(hashSetOf()) { it.id }
+        quizzes.forEach { quiz ->
+            requireBackup(quiz.title.isNotBlank(), "A quiz has a blank title.")
+            requireBackup(quiz.passingScore in 1..100, "A quiz has an invalid passing score.")
+            requireBackup(quiz.timeLimitMinutes == null || quiz.timeLimitMinutes in 1..1440, "A quiz has an invalid time limit.")
+            requireBackup(quiz.feedbackMode in setOf("IMMEDIATE", "AFTER"), "A quiz has an invalid feedback mode.")
+            requireBackup(quiz.topicId == null || quiz.topicId in topicIds, "A quiz references a missing study topic.")
+            quiz.topicId?.let { topicId ->
+                val topic = topicById.getValue(topicId)
+                requireBackup(quiz.courseCode.isNullOrBlank() || quiz.courseCode.equals(topic.courseCode, ignoreCase = true), "A quiz is assigned to a topic from another course.")
+            }
+        }
+        val allowedQuestionTypes = setOf("MULTIPLE_CHOICE", "TRUE_FALSE", "IDENTIFICATION", "MULTI_SELECT", "NUMERIC", "ORDERING", "MATCHING", "IMAGE_IDENTIFICATION")
+        val questionIds = quizQuestions.mapTo(hashSetOf()) { it.id }
+        quizQuestions.forEach { question ->
+            requireBackup(question.quizId in quizIds, "A quiz question references a missing quiz.")
+            requireBackup(question.type in allowedQuestionTypes, "A quiz question has an invalid type.")
+            requireBackup(question.prompt.isNotBlank() && question.correctAnswer.isNotBlank(), "A quiz question is missing required text.")
+            requireBackup(validJsonArray(question.optionsJson) && validJsonObject(question.metadataJson), "A quiz question contains malformed JSON.")
+            if (question.type == "NUMERIC") requireBackup(question.correctAnswer.toDoubleOrNull()?.isFinite() == true, "A numeric quiz answer is invalid.")
+        }
+        val attemptIds = quizAttempts.mapTo(hashSetOf()) { it.id }
+        quizAttempts.forEach { attempt ->
+            requireBackup(attempt.quizId in quizIds, "A quiz attempt references a missing quiz.")
+            requireBackup(attempt.startedAt >= 0L && attempt.completedAt >= attempt.startedAt && attempt.durationMs >= 0L, "A quiz attempt has invalid timing.")
+            requireBackup(attempt.total >= 0 && attempt.score in 0..attempt.total, "A quiz attempt has an invalid score.")
+            requireBackup(validJsonArray(attempt.incorrectQuestionIdsJson), "A quiz attempt has malformed mistake data.")
+        }
+
+        studyNotes.forEach { note ->
+            requireBackup(note.title.isNotBlank() && note.body.isNotBlank(), "A study note is missing required text.")
+            requireBackup(note.topicId == null || note.topicId in topicIds, "A study note references a missing topic.")
+            note.topicId?.let { topicId ->
+                val topic = topicById.getValue(topicId)
+                requireBackup(note.courseCode.isNullOrBlank() || note.courseCode.equals(topic.courseCode, ignoreCase = true), "A study note is assigned to a topic from another course.")
+            }
+        }
+        formulaReferences.forEach { formula ->
+            requireBackup(formula.title.isNotBlank() && formula.expression.isNotBlank(), "A formula is missing required text.")
+            requireBackup(formula.topicId == null || formula.topicId in topicIds, "A formula references a missing topic.")
+            formula.topicId?.let { topicId ->
+                val topic = topicById.getValue(topicId)
+                requireBackup(formula.courseCode.isNullOrBlank() || formula.courseCode.equals(topic.courseCode, ignoreCase = true), "A formula is assigned to a topic from another course.")
+            }
+        }
+        mistakeRecords.forEach { mistake ->
+            requireBackup(mistake.sourceType in setOf("QUIZ", "FLASHCARD", "PRACTICE") && mistake.sourceId.isNotBlank() && mistake.prompt.isNotBlank() && mistake.correctAnswer.isNotBlank(), "A mistake record is invalid.")
+            requireBackup(mistake.confidence in setOf("GUESSED", "UNSURE", "CONFIDENT", "UNSET"), "A mistake record has an invalid confidence value.")
+            requireBackup(mistake.missedAt >= 0L && mistake.retryAt >= 0L && mistake.timesMissed >= 1, "A mistake record has invalid timing/count data.")
+        }
+        studyGoals.forEach { goal ->
+            requireBackup(goal.title.isNotBlank() && goal.goalType in setOf("MINUTES", "FLASHCARDS", "QUESTIONS", "SCORE", "CUSTOM"), "A study goal is invalid.")
+            requireBackup(goal.targetValue >= 1 && goal.progressValue >= 0, "A study goal has invalid progress values.")
+            requireBackup(goal.createdAt >= 0L && goal.updatedAt >= goal.createdAt, "A study goal has invalid timestamps.")
+            requireBackup(goal.dueDate == null || validDate(goal.dueDate), "A study goal has an invalid due date.")
+        }
+        studyPlanItems.forEach { item ->
+            requireBackup(item.title.isNotBlank() && item.minutes in 1..1440 && validDate(item.plannedDate), "A study plan item is invalid.")
+            requireBackup(item.kind in setOf("FLASHCARDS", "QUIZ", "NOTES", "FOCUS", "PRACTICE_TEST", "REVIEW"), "A study plan item has an invalid kind.")
+            requireBackup(item.createdAt >= 0L && item.updatedAt >= item.createdAt, "A study plan item has invalid timestamps.")
+        }
+        studyReviewProgress.forEach { progress ->
+            requireBackup(progress.courseCode.isNotBlank(), "Study review progress has a blank course code.")
+            requireBackup(progress.topicId == null || progress.topicId in topicIds, "Study review progress references a missing topic.")
+            progress.topicId?.let { topicId ->
+                requireBackup(progress.courseCode.equals(topicById.getValue(topicId).courseCode, ignoreCase = true), "Study review progress is assigned to a topic from another course.")
+            }
+            requireBackup(progress.id == StudyReviewProgress.key(progress.courseCode, progress.topicId), "Study review progress has an inconsistent ID.")
+            requireBackup(progress.updatedAt >= 0L && (progress.completedAt == null || progress.completedAt >= 0L), "Study review progress has an invalid timestamp.")
+            requireBackup(progress.completed || progress.completedAt == null, "Incomplete study review progress cannot have a completion timestamp.")
+        }
+        flashcardReviewEvents.forEach { event ->
+            requireBackup(event.cardId.isNotBlank(), "A flashcard review event has a blank card ID.")
+            requireBackup(event.rating in setOf("AGAIN", "HARD", "GOOD") && event.reviewedAt >= 0L, "A flashcard review event has invalid rating/timing data.")
+        }
+        val attemptById = quizAttempts.associateBy { it.id }
+        val questionById = quizQuestions.associateBy { it.id }
+        val answerResultPairs = hashSetOf<String>()
+        quizAnswerResults.forEach { result ->
+            val attempt = attemptById[result.attemptId] ?: invalid("A quiz answer result references a missing attempt.")
+            val question = questionById[result.questionId] ?: invalid("A quiz answer result references a missing question.")
+            requireBackup(result.quizId in quizIds && attempt.quizId == result.quizId && question.quizId == result.quizId, "A quiz answer result links records from different quizzes.")
+            requireBackup(result.confidence in setOf("GUESSED", "UNSURE", "CONFIDENT", "UNSET"), "A quiz answer result has an invalid confidence value.")
+            requireBackup(result.answeredAt >= attempt.startedAt && result.answeredAt <= attempt.completedAt, "A quiz answer result has an invalid timestamp.")
+            requireBackup(answerResultPairs.add("${result.attemptId}\u0000${result.questionId}"), "A quiz attempt contains duplicate results for one question.")
+        }
+        questionBank.forEach { item ->
+            requireBackup(item.type in allowedQuestionTypes && item.prompt.isNotBlank() && item.correctAnswer.isNotBlank(), "A question-bank item is invalid.")
+            requireBackup(validJsonArray(item.optionsJson) && validJsonObject(item.metadataJson), "A question-bank item contains malformed JSON.")
+            requireBackup(item.createdAt >= 0L && item.updatedAt >= item.createdAt, "A question-bank item has invalid timestamps.")
+            if (item.type == "NUMERIC") requireBackup(item.correctAnswer.toDoubleOrNull()?.isFinite() == true, "A numeric question-bank answer is invalid.")
+        }
+
+        val restoredThemeMode = root.optString("theme", "system").lowercase()
+        requireBackup(restoredThemeMode in setOf("system", "light", "dark"), "The backup contains an unknown theme mode.")
+        val restoredBudgetPeriodRaw = root.optString("budgetPeriod", "monthly").lowercase()
+        requireBackup(restoredBudgetPeriodRaw in setOf("monthly", "weekly", "both"), "The backup contains an unknown budget period.")
+        val restoredWeekStartRaw = root.optString("weekStartDay", "MONDAY")
+        requireBackup(runCatching { java.time.DayOfWeek.valueOf(restoredWeekStartRaw) }.isSuccess, "The backup contains an invalid week-start day.")
+        if (root.has("dailyStudyGoalMinutes")) requireBackup(root.optInt("dailyStudyGoalMinutes", 0) in 1..1_440, "The backup has an invalid daily study goal.")
+        if (root.has("weeklyStudyGoalMinutes")) requireBackup(root.optInt("weeklyStudyGoalMinutes", 0) in 1..10_080, "The backup has an invalid weekly study goal.")
+        if (root.has("preferredReminderHour") && !root.isNull("preferredReminderHour")) requireBackup(root.optInt("preferredReminderHour", -1) in 0..23, "The backup has an invalid preferred reminder hour.")
+        if (root.has("pomodoroWorkMinutes")) requireBackup(root.optInt("pomodoroWorkMinutes", 0) in 1..240, "The backup has an invalid Pomodoro work duration.")
+        if (root.has("pomodoroShortBreakMinutes")) requireBackup(root.optInt("pomodoroShortBreakMinutes", 0) in 1..120, "The backup has an invalid Pomodoro short break duration.")
+        if (root.has("pomodoroLongBreakMinutes")) requireBackup(root.optInt("pomodoroLongBreakMinutes", 0) in 1..240, "The backup has an invalid Pomodoro long break duration.")
+        if (root.has("pomodoroCyclesBeforeLongBreak")) requireBackup(root.optInt("pomodoroCyclesBeforeLongBreak", 0) in 1..12, "The backup has an invalid Pomodoro cycle count.")
+
+        val restoredModel = root.optJSONObject("studySlotModel")?.let(::studySlotModelFromJson)
+        if (root.has("studySlotModel") && !root.isNull("studySlotModel") && restoredModel == null) {
+            invalid("The study suggestion model in this backup is invalid.")
+        }
+
+        fun optionalFiniteDouble(key: String, positiveOnly: Boolean = false): Double? {
+            if (!root.has(key) || root.isNull(key)) return null
+            val value = root.optDouble(key, Double.NaN)
+            val valid = value.isFinite() && value <= Float.MAX_VALUE.toDouble() &&
+                if (positiveOnly) value > 0.0 else value >= 0.0
+            requireBackup(valid, "Backup setting '$key' has an invalid numeric value.")
+            return value
+        }
+        val restoredBudget = optionalFiniteDouble("budget") ?: 0.0
+        val restoredChedTarget = optionalFiniteDouble("chedTarget", positiveOnly = true)?.also {
+            requireBackup(it in 1.0..5.0, "The backup has an invalid CHED/scholarship target GWA.")
+        }
+        val restoredWeeklyOverride = optionalFiniteDouble("weeklyBudgetOverride", positiveOnly = true)
+        val restoredCategoryLimits = root.optJSONObject("categoryBudgetLimits")?.let { obj ->
+            buildMap {
+                val keys = obj.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next().trim()
+                    val value = obj.optDouble(key, Double.NaN)
+                    requireBackup(key.isNotBlank() && value.isFinite() && value > 0.0 && value <= Float.MAX_VALUE.toDouble(), "A category budget limit is invalid.")
+                    put(key, value)
+                }
+            }
+        } ?: emptyMap()
+        fun optionalDateSetting(key: String): LocalDate? {
+            val raw = root.optStringOrNull(key) ?: return null
+            return try { LocalDate.parse(raw) } catch (_: Exception) { invalid("Backup setting '$key' has an invalid date.") }
+        }
+        val restoredTermStart = optionalDateSetting("termStartDate")
+        val restoredTermEnd = optionalDateSetting("termEndDate")
+        if (restoredTermStart != null && restoredTermEnd != null) {
+            requireBackup(!restoredTermEnd.isBefore(restoredTermStart), "The backup term end date is before its start date.")
+        }
+        val restoredThemePreset = root.optStringOrNull("themePreset")?.let { raw ->
+            ThemePreset.entries.firstOrNull { it.name.equals(raw, ignoreCase = true) }
+                ?: invalid("The backup contains an unknown theme preset.")
+        }
+        val restoredBackgroundStyle = root.optStringOrNull("backgroundStyle")?.let { raw ->
+            BackgroundStyle.entries.firstOrNull { it.storageKey == raw.lowercase() }
+                ?: invalid("The backup contains an unknown background style.")
+        }
+        val restoredFontChoice = root.optStringOrNull("fontChoice")?.let { raw ->
+            FontChoice.entries.firstOrNull { it.name.equals(raw, ignoreCase = true) }
+                ?: invalid("The backup contains an unknown font choice.")
+        }
+        val restoredCustomSeedColor = if (!root.has("customSeedColor") || root.isNull("customSeedColor")) null else root.optInt("customSeedColor")
 
         db.withTransaction {
             // Study System 3.1 tables are cleared first so foreign-key children never
@@ -324,10 +676,10 @@ object BackupManager {
             db.studyMaterialDao().upsertReviewProgress(studyReviewProgress.filter { p -> p.topicId == null || studyTopics.any { it.id == p.topicId } })
             db.studyMaterialDao().upsertBankItems(questionBank)
             db.studyMaterialDao().upsertFlashcardReviewEvents(flashcardReviewEvents)
-            val questionIds = quizQuestions.mapTo(hashSetOf()) { it.id }
-            val attemptIds = restoredAttempts.mapTo(hashSetOf()) { it.id }
+            val restoredQuestionIds = quizQuestions.mapTo(hashSetOf()) { it.id }
+            val restoredAttemptIds = restoredAttempts.mapTo(hashSetOf()) { it.id }
             db.studyMaterialDao().upsertAnswerResults(
-                quizAnswerResults.filter { it.questionId in questionIds && it.attemptId in attemptIds }
+                quizAnswerResults.filter { it.questionId in restoredQuestionIds && it.attemptId in restoredAttemptIds }
             )
 
             db.jsonImportDao().clearAll()
@@ -335,14 +687,18 @@ object BackupManager {
         }
 
         // Prefs live outside Room, so they're written after the DB transaction commits.
-        repo.monthlyBudget = root.optDouble("budget", 0.0)
+        repo.monthlyBudget = restoredBudget
         repo.userName = root.optString("userName", "")
-        repo.chedTarget = if (!root.has("chedTarget") || root.isNull("chedTarget")) null else root.optDouble("chedTarget")
-        repo.themeMode = when (root.optString("theme", "system")) {
+        repo.chedTarget = restoredChedTarget
+        repo.themeMode = when (restoredThemeMode) {
             "light" -> ThemeMode.LIGHT
             "dark" -> ThemeMode.DARK
             else -> ThemeMode.SYSTEM
         }
+        restoredThemePreset?.let { repo.themePreset = it }
+        if (root.has("customSeedColor")) repo.customSeedColor = restoredCustomSeedColor
+        restoredBackgroundStyle?.let { repo.backgroundStyle = it }
+        restoredFontChoice?.let { repo.fontChoice = it }
         repo.notificationsEnabled = root.optBoolean("notificationsEnabled", true)
         repo.classDayNotificationEnabled = root.optBoolean("classDayNotificationEnabled", true)
         repo.morningAgendaEnabled = root.optBoolean("morningAgendaEnabled", true)
@@ -350,37 +706,33 @@ object BackupManager {
         repo.studyRemindersEnabled = root.optBoolean("studyRemindersEnabled", true)
         repo.dailyStudyGoalMinutes = root.optInt("dailyStudyGoalMinutes", repo.dailyStudyGoalMinutes)
         repo.weeklyStudyGoalMinutes = root.optInt("weeklyStudyGoalMinutes", repo.weeklyStudyGoalMinutes)
-        repo.budgetPeriod = when (root.optString("budgetPeriod", "monthly")) {
+        repo.budgetPeriod = when (restoredBudgetPeriodRaw) {
             "weekly" -> BudgetPeriod.WEEKLY
             "both" -> BudgetPeriod.BOTH
             else -> BudgetPeriod.MONTHLY
         }
-        repo.weekStartDay = runCatching {
-            java.time.DayOfWeek.valueOf(root.optString("weekStartDay", "MONDAY"))
-        }.getOrDefault(java.time.DayOfWeek.MONDAY)
-        repo.weeklyBudgetOverride = if (!root.has("weeklyBudgetOverride") || root.isNull("weeklyBudgetOverride")) null else root.optDouble("weeklyBudgetOverride")
+        repo.weekStartDay = java.time.DayOfWeek.valueOf(restoredWeekStartRaw)
+        repo.weeklyBudgetOverride = restoredWeeklyOverride
         repo.weeklyRolloverEnabled = root.optBoolean("weeklyRolloverEnabled", false)
-        repo.categoryBudgetLimits = root.optJSONObject("categoryBudgetLimits")?.let { obj ->
-            buildMap {
-                val keys = obj.keys()
-                while (keys.hasNext()) {
-                    val key = keys.next()
-                    val value = obj.optDouble(key, 0.0)
-                    if (key.isNotBlank() && value > 0.0 && value.isFinite()) put(key, value)
-                }
-            }
-        } ?: emptyMap()
-        root.optStringOrNull("termStartDate")?.let { raw ->
-            runCatching { java.time.LocalDate.parse(raw) }.getOrNull()?.let { repo.termStartDate = it }
-        }
-        root.optStringOrNull("termEndDate")?.let { raw ->
-            runCatching { java.time.LocalDate.parse(raw) }.getOrNull()?.let { repo.termEndDate = it }
-        }
+        repo.categoryBudgetLimits = restoredCategoryLimits
+        restoredTermStart?.let { repo.termStartDate = it }
+        restoredTermEnd?.let { repo.termEndDate = it }
         repo.cloudAssistantEnabled = root.optBoolean("cloudAssistantEnabled", false)
         repo.assistantModel = root.optString("assistantModel", repo.assistantModel)
         repo.preferredReminderHour = if (!root.has("preferredReminderHour") || root.isNull("preferredReminderHour")) null else root.optInt("preferredReminderHour")
         repo.dismissedExpensePatternKeys = root.optJSONArray("dismissedExpensePatternKeys")?.toStringSet() ?: emptySet()
-        root.optJSONObject("studySlotModel")?.let { repo.studySlotModelState = studySlotModelFromJson(it) }
+        restoredModel?.let { repo.studySlotModelState = it }
+        if (root.has("pomodoroWorkMinutes")) repo.pomodoroWorkMinutes = root.optInt("pomodoroWorkMinutes", repo.pomodoroWorkMinutes)
+        if (root.has("pomodoroShortBreakMinutes")) repo.pomodoroShortBreakMinutes = root.optInt("pomodoroShortBreakMinutes", repo.pomodoroShortBreakMinutes)
+        if (root.has("pomodoroLongBreakMinutes")) repo.pomodoroLongBreakMinutes = root.optInt("pomodoroLongBreakMinutes", repo.pomodoroLongBreakMinutes)
+        if (root.has("pomodoroCyclesBeforeLongBreak")) repo.pomodoroCyclesBeforeLongBreak = root.optInt("pomodoroCyclesBeforeLongBreak", repo.pomodoroCyclesBeforeLongBreak)
+        if (root.has("pomodoroAutoStartNext")) repo.pomodoroAutoStartNext = root.optBoolean("pomodoroAutoStartNext", repo.pomodoroAutoStartNext)
+        if (root.has("pomodoroPictureInPicture")) repo.pomodoroPictureInPicture = root.optBoolean("pomodoroPictureInPicture", repo.pomodoroPictureInPicture)
+        if (root.has("pomodoroTimerNotification")) repo.pomodoroTimerNotification = root.optBoolean("pomodoroTimerNotification", repo.pomodoroTimerNotification)
+        if (root.has("pomodoroAlarmSoundEnabled")) repo.pomodoroAlarmSoundEnabled = root.optBoolean("pomodoroAlarmSoundEnabled", repo.pomodoroAlarmSoundEnabled)
+        if (root.has("pomodoroAlarmVibrationEnabled")) repo.pomodoroAlarmVibrationEnabled = root.optBoolean("pomodoroAlarmVibrationEnabled", repo.pomodoroAlarmVibrationEnabled)
+        if (root.has("pomodoroWorkSoundUri")) repo.pomodoroWorkSoundUri = root.optStringOrNull("pomodoroWorkSoundUri")
+        if (root.has("pomodoroBreakSoundUri")) repo.pomodoroBreakSoundUri = root.optStringOrNull("pomodoroBreakSoundUri")
     }
 }
 
@@ -480,7 +832,7 @@ private fun quizToJson(q: Quiz) = JSONObject().apply {
 
 private fun quizFromJson(o: JSONObject) = Quiz(
     id = o.getString("id"), title = o.getString("title"), courseCode = o.optStringOrNull("courseCode"),
-    topicId = o.optStringOrNull("topicId"), description = o.optStringOrNull("description"), passingScore = o.optInt("passingScore", 70).coerceIn(1, 100),
+    topicId = o.optStringOrNull("topicId"), description = o.optStringOrNull("description"), passingScore = o.optInt("passingScore", 70),
     shuffleQuestions = o.optBoolean("shuffleQuestions", true), shuffleChoices = o.optBoolean("shuffleChoices", true),
     timeLimitMinutes = if (!o.has("timeLimitMinutes") || o.isNull("timeLimitMinutes")) null else o.optInt("timeLimitMinutes").takeIf { it > 0 },
     feedbackMode = o.optString("feedbackMode", "IMMEDIATE"),
@@ -528,18 +880,18 @@ private fun studyTopicToJson(x: StudyTopic) = JSONObject().apply {
 }
 private fun studyTopicFromJson(o: JSONObject) = StudyTopic(
     id=o.getString("id"), courseCode=o.getString("courseCode"), name=o.getString("name"), parentTopicId=o.optStringOrNull("parentTopicId"),
-    examDate=o.optStringOrNull("examDate"), priority=o.optInt("priority",3).coerceIn(1,5), sortOrder=o.optInt("sortOrder",0).coerceAtLeast(0), createdAt=o.optLong("createdAt",System.currentTimeMillis()), updatedAt=o.optLong("updatedAt",System.currentTimeMillis())
+    examDate=o.optStringOrNull("examDate"), priority=o.optInt("priority",3), sortOrder=o.optInt("sortOrder",0), createdAt=o.optLong("createdAt",System.currentTimeMillis()), updatedAt=o.optLong("updatedAt",System.currentTimeMillis())
 )
 private fun studyNoteToJson(x: StudyNote)=JSONObject().apply{put("id",x.id);put("courseCode",x.courseCode);put("topicId",x.topicId);put("title",x.title);put("body",x.body);put("tags",x.tags);put("createdAt",x.createdAt);put("updatedAt",x.updatedAt)}
 private fun studyNoteFromJson(o:JSONObject)=StudyNote(id=o.getString("id"),courseCode=o.optStringOrNull("courseCode"),topicId=o.optStringOrNull("topicId"),title=o.getString("title"),body=o.getString("body"),tags=o.optString("tags",""),createdAt=o.optLong("createdAt",System.currentTimeMillis()),updatedAt=o.optLong("updatedAt",System.currentTimeMillis()))
 private fun formulaReferenceToJson(x:FormulaReference)=JSONObject().apply{put("id",x.id);put("courseCode",x.courseCode);put("topicId",x.topicId);put("title",x.title);put("expression",x.expression);put("variables",x.variables);put("units",x.units);put("workedExample",x.workedExample);put("createdAt",x.createdAt);put("updatedAt",x.updatedAt)}
 private fun formulaReferenceFromJson(o:JSONObject)=FormulaReference(id=o.getString("id"),courseCode=o.optStringOrNull("courseCode"),topicId=o.optStringOrNull("topicId"),title=o.getString("title"),expression=o.getString("expression"),variables=o.optStringOrNull("variables"),units=o.optStringOrNull("units"),workedExample=o.optStringOrNull("workedExample"),createdAt=o.optLong("createdAt",System.currentTimeMillis()),updatedAt=o.optLong("updatedAt",System.currentTimeMillis()))
 private fun mistakeRecordToJson(x:MistakeRecord)=JSONObject().apply{put("id",x.id);put("sourceType",x.sourceType);put("sourceId",x.sourceId);put("courseCode",x.courseCode);put("topicTag",x.topicTag);put("prompt",x.prompt);put("userAnswer",x.userAnswer);put("correctAnswer",x.correctAnswer);put("explanation",x.explanation);put("confidence",x.confidence);put("missedAt",x.missedAt);put("retryAt",x.retryAt);put("resolved",x.resolved);put("timesMissed",x.timesMissed)}
-private fun mistakeRecordFromJson(o:JSONObject)=MistakeRecord(id=o.getString("id"),sourceType=o.getString("sourceType"),sourceId=o.getString("sourceId"),courseCode=o.optStringOrNull("courseCode"),topicTag=o.optStringOrNull("topicTag"),prompt=o.getString("prompt"),userAnswer=o.optStringOrNull("userAnswer"),correctAnswer=o.getString("correctAnswer"),explanation=o.optStringOrNull("explanation"),confidence=o.optString("confidence","UNSET"),missedAt=o.optLong("missedAt",System.currentTimeMillis()),retryAt=o.optLong("retryAt",System.currentTimeMillis()),resolved=o.optBoolean("resolved",false),timesMissed=o.optInt("timesMissed",1).coerceAtLeast(1))
+private fun mistakeRecordFromJson(o:JSONObject)=MistakeRecord(id=o.getString("id"),sourceType=o.getString("sourceType"),sourceId=o.getString("sourceId"),courseCode=o.optStringOrNull("courseCode"),topicTag=o.optStringOrNull("topicTag"),prompt=o.getString("prompt"),userAnswer=o.optStringOrNull("userAnswer"),correctAnswer=o.getString("correctAnswer"),explanation=o.optStringOrNull("explanation"),confidence=o.optString("confidence","UNSET"),missedAt=o.optLong("missedAt",System.currentTimeMillis()),retryAt=o.optLong("retryAt",System.currentTimeMillis()),resolved=o.optBoolean("resolved",false),timesMissed=o.optInt("timesMissed",1))
 private fun studyGoalToJson(x:StudyGoal)=JSONObject().apply{put("id",x.id);put("courseCode",x.courseCode);put("topicTag",x.topicTag);put("title",x.title);put("goalType",x.goalType);put("targetValue",x.targetValue);put("progressValue",x.progressValue);put("dueDate",x.dueDate);put("completed",x.completed);put("createdAt",x.createdAt);put("updatedAt",x.updatedAt)}
-private fun studyGoalFromJson(o:JSONObject)=StudyGoal(id=o.getString("id"),courseCode=o.optStringOrNull("courseCode"),topicTag=o.optStringOrNull("topicTag"),title=o.getString("title"),goalType=o.optString("goalType","CUSTOM"),targetValue=o.optInt("targetValue",1).coerceAtLeast(1),progressValue=o.optInt("progressValue",0).coerceAtLeast(0),dueDate=o.optStringOrNull("dueDate"),completed=o.optBoolean("completed",false),createdAt=o.optLong("createdAt",System.currentTimeMillis()),updatedAt=o.optLong("updatedAt",System.currentTimeMillis()))
+private fun studyGoalFromJson(o:JSONObject)=StudyGoal(id=o.getString("id"),courseCode=o.optStringOrNull("courseCode"),topicTag=o.optStringOrNull("topicTag"),title=o.getString("title"),goalType=o.optString("goalType","CUSTOM"),targetValue=o.optInt("targetValue",1),progressValue=o.optInt("progressValue",0),dueDate=o.optStringOrNull("dueDate"),completed=o.optBoolean("completed",false),createdAt=o.optLong("createdAt",System.currentTimeMillis()),updatedAt=o.optLong("updatedAt",System.currentTimeMillis()))
 private fun studyPlanItemToJson(x:StudyPlanItem)=JSONObject().apply{put("id",x.id);put("courseCode",x.courseCode);put("topicTag",x.topicTag);put("title",x.title);put("plannedDate",x.plannedDate);put("minutes",x.minutes);put("kind",x.kind);put("completed",x.completed);put("createdAt",x.createdAt);put("updatedAt",x.updatedAt)}
-private fun studyPlanItemFromJson(o:JSONObject)=StudyPlanItem(id=o.getString("id"),courseCode=o.optStringOrNull("courseCode"),topicTag=o.optStringOrNull("topicTag"),title=o.getString("title"),plannedDate=o.optString("plannedDate",java.time.LocalDate.now().toString()),minutes=o.optInt("minutes",25).coerceIn(1,1440),kind=o.optString("kind","REVIEW"),completed=o.optBoolean("completed",false),createdAt=o.optLong("createdAt",System.currentTimeMillis()),updatedAt=o.optLong("updatedAt",System.currentTimeMillis()))
+private fun studyPlanItemFromJson(o:JSONObject)=StudyPlanItem(id=o.getString("id"),courseCode=o.optStringOrNull("courseCode"),topicTag=o.optStringOrNull("topicTag"),title=o.getString("title"),plannedDate=o.optString("plannedDate",java.time.LocalDate.now().toString()),minutes=o.optInt("minutes",25),kind=o.optString("kind","REVIEW"),completed=o.optBoolean("completed",false),createdAt=o.optLong("createdAt",System.currentTimeMillis()),updatedAt=o.optLong("updatedAt",System.currentTimeMillis()))
 private fun studyReviewProgressToJson(x:StudyReviewProgress)=JSONObject().apply{put("id",x.id);put("courseCode",x.courseCode);put("topicId",x.topicId);put("completed",x.completed);put("completedAt",x.completedAt);put("updatedAt",x.updatedAt)}
 private fun studyReviewProgressFromJson(o:JSONObject)=StudyReviewProgress(id=o.getString("id"),courseCode=o.getString("courseCode"),topicId=o.optStringOrNull("topicId"),completed=o.optBoolean("completed",false),completedAt=if(!o.has("completedAt")||o.isNull("completedAt"))null else o.optLong("completedAt"),updatedAt=o.optLong("updatedAt",System.currentTimeMillis()))
 
@@ -712,14 +1064,13 @@ private fun studySlotModelToJson(model: StudySlotModelState) = JSONObject().appl
     put("sampleCount", model.sampleCount); put("version", model.version)
 }
 
-private fun studySlotModelFromJson(o: JSONObject): StudySlotModelState {
-    val arr = o.optJSONArray("weights")
-    val weights = if (arr != null) List(arr.length()) { index -> arr.optDouble(index, 0.0) } else emptyList()
-    return StudySlotModelState(
-        weights = weights.takeIf { it.size == StudySlotModelState.FEATURE_COUNT }
-            ?: List(StudySlotModelState.FEATURE_COUNT) { 0.0 },
-        bias = o.optDouble("bias", 0.0),
-        sampleCount = o.optInt("sampleCount", 0),
-        version = o.optInt("version", 1)
-    )
+private fun studySlotModelFromJson(o: JSONObject): StudySlotModelState? {
+    val arr = o.optJSONArray("weights") ?: return null
+    if (arr.length() != StudySlotModelState.FEATURE_COUNT) return null
+    val weights = List(arr.length()) { index -> arr.optDouble(index, Double.NaN) }
+    val bias = o.optDouble("bias", Double.NaN)
+    val sampleCount = o.optInt("sampleCount", -1)
+    val version = o.optInt("version", 0)
+    if (weights.any { !it.isFinite() } || !bias.isFinite() || sampleCount < 0 || version < 1) return null
+    return StudySlotModelState(weights = weights, bias = bias, sampleCount = sampleCount, version = version)
 }

@@ -97,6 +97,7 @@ import org.json.JSONObject
 import coil.compose.AsyncImage
 import java.util.UUID
 import kotlin.random.Random
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -225,23 +226,41 @@ fun QuizScreen(vm: PunlaViewModel, initialCourse: String? = null, initialTopicId
         label = "quizMode"
     ) { mode ->
         when (mode) {
-            "take" -> TakeQuizView(
-                quiz = selectedQuiz!!,
-                request = runRequest!!,
-                questions = runQuestions,
-                vm = vm,
-                onExit = { clearRun() },
-                onRetryMistakes = { missed -> startRun(missed, "Retry mistakes") }
-            )
-            "detail" -> QuizDetailView(
-                quiz = selectedQuiz!!,
-                questions = selectedQuestions,
-                attempts = selectedAttempts,
-                vm = vm,
-                topics = studyTopics,
-                onBack = { selectedQuizId = null },
-                onStart = { questions, label, examMode -> startRun(questions, label, examMode) }
-            )
+            "take" -> {
+                // Crossfade keeps the outgoing content composed briefly after the
+                // target state changes. Never force-unwrap navigation state here:
+                // clearing a run from the results screen can otherwise recompose
+                // this outgoing branch with a null runRequest and crash.
+                val activeQuiz = selectedQuiz
+                val activeRequest = runRequest
+                if (activeQuiz != null && activeRequest != null) {
+                    TakeQuizView(
+                        quiz = activeQuiz,
+                        request = activeRequest,
+                        questions = runQuestions,
+                        vm = vm,
+                        onExit = { clearRun() },
+                        onRetryMistakes = { missed -> startRun(missed, "Retry mistakes") }
+                    )
+                }
+            }
+            "detail" -> {
+                // The same transition rule applies when backing out of quiz details:
+                // selectedQuizId can be cleared while the old detail frame is still
+                // participating in the Crossfade animation.
+                val activeQuiz = selectedQuiz
+                if (activeQuiz != null) {
+                    QuizDetailView(
+                        quiz = activeQuiz,
+                        questions = selectedQuestions,
+                        attempts = selectedAttempts,
+                        vm = vm,
+                        topics = studyTopics,
+                        onBack = { selectedQuizId = null },
+                        onStart = { questions, label, examMode -> startRun(questions, label, examMode) }
+                    )
+                }
+            }
             else -> QuizLibraryView(
                 quizzes = scopedQuizzes,
                 questions = allQuestions,
@@ -285,14 +304,12 @@ private fun QuizLibraryView(
         if (uri != null && !importInProgress) {
             importScope.launch {
                 importInProgress = true
-                val parsed = runCatching {
-                    withContext(Dispatchers.IO) {
+                try {
+                    val imported = withContext(Dispatchers.IO) {
                         QuizJsonImport.parse(
                             PunlaJsonImportReader.readText(context, uri, QuizJsonImport.MAX_FILE_CHARS)
                         )
                     }
-                }
-                parsed.onSuccess { imported ->
                     vm.checkJsonImport(QuizJsonImport.FILE_ID, imported.contentId)
                         .onSuccess { already ->
                             duplicateImport = already
@@ -301,10 +318,13 @@ private fun QuizLibraryView(
                         .onFailure { error ->
                             importError = quizImportFailureMessage("check this file", error)
                         }
-                }.onFailure { error ->
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
                     importError = error.message ?: "Punla couldn't import that quiz JSON."
+                } finally {
+                    importInProgress = false
                 }
-                importInProgress = false
             }
         }
     }
@@ -710,6 +730,7 @@ private fun TakeQuizView(
     var attemptSaved by rememberSaveable(quiz.id, request.id) { mutableStateOf(false) }
     var attemptSaving by remember(quiz.id, request.id) { mutableStateOf(false) }
     var attemptSaveError by remember(quiz.id, request.id) { mutableStateOf<String?>(null) }
+    var attemptSaveRetryToken by rememberSaveable(quiz.id, request.id) { mutableIntStateOf(0) }
     var mistakesSavedAsCards by rememberSaveable(quiz.id, request.id) { mutableStateOf(false) }
     var elapsedSeconds by rememberSaveable(quiz.id, request.id) { mutableIntStateOf(0) }
     var timedOut by rememberSaveable(quiz.id, request.id) { mutableStateOf(false) }
@@ -751,26 +772,30 @@ private fun TakeQuizView(
         }
     }
 
-    if (finished && queue.isNotEmpty() && !attemptSaved && !attemptSaving && attemptSaveError == null) {
-        LaunchedEffect(queue, score, missedIds, answerResults) {
-            attemptSaving = true
-            val completedAt = System.currentTimeMillis()
-            val attempt = QuizAttempt(
-                id = attemptId,
-                quizId = quiz.id,
-                startedAt = startedAt,
-                completedAt = completedAt,
-                score = score,
-                total = queue.size,
-                durationMs = completedAt - startedAt,
-                incorrectQuestionIdsJson = JSONArray(missedIds.distinct()).toString()
-            )
-            vm.recordQuizAttemptWithResults(attempt, answerResults, queue.associateBy { it.id }, quiz)
-                .onSuccess { attemptSaved = true }
+    LaunchedEffect(finished, attemptId, attemptSaveRetryToken) {
+        if (!finished || queue.isEmpty() || attemptSaved || attemptSaving) return@LaunchedEffect
+
+        attemptSaving = true
+        attemptSaveError = null
+        val completedAt = System.currentTimeMillis()
+        val attempt = QuizAttempt(
+            id = attemptId,
+            quizId = quiz.id,
+            startedAt = startedAt,
+            completedAt = completedAt,
+            score = score,
+            total = queue.size,
+            durationMs = completedAt - startedAt,
+            incorrectQuestionIdsJson = JSONArray(missedIds.distinct()).toString()
+        )
+        // Persist in viewModelScope. Navigating away from this composable must not
+        // cancel an otherwise valid completed quiz attempt.
+        vm.recordQuizAttemptWithResultsAsync(attempt, answerResults, queue.associateBy { it.id }, quiz) { result ->
+            attemptSaving = false
+            result.onSuccess { attemptSaved = true }
                 .onFailure { error ->
                     attemptSaveError = error.message ?: "Punla couldn't save this quiz attempt."
                 }
-            attemptSaving = false
         }
     }
 
@@ -990,7 +1015,10 @@ private fun TakeQuizView(
                                 ) {
                                     Column(Modifier.fillMaxWidth().padding(10.dp)) {
                                         Text(attemptSaveError ?: "Couldn't save attempt.", style = MaterialTheme.typography.bodySmall)
-                                        TextButton(onClick = { attemptSaveError = null }) { Text("Retry save") }
+                                        TextButton(onClick = {
+                                            attemptSaveError = null
+                                            attemptSaveRetryToken++
+                                        }) { Text("Retry save") }
                                     }
                                 }
                             }
@@ -1142,7 +1170,7 @@ private fun QuestionEditorDialog(quizId: String, initial: QuizQuestion?, onDismi
         QuizQuestionTypes.MULTI_SELECT -> choices.size >= 2 && choicesAreUnique && multiSelected.isNotEmpty() && multiSelected.all { it in rawChoices.indices && rawChoices[it].isNotBlank() }
         QuizQuestionTypes.TRUE_FALSE -> true
         QuizQuestionTypes.IDENTIFICATION, QuizQuestionTypes.IMAGE_IDENTIFICATION -> typedAnswer.trim().isNotEmpty() && (type != QuizQuestionTypes.IMAGE_IDENTIFICATION || !imageUri.isNullOrBlank())
-        QuizQuestionTypes.NUMERIC -> typedAnswer.toDoubleOrNull() != null && (numericTolerance.toDoubleOrNull()?.let { it >= 0.0 } == true)
+        QuizQuestionTypes.NUMERIC -> typedAnswer.toDoubleOrNull()?.isFinite() == true && (numericTolerance.toDoubleOrNull()?.let { it.isFinite() && it >= 0.0 } == true)
         QuizQuestionTypes.ORDERING -> orderItems.size >= 2 && orderItemsAreUnique
         QuizQuestionTypes.MATCHING -> matchPairs.size >= 2 && matchKeysAreUnique && matchValuesAreUnique
         else -> false
@@ -1246,7 +1274,7 @@ private fun QuestionEditorDialog(quizId: String, initial: QuizQuestion?, onDismi
                     else -> rawChoices.getOrElse(correctChoice) { choices.firstOrNull().orEmpty() }
                 }
                 val metadata = JSONObject().apply {
-                    if (type == QuizQuestionTypes.NUMERIC) put("tolerance", numericTolerance.toDoubleOrNull() ?: 0.0)
+                    if (type == QuizQuestionTypes.NUMERIC) put("tolerance", numericTolerance.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 } ?: 0.0)
                     if (type == QuizQuestionTypes.MATCHING) put("rightOptions", JSONArray(matchPairs.values.toList()))
                 }.toString()
                 onSave(initial?.copy(

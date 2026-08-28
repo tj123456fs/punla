@@ -34,9 +34,12 @@ private val GRADE_OPTIONS = listOf(
  * shared by both the per-semester and cumulative (all-semester) summaries
  * so the two stay consistent. */
 private fun computeGwa(courses: List<GradeCourse>): Pair<Double?, Double> {
-    val gradable = courses.filter { it.grade.toDoubleOrNull() != null && it.units > 0 }
-    val totalUnits = gradable.sumOf { it.units }
-    val gwa = if (totalUnits > 0) gradable.sumOf { it.units * it.grade.toDouble() } / totalUnits else null
+    val gradable = courses.mapNotNull { course ->
+        val grade = course.grade.toDoubleOrNull()
+        if (grade != null && grade.isFinite() && course.units.isFinite() && course.units > 0.0) course to grade else null
+    }
+    val totalUnits = gradable.sumOf { it.first.units }
+    val gwa = if (totalUnits > 0.0) gradable.sumOf { (course, grade) -> course.units * grade } / totalUnits else null
     return gwa to totalUnits
 }
 
@@ -49,7 +52,7 @@ private fun computeGwa(courses: List<GradeCourse>): Pair<Double?, Double> {
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun GradesScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
+fun GradesScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false, quickAddToken: String = "") {
     val semesters by vm.semesters.collectAsState()
     val selectedId = vm.selectedSemesterId
 
@@ -75,8 +78,10 @@ fun GradesScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
 
     // Quick-add "grade": mirrors the web app's rule — jump into "new course"
     // if a semester already exists, otherwise prompt to create one first.
-    LaunchedEffect(openFormOnStart, semesters) {
-        if (openFormOnStart) {
+    var initialQuickAddHandled by rememberSaveable(quickAddToken) { mutableStateOf(false) }
+    LaunchedEffect(openFormOnStart, semesters, quickAddToken, initialQuickAddHandled) {
+        if (openFormOnStart && !initialQuickAddHandled) {
+            initialQuickAddHandled = true
             if (semesters.isEmpty()) showSemesterDialog = true
             else { editingCourseId = null; showCourseDialog = true }
         }
@@ -583,7 +588,7 @@ private fun CourseFormDialog(
 
     val parsedUnits = units.toDoubleOrNull()
     val invalidCode = codeTouched && code.isBlank()
-    val invalidUnits = unitsTouched && (parsedUnits == null || parsedUnits <= 0)
+    val invalidUnits = unitsTouched && (parsedUnits == null || !parsedUnits.isFinite() || parsedUnits <= 0)
     val initialCode = existing?.code ?: ""
     val initialTitle = existing?.title ?: ""
     val initialUnits = existing?.units?.let { if (it > 0) it.toString() else "" } ?: "3"

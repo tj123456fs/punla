@@ -1,5 +1,6 @@
 package com.uplb.punla.data
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -21,8 +22,9 @@ object AssistantApi {
         compactContext: String
     ): AssistantApiResult = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) return@withContext AssistantApiResult.Failure("Add an API key in Settings first.")
-        runCatching {
-            val connection = (URL("https://api.anthropic.com/v1/messages").openConnection() as HttpURLConnection).apply {
+        var connection: HttpURLConnection? = null
+        try {
+            connection = (URL("https://api.anthropic.com/v1/messages").openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
                 connectTimeout = 12_000
                 readTimeout = 20_000
@@ -73,6 +75,12 @@ object AssistantApi {
                 if (text.isBlank()) AssistantApiResult.Failure("The assistant returned an empty response.")
                 else AssistantApiResult.Success(text)
             }
-        }.getOrElse { AssistantApiResult.Failure(it.message ?: "Couldn't reach the assistant right now.") }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            AssistantApiResult.Failure(error.message ?: "Couldn't reach the assistant right now.")
+        } finally {
+            connection?.disconnect()
+        }
     }
 }

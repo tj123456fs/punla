@@ -125,18 +125,26 @@ class PunlaRepository(context: Context) {
 
     // ---- Settings ----
     var monthlyBudget: Double
-        get() = prefs.getFloat("budget", 0f).toDouble()
-        set(value) = prefs.edit().putFloat("budget", value.toFloat()).apply()
+        get() = prefs.getFloat("budget", 0f).takeIf { it.isFinite() && it >= 0f }?.toDouble() ?: 0.0
+        set(value) {
+            if (value.isFinite() && value >= 0.0 && value <= Float.MAX_VALUE.toDouble()) {
+                prefs.edit().putFloat("budget", value.toFloat()).apply()
+            }
+        }
 
     var userName: String
         get() = prefs.getString("user_name", "") ?: ""
         set(value) = prefs.edit().putString("user_name", value).apply()
 
     var chedTarget: Double?
-        get() = if (prefs.contains("ched_target")) prefs.getFloat("ched_target", 0f).toDouble() else null
+        get() = if (prefs.contains("ched_target")) {
+            prefs.getFloat("ched_target", 0f).takeIf { it.isFinite() && it in 1f..5f }?.toDouble()
+        } else null
         set(value) {
             if (value == null) prefs.edit().remove("ched_target").apply()
-            else prefs.edit().putFloat("ched_target", value.toFloat()).apply()
+            else if (value.isFinite() && value in 1.0..5.0) {
+                prefs.edit().putFloat("ched_target", value.toFloat()).apply()
+            }
         }
 
     var themeMode: ThemeMode
@@ -246,10 +254,14 @@ class PunlaRepository(context: Context) {
      * [weeklyBudgetBaseFromList]). Answers open question #1 from the plan
      * doc: independently editable when set, auto-derived otherwise. */
     var weeklyBudgetOverride: Double?
-        get() = if (prefs.contains("weekly_budget_override")) prefs.getFloat("weekly_budget_override", 0f).toDouble() else null
+        get() = if (prefs.contains("weekly_budget_override")) {
+            prefs.getFloat("weekly_budget_override", 0f).takeIf { it.isFinite() && it > 0f }?.toDouble()
+        } else null
         set(value) {
             if (value == null) prefs.edit().remove("weekly_budget_override").apply()
-            else prefs.edit().putFloat("weekly_budget_override", value.toFloat()).apply()
+            else if (value.isFinite() && value > 0.0 && value <= Float.MAX_VALUE.toDouble()) {
+                prefs.edit().putFloat("weekly_budget_override", value.toFloat()).apply()
+            }
         }
 
     /** Off by default — unused weekly budget resets each week rather than
@@ -328,8 +340,10 @@ class PunlaRepository(context: Context) {
         set(value) = prefs.edit().putBoolean("cloud_assistant_enabled", value).apply()
 
     var assistantModel: String
-        get() = prefs.getString("assistant_model", "claude-haiku-4-5") ?: "claude-haiku-4-5"
-        set(value) = prefs.edit().putString("assistant_model", value.trim()).apply()
+        get() = prefs.getString("assistant_model", "claude-haiku-4-5")?.trim().takeUnless { it.isNullOrBlank() } ?: "claude-haiku-4-5"
+        set(value) {
+            value.trim().takeIf { it.isNotBlank() }?.let { prefs.edit().putString("assistant_model", it).apply() }
+        }
 
     val assistantDailyCallLimit: Int get() = 10
 
@@ -355,7 +369,7 @@ class PunlaRepository(context: Context) {
         set(value) = secureSecrets.setAssistantApiKey(value.orEmpty())
 
     var preferredReminderHour: Int?
-        get() = if (prefs.contains("preferred_reminder_hour")) prefs.getInt("preferred_reminder_hour", 19) else null
+        get() = if (prefs.contains("preferred_reminder_hour")) prefs.getInt("preferred_reminder_hour", 19).takeIf { it in 0..23 } else null
         set(value) {
             if (value == null) prefs.edit().remove("preferred_reminder_hour").apply()
             else prefs.edit().putInt("preferred_reminder_hour", value.coerceIn(0, 23)).apply()
@@ -376,22 +390,25 @@ class PunlaRepository(context: Context) {
     var studySlotModelState: com.uplb.punla.ml.StudySlotModelState
         get() {
             val weights = prefs.getString("study_slot_model_weights", null)
-                ?.split(',')?.mapNotNull { it.toDoubleOrNull() }
+                ?.split(',')?.mapNotNull { it.toDoubleOrNull()?.takeIf(Double::isFinite) }
                 ?.takeIf { it.size == com.uplb.punla.ml.StudySlotModelState.FEATURE_COUNT }
                 ?: List(com.uplb.punla.ml.StudySlotModelState.FEATURE_COUNT) { 0.0 }
+            val storedBias = java.lang.Double.longBitsToDouble(prefs.getLong("study_slot_model_bias", 0L))
             return com.uplb.punla.ml.StudySlotModelState(
                 weights = weights,
-                bias = java.lang.Double.longBitsToDouble(prefs.getLong("study_slot_model_bias", 0L)),
-                sampleCount = prefs.getInt("study_slot_model_samples", 0),
-                version = prefs.getInt("study_slot_model_version", 1)
+                bias = storedBias.takeIf(Double::isFinite) ?: 0.0,
+                sampleCount = prefs.getInt("study_slot_model_samples", 0).coerceAtLeast(0),
+                version = prefs.getInt("study_slot_model_version", 1).coerceAtLeast(1)
             )
         }
         set(value) {
+            if (value.weights.size != com.uplb.punla.ml.StudySlotModelState.FEATURE_COUNT ||
+                value.weights.any { !it.isFinite() } || !value.bias.isFinite()) return
             prefs.edit()
                 .putString("study_slot_model_weights", value.weights.joinToString(","))
                 .putLong("study_slot_model_bias", java.lang.Double.doubleToRawLongBits(value.bias))
-                .putInt("study_slot_model_samples", value.sampleCount)
-                .putInt("study_slot_model_version", value.version)
+                .putInt("study_slot_model_samples", value.sampleCount.coerceAtLeast(0))
+                .putInt("study_slot_model_version", value.version.coerceAtLeast(1))
                 .apply()
         }
 
@@ -450,6 +467,7 @@ class PunlaRepository(context: Context) {
      * STANDARD_TERM_WEEKS in ClassSession.kt being a flat UP constant) —
      * would move to per-School data alongside termWeeks if/when the
      * multi-university work lands. */
+    @Deprecated("Use termStartDate so checklist timing follows the configured semester.")
     val classesStartDate: LocalDate get() = LocalDate.of(2026, 8, 3)
 
     /** Epoch millis [com.uplb.punla.worker.ChecklistReminderWorker] last
@@ -487,20 +505,20 @@ class PunlaRepository(context: Context) {
 
     // ---- Pomodoro settings ----
     var pomodoroWorkMinutes: Int
-        get() = prefs.getInt("pomo_work_min", 25)
-        set(value) = prefs.edit().putInt("pomo_work_min", value).apply()
+        get() = prefs.getInt("pomo_work_min", 25).coerceIn(1, 240)
+        set(value) = prefs.edit().putInt("pomo_work_min", value.coerceIn(1, 240)).apply()
 
     var pomodoroShortBreakMinutes: Int
-        get() = prefs.getInt("pomo_short_break_min", 5)
-        set(value) = prefs.edit().putInt("pomo_short_break_min", value).apply()
+        get() = prefs.getInt("pomo_short_break_min", 5).coerceIn(1, 120)
+        set(value) = prefs.edit().putInt("pomo_short_break_min", value.coerceIn(1, 120)).apply()
 
     var pomodoroLongBreakMinutes: Int
-        get() = prefs.getInt("pomo_long_break_min", 15)
-        set(value) = prefs.edit().putInt("pomo_long_break_min", value).apply()
+        get() = prefs.getInt("pomo_long_break_min", 15).coerceIn(1, 240)
+        set(value) = prefs.edit().putInt("pomo_long_break_min", value.coerceIn(1, 240)).apply()
 
     var pomodoroCyclesBeforeLongBreak: Int
-        get() = prefs.getInt("pomo_cycles_before_long", 4)
-        set(value) = prefs.edit().putInt("pomo_cycles_before_long", value).apply()
+        get() = prefs.getInt("pomo_cycles_before_long", 4).coerceIn(1, 12)
+        set(value) = prefs.edit().putInt("pomo_cycles_before_long", value.coerceIn(1, 12)).apply()
 
     var pomodoroAutoStartNext: Boolean
         get() = prefs.getBoolean("pomo_auto_start_next", false)
@@ -565,20 +583,20 @@ class PunlaRepository(context: Context) {
         set(value) = prefs.edit().putLong("pomo_runtime_started_at", value).apply()
 
     var pomodoroRuntimeRemainingSeconds: Int
-        get() = prefs.getInt("pomo_runtime_remaining_seconds", 0)
-        set(value) = prefs.edit().putInt("pomo_runtime_remaining_seconds", value).apply()
+        get() = prefs.getInt("pomo_runtime_remaining_seconds", 0).coerceAtLeast(0)
+        set(value) = prefs.edit().putInt("pomo_runtime_remaining_seconds", value.coerceAtLeast(0)).apply()
 
     var pomodoroRuntimeTotalSeconds: Int
-        get() = prefs.getInt("pomo_runtime_total_seconds", 0)
-        set(value) = prefs.edit().putInt("pomo_runtime_total_seconds", value).apply()
+        get() = prefs.getInt("pomo_runtime_total_seconds", 0).coerceAtLeast(0)
+        set(value) = prefs.edit().putInt("pomo_runtime_total_seconds", value.coerceAtLeast(0)).apply()
 
     var pomodoroRuntimeRunning: Boolean
         get() = prefs.getBoolean("pomo_runtime_running", false)
         set(value) = prefs.edit().putBoolean("pomo_runtime_running", value).apply()
 
     var pomodoroRuntimeCycleCount: Int
-        get() = prefs.getInt("pomo_runtime_cycle_count", 0)
-        set(value) = prefs.edit().putInt("pomo_runtime_cycle_count", value).apply()
+        get() = prefs.getInt("pomo_runtime_cycle_count", 0).coerceAtLeast(0)
+        set(value) = prefs.edit().putInt("pomo_runtime_cycle_count", value.coerceAtLeast(0)).apply()
 
     var pomodoroRuntimeCourseCode: String?
         get() = prefs.getString("pomo_runtime_course_code", null)
@@ -608,10 +626,10 @@ class PunlaRepository(context: Context) {
             .putString("pomo_runtime_phase", phase)
             .putLong("pomo_runtime_deadline", deadline)
             .putLong("pomo_runtime_started_at", startedAt)
-            .putInt("pomo_runtime_remaining_seconds", remainingSeconds)
-            .putInt("pomo_runtime_total_seconds", totalSeconds)
-            .putBoolean("pomo_runtime_running", running)
-            .putInt("pomo_runtime_cycle_count", cycleCount)
+            .putInt("pomo_runtime_remaining_seconds", remainingSeconds.coerceAtLeast(0))
+            .putInt("pomo_runtime_total_seconds", totalSeconds.coerceAtLeast(0))
+            .putBoolean("pomo_runtime_running", running && deadline > 0L)
+            .putInt("pomo_runtime_cycle_count", cycleCount.coerceAtLeast(0))
             .apply {
                 if (courseCode == null) remove("pomo_runtime_course_code")
                 else putString("pomo_runtime_course_code", courseCode)
@@ -663,12 +681,12 @@ class PunlaRepository(context: Context) {
 
     // ---- Study goals (roadmap Study Habits 2.1) ----
     var dailyStudyGoalMinutes: Int
-        get() = prefs.getInt("daily_study_goal_min", 60)
-        set(value) = prefs.edit().putInt("daily_study_goal_min", value).apply()
+        get() = prefs.getInt("daily_study_goal_min", 60).coerceIn(1, 1_440)
+        set(value) = prefs.edit().putInt("daily_study_goal_min", value.coerceIn(1, 1_440)).apply()
 
     var weeklyStudyGoalMinutes: Int
-        get() = prefs.getInt("weekly_study_goal_min", 420) // 7 * 60
-        set(value) = prefs.edit().putInt("weekly_study_goal_min", value).apply()
+        get() = prefs.getInt("weekly_study_goal_min", 420).coerceIn(1, 10_080) // 7 * 24 * 60
+        set(value) = prefs.edit().putInt("weekly_study_goal_min", value.coerceIn(1, 10_080)).apply()
 
     // ---- Derived habit stats (roadmap Study Habits 2.2) — pure functions
     // over an already-loaded session list, computed rather than stored, so
@@ -833,7 +851,7 @@ class PunlaRepository(context: Context) {
     suspend fun budgetSpentThisMonth(): Double {
         val now = LocalDate.now()
         val yearMonth = "%04d-%02d".format(now.year, now.monthValue)
-        return db.expenseDao().sumForMonth(yearMonth)
+        return db.expenseDao().sumForMonth(yearMonth).takeIf { it.isFinite() && it >= 0.0 } ?: 0.0
     }
 
     suspend fun budgetRemaining(): Double = monthlyBudget - budgetSpentThisMonth()
@@ -848,7 +866,10 @@ class PunlaRepository(context: Context) {
         val today = LocalDate.now()
         val start = today.minusDays(6) // 7 days inclusive of today
         val rows = db.expenseDao().sumByDaySince(start.toString())
-            .associate { LocalDate.parse(it.date) to it.total }
+            .mapNotNull { row ->
+                val date = runCatching { LocalDate.parse(row.date) }.getOrNull() ?: return@mapNotNull null
+                date to (row.total.takeIf { it.isFinite() && it >= 0.0 } ?: 0.0)
+            }.toMap()
         return (0..6).map { offset ->
             val d = start.plusDays(offset.toLong())
             d to (rows[d] ?: 0.0)
@@ -858,7 +879,11 @@ class PunlaRepository(context: Context) {
     /** Inserts a one-off expense. Used by the Budget widget's quick-add button
      * so it doesn't need to go through PunlaViewModel. Caller is responsible
      * for refreshing widgets afterward via [com.uplb.punla.widget.WidgetRefresher]. */
-    suspend fun addExpense(expense: Expense) = db.expenseDao().upsert(expense)
+    suspend fun addExpense(expense: Expense) {
+        val validDate = runCatching { LocalDate.parse(expense.date) }.isSuccess
+        if (!expense.amount.isFinite() || expense.amount <= 0.0 || expense.category.isBlank() || !validDate) return
+        db.expenseDao().upsert(expense)
+    }
 
     // ---- Weekly budget (Weekly Budgeting feature) — pure functions over an
     // already-loaded expense list, same shape as nextClassFromList() etc.
@@ -894,9 +919,10 @@ class PunlaRepository(context: Context) {
      * excluding fixed/recurring bills (see [Expense.isFixed], plan doc #4.3). */
     fun sumInRange(expenses: List<Expense>, start: LocalDate, end: LocalDate, excludeFixed: Boolean = false): Double =
         expenses.filter { e ->
-            (!excludeFixed || !e.isFixed) &&
+            e.amount.isFinite() && e.amount >= 0.0 &&
+                (!excludeFixed || !e.isFixed) &&
                 runCatching { LocalDate.parse(e.date) }.getOrNull()?.let { it in start..end } == true
-        }.sumOf { it.amount }
+        }.sumOf { it.amount }.takeIf(Double::isFinite) ?: 0.0
 
     /**
      * The auto-derived weekly figure when [weeklyBudgetOverride] isn't set:
@@ -960,10 +986,12 @@ class PunlaRepository(context: Context) {
     ): Double {
         if (throughInclusive <= afterExclusive) return 0.0
         var total = 0.0
-        rules.asSequence().filter { it.isFixed && it.amount > 0.0 }.forEach { rule ->
-            var cursor = runCatching { LocalDate.parse(rule.lastGenerated) }.getOrNull()
-                ?: runCatching { LocalDate.parse(rule.startDate) }.getOrNull()
-                ?: return@forEach
+        rules.asSequence().filter {
+            it.isFixed && it.amount.isFinite() && it.amount > 0.0 && it.repeat in setOf("weekly", "monthly")
+        }.forEach { rule ->
+            val startDate = runCatching { LocalDate.parse(rule.startDate) }.getOrNull() ?: return@forEach
+            val persistedCursor = runCatching { LocalDate.parse(rule.lastGenerated) }.getOrNull()
+            var cursor = persistedCursor?.takeUnless { it.isBefore(startDate) } ?: startDate
             var guard = 0
             while (guard++ < 200) {
                 cursor = when (rule.repeat) {
@@ -971,7 +999,11 @@ class PunlaRepository(context: Context) {
                     else -> cursor.plusWeeks(1)
                 }
                 if (cursor > throughInclusive) break
-                if (cursor > afterExclusive) total += rule.amount
+                if (cursor > afterExclusive) {
+                    val nextTotal = total + rule.amount
+                    if (!nextTotal.isFinite()) return total
+                    total = nextTotal
+                }
             }
         }
         return total
@@ -1004,7 +1036,7 @@ class PunlaRepository(context: Context) {
 
     /** All logged expenses, for callers (like the widget) that don't already
      * hold a reactive list the way the Budget screen's Room Flow does. */
-    suspend fun allExpenses(): List<Expense> = db.expenseDao().getAll()
+    suspend fun allExpenses(): List<Expense> = db.expenseDao().getAll().filter { it.amount.isFinite() && it.amount >= 0.0 }
 
     suspend fun safeToSpendToday(referenceDate: LocalDate = LocalDate.now()): Double {
         val expenses = allExpenses()
@@ -1050,7 +1082,7 @@ class PunlaRepository(context: Context) {
     // ---- Pre-enrollment checklist ----
     suspend fun getChecklistItems(): List<com.uplb.punla.data.entity.ChecklistItem> = db.checklistDao().getAll()
 
-    /** Days remaining until [classesStartDate] (negative once classes have started). */
+    /** Days remaining until the configured term start (negative once classes have started). */
     fun daysUntilClassesStart(): Long =
-        java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(), classesStartDate)
+        java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(), termStartDate)
 }

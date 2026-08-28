@@ -1,7 +1,7 @@
 # Punla Study Pack JSON Guide
 
 **Target:** Punla Study System 3.1 / Session 34  
-**App version:** 2.8.0  
+**App version:** 2.8.2  
 **Study JSON schema:** 1
 
 This guide defines the JSON format used by Punla's **Study Hub** for importing complete study packs.

@@ -34,6 +34,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -133,12 +134,20 @@ fun StudyHubScreen(
         if (uri != null && !studyImporting) {
             importScope.launch {
                 studyImporting = true
-                val result = runCatching { withContext(Dispatchers.IO) { StudyJsonImport.parse(PunlaJsonImportReader.readText(context, uri, StudyJsonImport.MAX_FILE_CHARS)) } }
-                result.onSuccess { bundle ->
-                    vm.checkJsonImport(bundle.fileId, bundle.contentId).onSuccess { already -> duplicateStudyImport = already; pendingStudyImport = bundle }
+                try {
+                    val bundle = withContext(Dispatchers.IO) {
+                        StudyJsonImport.parse(PunlaJsonImportReader.readText(context, uri, StudyJsonImport.MAX_FILE_CHARS))
+                    }
+                    vm.checkJsonImport(bundle.fileId, bundle.contentId)
+                        .onSuccess { already -> duplicateStudyImport = already; pendingStudyImport = bundle }
                         .onFailure { studyImportError = it.message ?: "Punla couldn't check this study pack." }
-                }.onFailure { studyImportError = it.message ?: "Punla couldn't read this study JSON." }
-                studyImporting = false
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    studyImportError = error.message ?: "Punla couldn't read this study JSON."
+                } finally {
+                    studyImporting = false
+                }
             }
         }
     }

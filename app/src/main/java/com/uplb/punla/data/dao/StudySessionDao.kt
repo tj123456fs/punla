@@ -15,7 +15,7 @@ interface StudySessionDao {
     @Query("SELECT * FROM study_sessions WHERE startedAt >= :sinceEpochMillis ORDER BY startedAt DESC")
     fun observeSince(sinceEpochMillis: Long): Flow<List<StudySession>>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsert(session: StudySession)
 
     @Delete

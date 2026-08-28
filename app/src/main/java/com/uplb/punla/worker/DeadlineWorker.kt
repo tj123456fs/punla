@@ -25,7 +25,7 @@ class DeadlineWorker(
 
     override suspend fun doWork(): Result {
         val repo = PunlaRepository(context)
-        
+
         if (!repo.notificationsEnabled) {
             return Result.success()
         }
@@ -40,8 +40,8 @@ class DeadlineWorker(
         val pending = deadlines.filter { !it.done }
 
         val today = LocalDate.now()
-        
-        val urgentDeadlines = pending.filter { 
+
+        val urgentDeadlines = pending.filter {
             val due = runCatching { LocalDate.parse(it.due) }.getOrNull()
             if (due != null) {
                 val days = ChronoUnit.DAYS.between(today, due)

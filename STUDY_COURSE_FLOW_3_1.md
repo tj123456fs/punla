@@ -1,6 +1,6 @@
 # Punla Course Learning Path — Study System 3.1
 
-**App version:** 2.8.0  
+**App version:** 2.8.2  
 **Database:** 12  
 **Study-pack schema:** 1 (backward compatible)
 

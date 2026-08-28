@@ -16,7 +16,7 @@ interface DeadlineDao {
     @Query("SELECT * FROM deadlines WHERE done = 0 ORDER BY due ASC LIMIT 1")
     suspend fun getNextPending(): Deadline?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsert(deadline: Deadline)
 
     @Delete
@@ -28,7 +28,7 @@ interface DeadlineDao {
     @Query("SELECT * FROM deadline_rules")
     suspend fun getAllRules(): List<DeadlineRule>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertRule(rule: DeadlineRule)
 
     @Query("DELETE FROM deadline_rules WHERE id = :ruleId")

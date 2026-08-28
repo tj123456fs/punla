@@ -394,7 +394,7 @@ fun CampusMapScreen(vm: PunlaViewModel, initialSearch: String = "", onOpenFullMa
                                 Spacer(Modifier.height(8.dp))
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outline)
                                 Spacer(Modifier.height(8.dp))
-                                
+
                                 Text("DIRECTIONS", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Spacer(Modifier.height(2.dp))
                                 Text(b.directions, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
@@ -402,7 +402,7 @@ fun CampusMapScreen(vm: PunlaViewModel, initialSearch: String = "", onOpenFullMa
                                 Spacer(Modifier.height(8.dp))
                                 Text("ROOM CODES", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Spacer(Modifier.height(4.dp))
-                                
+
                                 @OptIn(ExperimentalLayoutApi::class)
                                 FlowRow(
                                     modifier = Modifier.fillMaxWidth(),

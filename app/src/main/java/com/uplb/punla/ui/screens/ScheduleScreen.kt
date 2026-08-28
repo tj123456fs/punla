@@ -118,7 +118,7 @@ internal fun fmtTime(t: String): String {
 }
 
 @Composable
-fun ScheduleScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false, onStudyHere: (String?) -> Unit = {}) {
+fun ScheduleScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false, quickAddToken: String = "", onStudyHere: (String?) -> Unit = {}) {
     val classes by vm.classes.collectAsState()
     val deadlines by vm.deadlines.collectAsState()
     val attendanceRecords by vm.attendanceRecords.collectAsState()
@@ -144,8 +144,13 @@ fun ScheduleScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false, onStudy
     val editingClass = remember(editingClassId, classes) { classes.firstOrNull { it.id == editingClassId } }
     val pendingDeleteClass = remember(pendingDeleteClassId, classes) { classes.firstOrNull { it.id == pendingDeleteClassId } }
 
-    LaunchedEffect(openFormOnStart) {
-        if (openFormOnStart) { editingClassId = null; showForm = true }
+    var initialQuickAddHandled by rememberSaveable(quickAddToken) { mutableStateOf(false) }
+    LaunchedEffect(openFormOnStart, quickAddToken, initialQuickAddHandled) {
+        if (openFormOnStart && !initialQuickAddHandled) {
+            initialQuickAddHandled = true
+            editingClassId = null
+            showForm = true
+        }
     }
 
     // Bottom-tab navigation restores each destination's Compose state. That is

@@ -2,8 +2,8 @@ package com.uplb.punla.data.dao
 
 import androidx.room.Dao
 import androidx.room.Insert
-import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Upsert
 import com.uplb.punla.data.entity.NotificationEvent
 import com.uplb.punla.data.entity.StudySuggestionEvent
 import kotlinx.coroutines.flow.Flow
@@ -16,7 +16,7 @@ interface IntelligenceDao {
     @Query("SELECT * FROM study_suggestion_events ORDER BY occurredAt DESC")
     suspend fun getStudySuggestionEvents(): List<StudySuggestionEvent>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertStudySuggestionEvent(event: StudySuggestionEvent)
 
     @Query("SELECT * FROM study_suggestion_events WHERE suggestionId = :suggestionId ORDER BY occurredAt DESC LIMIT 1")
@@ -31,7 +31,7 @@ interface IntelligenceDao {
     @Query("SELECT * FROM notification_events ORDER BY occurredAt DESC")
     suspend fun getNotificationEvents(): List<NotificationEvent>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertNotificationEvent(event: NotificationEvent)
 
     @Query("DELETE FROM notification_events")

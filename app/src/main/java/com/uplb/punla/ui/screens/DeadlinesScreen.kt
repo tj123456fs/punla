@@ -51,7 +51,7 @@ private val PRIORITIES = listOf("High", "Medium", "Low")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DeadlinesScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
+fun DeadlinesScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false, quickAddToken: String = "") {
     val deadlines by vm.deadlines.collectAsState()
     // Roadmap C — withhold "No deadlines logged yet" until Room's first
     // real emission, so it doesn't flash for a frame on cold launch.
@@ -62,8 +62,12 @@ fun DeadlinesScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false) {
     var pendingDeleteDeadlineId by rememberSaveable { mutableStateOf<String?>(null) }
     val pendingDeleteDeadline = remember(pendingDeleteDeadlineId, deadlines) { deadlines.firstOrNull { it.id == pendingDeleteDeadlineId } }
 
-    LaunchedEffect(openFormOnStart) {
-        if (openFormOnStart) showForm = true
+    var initialQuickAddHandled by rememberSaveable(quickAddToken) { mutableStateOf(false) }
+    LaunchedEffect(openFormOnStart, quickAddToken, initialQuickAddHandled) {
+        if (openFormOnStart && !initialQuickAddHandled) {
+            initialQuickAddHandled = true
+            showForm = true
+        }
     }
 
     // Calendar state is stored as ISO strings so it survives rotation and

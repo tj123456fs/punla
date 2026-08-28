@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Keystore ciphertext is useless without the device-bound key and should never leave the device. -->
+    <exclude domain="sharedpref" path="punla_secure_secrets.xml" />
+</full-backup-content>

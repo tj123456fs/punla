@@ -24,7 +24,7 @@ interface ExpenseDao {
      * is stored as an ISO string ("YYYY-MM-DD"), so a prefix match on the
      * first 7 characters is equivalent to matching year + month.
      */
-    @Query("SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE substr(date, 1, 7) = :yearMonth")
+    @Query("SELECT COALESCE(SUM(CASE WHEN amount >= 0 AND amount < 1.0e100 THEN amount ELSE 0 END), 0) FROM expenses WHERE substr(date, 1, 7) = :yearMonth")
     suspend fun sumForMonth(yearMonth: String): Double
 
     /**
@@ -35,7 +35,7 @@ interface ExpenseDao {
      */
     @Query(
         """
-        SELECT date, COALESCE(SUM(amount), 0) as total
+        SELECT date, COALESCE(SUM(CASE WHEN amount >= 0 AND amount < 1.0e100 THEN amount ELSE 0 END), 0) as total
         FROM expenses
         WHERE date >= :startDate
         GROUP BY date
@@ -43,7 +43,7 @@ interface ExpenseDao {
     )
     suspend fun sumByDaySince(startDate: String): List<DailySpend>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsert(expense: Expense)
 
     @Delete
@@ -58,7 +58,7 @@ interface ExpenseDao {
     @Query("SELECT * FROM expense_rules")
     suspend fun getAllRules(): List<ExpenseRule>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertRule(rule: ExpenseRule)
 
     @Query("DELETE FROM expense_rules WHERE id = :ruleId")

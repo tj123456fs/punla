@@ -179,13 +179,17 @@ fun CampusFullMapScreen(vm: PunlaViewModel) {
     // single-destination case, which itself prefers a real fetched route
     // over the plain straight-line fallback. Every branch degrades
     // gracefully to *something* rather than nothing.
+    val activeRoutePlan = routePlan
+    val activeNextClassRoute = nextClassRoute
+    val activeUserLoc = userLoc
+    val activeNextClassBuilding = nextClassBuilding
     val displayRoutePoints: List<Pair<Double, Double>>? = when {
-        routePlan != null -> routePlan!!.legs.flatMap { leg ->
+        activeRoutePlan != null -> activeRoutePlan.legs.flatMap { leg ->
             leg.route?.points ?: listOf(leg.from, leg.stop.lat to leg.stop.lon)
         }
-        nextClassRoute != null -> nextClassRoute!!.points
-        userLoc != null && nextClassBuilding != null ->
-            listOf(userLoc!!, nextClassBuilding.lat to nextClassBuilding.lon)
+        activeNextClassRoute != null -> activeNextClassRoute.points
+        activeUserLoc != null && activeNextClassBuilding != null ->
+            listOf(activeUserLoc, activeNextClassBuilding.lat to activeNextClassBuilding.lon)
         else -> null
     }
 
@@ -360,6 +364,9 @@ fun CampusFullMapScreen(vm: PunlaViewModel) {
         }
 
         val plan = routePlan
+        val upcomingClass = nextClass
+        val upcomingBuilding = nextClassBuilding
+        val currentLoc = userLoc
         if (plan != null) {
             Card(
                 modifier = Modifier
@@ -404,15 +411,15 @@ fun CampusFullMapScreen(vm: PunlaViewModel) {
                     }
                 }
             }
-        } else if (nextClass != null && nextClassBuilding != null && userLoc != null) {
+        } else if (upcomingClass != null && upcomingBuilding != null && currentLoc != null) {
             // Prefer the real fetched route's distance/duration once one's
             // resolved; the straight-line haversine estimate is still the
             // instant fallback shown before that first fetch completes (or
             // if it never does — e.g. offline).
-            val meters = nextClassRoute?.distanceMeters ?: remember(userLoc, nextClassBuilding) {
+            val meters = nextClassRoute?.distanceMeters ?: remember(currentLoc, upcomingBuilding) {
                 haversineMeters(
-                    userLoc!!.first, userLoc!!.second,
-                    nextClassBuilding.lat, nextClassBuilding.lon
+                    currentLoc.first, currentLoc.second,
+                    upcomingBuilding.lat, upcomingBuilding.lon
                 )
             }
             val etaMinutes = nextClassRoute?.let { (it.durationSeconds / 60.0).roundToInt() }
@@ -437,7 +444,7 @@ fun CampusFullMapScreen(vm: PunlaViewModel) {
                     Spacer(Modifier.width(10.dp))
                     Column {
                         Text(
-                            "Next class: ${nextClass!!.code} at ${nextClassBuilding.name}",
+                            "Next class: ${upcomingClass.code} at ${upcomingBuilding.name}",
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -566,7 +573,7 @@ private fun CampusFullMapView(
                 val lc = map.locationComponent
                 if (style != null && !lc.isLocationComponentActivated) {
                     lc.activateLocationComponent(
-                        LocationComponentActivationOptions.builder(mapViewHolder[0]!!.context, style).build()
+                        LocationComponentActivationOptions.builder(mapViewHolder[0]?.context ?: context, style).build()
                     )
                 }
                 lc.isLocationComponentEnabled = true

@@ -1,6 +1,6 @@
 # Punla Development Progress Summary
 
-_Last updated: August 27, 2026_
+_Last updated: August 28, 2026_
 
 This document summarizes the major Punla improvements completed during this development run, including feature work, UX changes, data fixes, and build-error fixes.
 

@@ -40,9 +40,12 @@ object RecurrenceEngine {
         val today = LocalDate.now()
 
         for (rule in rules) {
-            val cursorStart = runCatching { LocalDate.parse(rule.lastGenerated) }.getOrNull()
-                ?: runCatching { LocalDate.parse(rule.startDate) }.getOrNull()
-                ?: continue
+            if (!rule.amount.isFinite() || rule.amount <= 0.0 || rule.category.isBlank() || rule.repeat !in setOf("weekly", "monthly")) continue
+            val startDate = runCatching { LocalDate.parse(rule.startDate) }.getOrNull() ?: continue
+            val persistedCursor = runCatching { LocalDate.parse(rule.lastGenerated) }.getOrNull()
+            // Old/corrupt rows can contain a cursor before the rule start. Never
+            // generate occurrences before the declared start date.
+            val cursorStart = persistedCursor?.takeUnless { it.isBefore(startDate) } ?: startDate
 
             var next = addInterval(cursorStart, rule.repeat)
             var lastGenerated = rule.lastGenerated
@@ -81,6 +84,8 @@ object RecurrenceEngine {
         val horizon = today.plusDays(DEADLINE_HORIZON_DAYS)
 
         for (rule in rules) {
+            if (rule.title.isBlank() || rule.type.isBlank() || rule.priority !in setOf("Low", "Medium", "High") ||
+                rule.repeat !in setOf("weekly", "monthly")) continue
             var lastDue = existing
                 .filter { it.ruleId == rule.id }
                 .mapNotNull { runCatching { LocalDate.parse(it.due) }.getOrNull() }
@@ -95,7 +100,7 @@ object RecurrenceEngine {
                 val shouldAdvance = lastInstance == null || lastInstance.done || lastDue.isBefore(today)
                 if (!shouldAdvance) break
 
-                val next = lastDue.plusWeeks(1)
+                val next = addInterval(lastDue, rule.repeat)
                 if (next.isAfter(horizon)) break
                 val nextStr = next.toString()
 

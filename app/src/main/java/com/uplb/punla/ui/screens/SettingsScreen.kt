@@ -1249,7 +1249,7 @@ fun SettingsScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        vm.importBackup(pendingImportUri!!)
+                        pendingImportUri?.let(vm::importBackup)
                         pendingImportUri = null
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)

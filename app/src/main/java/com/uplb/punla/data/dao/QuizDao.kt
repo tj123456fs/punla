@@ -3,9 +3,9 @@ package com.uplb.punla.data.dao
 import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Insert
-import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
+import androidx.room.Upsert
 import com.uplb.punla.data.entity.Quiz
 import com.uplb.punla.data.entity.QuizAttempt
 import com.uplb.punla.data.entity.QuizQuestion
@@ -40,22 +40,25 @@ interface QuizDao {
     @Query("SELECT * FROM quiz_attempts WHERE quizId = :quizId ORDER BY completedAt DESC")
     fun observeAttempts(quizId: String): Flow<List<QuizAttempt>>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Query("SELECT * FROM quiz_attempts WHERE id = :attemptId LIMIT 1")
+    suspend fun getAttempt(attemptId: String): QuizAttempt?
+
+    @Upsert
     suspend fun upsertQuiz(quiz: Quiz)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertQuizzes(quizzes: List<Quiz>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertQuestion(question: QuizQuestion)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertQuestions(questions: List<QuizQuestion>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertAttempt(attempt: QuizAttempt)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertAttempts(attempts: List<QuizAttempt>)
 
     @Query("UPDATE quizzes SET topicId = NULL WHERE topicId = :topicId")

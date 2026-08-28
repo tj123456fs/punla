@@ -110,6 +110,18 @@ object StudyJsonImport {
         else parseDecks(array("flashcardDecks", "decks"), warnings)
         val quizzes = if (fileId == NOTES_FILE_ID) emptyList()
         else parseQuizzes(array("quizzes"), warnings)
+
+        val topicKeys = topics.map { it.key.lowercase() }.toSet()
+        fun warnUnknownTopic(kind: String, title: String, topicKey: String?) {
+            if (topicKey != null && topicKey.lowercase() !in topicKeys) {
+                warnings += "$kind '${title.take(40)}' references unknown topic '$topicKey'; it will be imported at course level."
+            }
+        }
+        notes.forEach { warnUnknownTopic("Note", it.title, it.topicKey) }
+        formulas.forEach { warnUnknownTopic("Formula", it.title, it.topicKey) }
+        decks.forEach { warnUnknownTopic("Flashcard deck", it.name, it.topicKey) }
+        quizzes.forEach { warnUnknownTopic("Quiz", it.title, it.topicKey) }
+
         require(topics.isNotEmpty() || notes.isNotEmpty() || formulas.isNotEmpty() || decks.isNotEmpty() || quizzes.isNotEmpty()) {
             "No supported study material was found in this JSON file."
         }
@@ -156,11 +168,47 @@ object StudyJsonImport {
         if (a.length() > MAX_TOPICS) warnings += "Only the first $MAX_TOPICS topics were imported."
         if (skipped > 0) warnings += "$skipped invalid topic${if (skipped == 1) " was" else "s were"} skipped."
         if (duplicateKeys > 0) warnings += "$duplicateKeys topic${if (duplicateKeys == 1) " had" else "s had"} a duplicate key and ${if (duplicateKeys == 1) "was" else "were"} skipped."
-        val keys = out.map { it.key.lowercase() }.toSet()
-        out.filter { it.parentKey != null && it.parentKey.lowercase() !in keys }.forEach {
-            warnings += "Topic '${it.name.take(40)}' references an unknown parent '${it.parentKey}'; it will be imported at the top level."
+        val canonicalKeys = out.associate { it.key.lowercase() to it.key }
+        val normalized = out.map { topic ->
+            val parent = topic.parentKey?.let { canonicalKeys[it.lowercase()] }
+            when {
+                topic.parentKey == null -> topic
+                parent == null -> {
+                    warnings += "Topic '${topic.name.take(40)}' references an unknown parent '${topic.parentKey}'; it will be imported at the top level."
+                    topic.copy(parentKey = null)
+                }
+                parent.equals(topic.key, ignoreCase = true) -> {
+                    warnings += "Topic '${topic.name.take(40)}' cannot be its own parent; it will be imported at the top level."
+                    topic.copy(parentKey = null)
+                }
+                else -> topic.copy(parentKey = parent)
+            }
+        }.toMutableList()
+
+        // Break parent cycles deterministically. Cyclic topic trees can otherwise
+        // disappear from root-level module lists or recurse forever in consumers.
+        val indexByKey = normalized.mapIndexed { index, topic -> topic.key.lowercase() to index }.toMap()
+        for (start in normalized.indices) {
+            val path = linkedMapOf<String, Int>()
+            var current = start
+            while (true) {
+                val topic = normalized[current]
+                val key = topic.key.lowercase()
+                if (path.containsKey(key)) break
+                path[key] = current
+                val parentKey = topic.parentKey?.lowercase() ?: break
+                val parentIndex = indexByKey[parentKey] ?: break
+                if (path.containsKey(parentKey)) {
+                    val cycleNames = path.keys.dropWhile { it != parentKey }
+                        .mapNotNull { cycleKey -> indexByKey[cycleKey]?.let { normalized[it].name.take(40) } }
+                    warnings += "A topic parent cycle (${(cycleNames + normalized[parentIndex].name.take(40)).joinToString(" → ")}) was broken so the modules remain navigable."
+                    normalized[current] = topic.copy(parentKey = null)
+                    break
+                }
+                current = parentIndex
+            }
         }
-        return out
+        return normalized
     }
 
     private fun parseNotes(a: JSONArray?, warnings: MutableList<String>): List<StudyJsonNote> {
@@ -386,12 +434,12 @@ object StudyJsonImport {
                 if (clean.length() < 2) return null
                 clean.toString()
             }
-            QuizQuestionTypes.NUMERIC -> raw.toString().trim().takeIf { it.toDoubleOrNull() != null } ?: return null
+            QuizQuestionTypes.NUMERIC -> raw.toString().trim().takeIf { it.toDoubleOrNull()?.isFinite() == true } ?: return null
             else -> raw.toString().trim().takeIf { it.isNotEmpty() } ?: return null
         }
 
         val metadata = JSONObject().apply {
-            if (o.has("tolerance")) put("tolerance", o.optDouble("tolerance", 0.0).coerceAtLeast(0.0))
+            if (o.has("tolerance")) put("tolerance", o.optDouble("tolerance", 0.0).takeIf { it.isFinite() && it >= 0.0 } ?: 0.0)
             o.optJSONObject("metadata")?.let { m -> m.keys().forEach { key -> put(key, m.opt(key)) } }
         }.toString()
 

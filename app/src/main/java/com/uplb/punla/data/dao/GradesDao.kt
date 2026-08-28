@@ -14,7 +14,7 @@ interface GradesDao {
     @Query("SELECT * FROM semesters")
     suspend fun getAllSemesters(): List<Semester>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertSemester(semester: Semester)
 
     @Delete
@@ -35,7 +35,7 @@ interface GradesDao {
     @Query("SELECT * FROM grade_courses")
     fun observeAllCourses(): Flow<List<GradeCourse>>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertCourse(course: GradeCourse)
 
     @Delete
@@ -44,7 +44,7 @@ interface GradesDao {
     @Query("DELETE FROM grade_courses")
     suspend fun clearCourses()
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun insertArchive(archive: Archive)
 
     @Query("SELECT * FROM archives ORDER BY createdAt DESC")

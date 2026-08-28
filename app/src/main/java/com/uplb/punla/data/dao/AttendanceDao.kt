@@ -2,8 +2,8 @@ package com.uplb.punla.data.dao
 
 import androidx.room.Dao
 import androidx.room.Insert
-import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Upsert
 import com.uplb.punla.data.entity.AttendanceRecord
 import kotlinx.coroutines.flow.Flow
 
@@ -18,7 +18,7 @@ interface AttendanceDao {
     @Query("SELECT * FROM attendance_records WHERE occurrenceKey = :occurrenceKey LIMIT 1")
     suspend fun getByOccurrenceKey(occurrenceKey: String): AttendanceRecord?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsert(record: AttendanceRecord)
 
     @Query("DELETE FROM attendance_records WHERE occurrenceKey = :occurrenceKey")

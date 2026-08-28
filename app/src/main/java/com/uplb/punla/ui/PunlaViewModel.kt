@@ -444,8 +444,9 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Pass null to clear the override and go back to the auto-derived figure. */
     fun updateWeeklyBudgetOverride(amount: Double?) {
+        if (amount != null && (!amount.isFinite() || amount <= 0.0 || amount > Float.MAX_VALUE.toDouble())) return
         repo.weeklyBudgetOverride = amount
-        weeklyBudgetOverride = amount
+        weeklyBudgetOverride = repo.weeklyBudgetOverride
         viewModelScope.launch { WidgetRefresher.refreshAll(getApplication()) }
     }
 
@@ -473,7 +474,9 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         db.gradesDao().observeCourses(semesterId)
 
     fun addSemester(label: String) = viewModelScope.launch {
-        val semester = Semester(label = label)
+        val normalized = label.trim()
+        if (normalized.isBlank()) return@launch
+        val semester = Semester(label = normalized)
         db.gradesDao().upsertSemester(semester)
         selectedSemesterId = semester.id
     }
@@ -484,7 +487,9 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun upsertCourse(course: GradeCourse) = viewModelScope.launch {
-        db.gradesDao().upsertCourse(course)
+        if (course.semesterId.isBlank() || course.code.isBlank() || !course.units.isFinite() || course.units <= 0.0) return@launch
+        course.grade.toDoubleOrNull()?.let { if (!it.isFinite()) return@launch }
+        db.gradesDao().upsertCourse(course.copy(code = course.code.trim()))
     }
 
     fun deleteCourse(course: GradeCourse) = viewModelScope.launch {
@@ -492,12 +497,25 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun updateChedTarget(target: Double?) {
-         repo.chedTarget = target
-       chedTarget = target
+        if (target != null && (!target.isFinite() || target !in 1.0..5.0)) return
+        repo.chedTarget = target
+        chedTarget = repo.chedTarget
     }
 
     fun addOrUpdateClass(session: ClassSession) = viewModelScope.launch {
-        db.classSessionDao().upsert(session)
+        val start = runCatching { java.time.LocalTime.parse(session.start) }.getOrNull() ?: return@launch
+        val end = runCatching { java.time.LocalTime.parse(session.end) }.getOrNull() ?: return@launch
+        if (session.code.isBlank() || session.day !in setOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun") ||
+            session.type !in setOf("lec", "lab") || !end.isAfter(start) || session.absences < 0
+        ) return@launch
+        val timeFormat = java.time.format.DateTimeFormatter.ofPattern("HH:mm")
+        db.classSessionDao().upsert(
+            session.copy(
+                code = session.code.trim(),
+                start = start.format(timeFormat),
+                end = end.format(timeFormat)
+            )
+        )
         WidgetRefresher.refreshAll(getApplication())
         ClassDayNotificationScheduler.refresh(getApplication())
     }
@@ -547,30 +565,36 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
      * expense-form "Repeats" dropdown.
      */
     fun addExpense(expense: Expense, repeat: String? = null) = viewModelScope.launch {
-        if (repeat.isNullOrBlank()) {
-            db.expenseDao().upsert(expense)
+        if (!expense.amount.isFinite() || expense.amount <= 0.0 ||
+            expense.category.isBlank() || runCatching { java.time.LocalDate.parse(expense.date) }.isFailure) return@launch
+        val normalizedRepeat = repeat?.trim()?.lowercase().takeIf { it == "weekly" || it == "monthly" }
+        if (normalizedRepeat == null) {
+            db.expenseDao().upsert(expense.copy(ruleId = null, isRecurring = false))
         } else {
             val rule = ExpenseRule(
                 amount = expense.amount,
-                category = expense.category,
+                category = expense.category.trim(),
                 note = expense.note,
                 startDate = expense.date,
-                repeat = repeat,
+                repeat = normalizedRepeat,
                 lastGenerated = expense.date,
                 isFixed = expense.isFixed
             )
-            db.expenseDao().upsertRule(rule)
-            db.expenseDao().upsert(expense.copy(ruleId = rule.id, isRecurring = true))
-            // A backdated recurring expense may already have additional due
-            // occurrences. Generate them immediately instead of waiting for
-            // the next cold launch.
+            db.withTransaction {
+                db.expenseDao().upsertRule(rule)
+                db.expenseDao().upsert(expense.copy(category = expense.category.trim(), ruleId = rule.id, isRecurring = true))
+            }
+            // Catch-up generation can be separate: the rule+first occurrence are
+            // already committed atomically even if generation is interrupted.
             RecurrenceEngine.generateRecurringExpenses(db.expenseDao())
         }
         WidgetRefresher.refreshAll(getApplication())
     }
 
     fun updateExpense(expense: Expense) = viewModelScope.launch {
-        db.expenseDao().upsert(expense)
+        if (!expense.amount.isFinite() || expense.amount <= 0.0 || expense.category.isBlank() ||
+            runCatching { java.time.LocalDate.parse(expense.date) }.isFailure) return@launch
+        db.expenseDao().upsert(expense.copy(category = expense.category.trim()))
         WidgetRefresher.refreshAll(getApplication())
     }
 
@@ -582,14 +606,18 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     /** Detaches all generated instances from the rule (they remain as regular
      * expenses) and removes the rule so no further occurrences are generated. */
     fun stopExpenseRecurrence(ruleId: String) = viewModelScope.launch {
-        db.expenseDao().detachRecurrence(ruleId)
-        db.expenseDao().deleteRule(ruleId)
+        if (ruleId.isBlank()) return@launch
+        db.withTransaction {
+            db.expenseDao().detachRecurrence(ruleId)
+            db.expenseDao().deleteRule(ruleId)
+        }
         WidgetRefresher.refreshAll(getApplication())
     }
 
     fun setBudget(amount: Double) = viewModelScope.launch {
+        if (!amount.isFinite() || amount < 0.0 || amount > Float.MAX_VALUE.toDouble()) return@launch
         repo.monthlyBudget = amount
-        monthlyBudget = amount
+        monthlyBudget = repo.monthlyBudget
         WidgetRefresher.refreshAll(getApplication())
     }
 
@@ -599,19 +627,23 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
      * mirrors the web app's "Repeats weekly" checkbox.
      */
     fun addOrUpdateDeadline(deadline: Deadline, repeatWeekly: Boolean = false) = viewModelScope.launch {
+        if (deadline.title.isBlank() || deadline.type.isBlank() || deadline.priority !in setOf("Low", "Medium", "High") ||
+            runCatching { java.time.LocalDate.parse(deadline.due) }.isFailure) return@launch
         if (!repeatWeekly) {
-            db.deadlineDao().upsert(deadline)
+            db.deadlineDao().upsert(deadline.copy(ruleId = null, isRecurring = false))
         } else {
             val rule = DeadlineRule(
-                title = deadline.title,
+                title = deadline.title.trim(),
                 course = deadline.course,
                 type = deadline.type,
                 priority = deadline.priority,
                 startDate = deadline.due,
                 repeat = "weekly"
             )
-            db.deadlineDao().upsertRule(rule)
-            db.deadlineDao().upsert(deadline.copy(ruleId = rule.id, isRecurring = true))
+            db.withTransaction {
+                db.deadlineDao().upsertRule(rule)
+                db.deadlineDao().upsert(deadline.copy(title = deadline.title.trim(), ruleId = rule.id, isRecurring = true))
+            }
         }
         WidgetRefresher.refreshAll(getApplication())
     }
@@ -635,8 +667,11 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     /** Detaches all generated instances from the rule (they remain as regular
      * deadlines) and removes the rule so no further occurrences are generated. */
     fun stopDeadlineRecurrence(ruleId: String) = viewModelScope.launch {
-        db.deadlineDao().detachRecurrence(ruleId)
-        db.deadlineDao().deleteRule(ruleId)
+        if (ruleId.isBlank()) return@launch
+        db.withTransaction {
+            db.deadlineDao().detachRecurrence(ruleId)
+            db.deadlineDao().deleteRule(ruleId)
+        }
         WidgetRefresher.refreshAll(getApplication())
     }
 
@@ -809,8 +844,13 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         answers: List<QuizAnswerResult>,
         questionLookup: Map<String, QuizQuestion>,
         quiz: Quiz
-    ): Result<Unit> = runCatching {
+    ): Result<Unit> = try {
         db.withTransaction {
+            // A result screen can be recreated while a save is already running.
+            // Treat attemptId as an idempotency key so the same attempt can never
+            // advance goals or mistake history twice.
+            if (db.quizDao().getAttempt(attempt.id) != null) return@withTransaction
+
             db.quizDao().insertAttempt(attempt)
             db.studyMaterialDao().upsertAnswerResults(answers)
 
@@ -925,6 +965,26 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
                 useMaximum = true
             )
         }
+        Result.success(Unit)
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (error: Exception) {
+        Result.failure(error)
+    }
+
+    /**
+     * Starts attempt persistence in viewModelScope so leaving/animating away from the
+     * result composable cannot cancel the database transaction. The attempt id is
+     * idempotent in [recordQuizAttemptWithResults], so recreation-safe retries are OK.
+     */
+    fun recordQuizAttemptWithResultsAsync(
+        attempt: QuizAttempt,
+        answers: List<QuizAnswerResult>,
+        questionLookup: Map<String, QuizQuestion>,
+        quiz: Quiz,
+        onResult: (Result<Unit>) -> Unit
+    ) = viewModelScope.launch {
+        onResult(recordQuizAttemptWithResults(attempt, answers, questionLookup, quiz))
     }
 
     /** Turns missed quiz questions into a fresh flashcard deck for spaced repetition. */
@@ -1359,8 +1419,10 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
      * items — offered from the checklist screen as an "escape hatch" if
      * someone deletes something by mistake or wants a clean slate. */
     fun resetChecklistToDefaults() = viewModelScope.launch {
-        db.checklistDao().clearAll()
-        db.checklistDao().upsertAll(ChecklistDefaults.ITEMS)
+        db.withTransaction {
+            db.checklistDao().clearAll()
+            db.checklistDao().upsertAll(ChecklistDefaults.ITEMS)
+        }
     }
 
     val quotes = listOf(
@@ -1389,9 +1451,11 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun startNewSemester(label: String) = viewModelScope.launch {
+        val normalizedLabel = label.trim()
+        if (normalizedLabel.isBlank()) return@launch
         val currentClasses = classes.value
         val currentDeadlines = deadlines.value
-        
+
         val classesJson = JSONArray().apply {
             currentClasses.forEach { c ->
                 put(JSONObject().apply {
@@ -1405,6 +1469,7 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
                     put("end", c.end)
                     put("room", c.room)
                     put("instructor", c.instructor)
+                    put("absences", c.absences)
                 })
             }
         }.toString()
@@ -1427,16 +1492,18 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
 
         val archive = com.uplb.punla.data.entity.Archive(
             createdAt = System.currentTimeMillis(),
-            label = label,
+            label = normalizedLabel,
             scheduleJson = classesJson,
             deadlinesJson = deadlinesJson
         )
 
-        db.gradesDao().insertArchive(archive)
-
-        db.classSessionDao().clearAll()
-        db.deadlineDao().clearAll()
-        db.deadlineDao().clearAllRules()
+        db.withTransaction {
+            db.gradesDao().insertArchive(archive)
+            db.attendanceDao().clearAll()
+            db.classSessionDao().clearAll()
+            db.deadlineDao().clearAll()
+            db.deadlineDao().clearAllRules()
+        }
 
         WidgetRefresher.refreshAll(getApplication())
         ClassDayNotificationScheduler.refresh(getApplication())
@@ -1469,27 +1536,27 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun exportBackup(uri: android.net.Uri) = viewModelScope.launch {
-        runCatching {
+        try {
             com.uplb.punla.data.BackupManager.exportTo(getApplication(), uri)
-        }.onSuccess {
             repo.lastBackupAt = System.currentTimeMillis()
             lastBackupAt = repo.lastBackupAt
             backupResult = BackupResult.Success("Backup saved.")
-        }.onFailure { e ->
-            backupResult = BackupResult.Failure(e.message ?: "Couldn't save the backup.")
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            backupResult = BackupResult.Failure(error.message ?: "Couldn't save the backup.")
         }
     }
 
     fun importBackup(uri: android.net.Uri) = viewModelScope.launch {
-        runCatching {
+        try {
             com.uplb.punla.data.BackupManager.importFrom(getApplication(), uri)
-        }.onSuccess {
-            // Refresh the Compose-observable prefs mirrors so the UI reflects
-            // what the import just wrote, without waiting for a re-launch.
+            // Refresh every Compose-observable preference mirror that a backup can restore.
             themeMode = repo.themeMode
             themePreset = repo.themePreset
             customSeedColor = repo.customSeedColor
             backgroundStyle = repo.backgroundStyle
+            fontChoice = repo.fontChoice
             monthlyBudget = repo.monthlyBudget
             categoryBudgetLimits = repo.categoryBudgetLimits
             chedTarget = repo.chedTarget
@@ -1513,6 +1580,17 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
             assistantApiKeyConfigured = !repo.assistantApiKey.isNullOrBlank()
             preferredReminderHour = repo.preferredReminderHour
             dismissedExpensePatternKeys = repo.dismissedExpensePatternKeys
+            pomodoroWorkMinutes = repo.pomodoroWorkMinutes
+            pomodoroShortBreakMinutes = repo.pomodoroShortBreakMinutes
+            pomodoroLongBreakMinutes = repo.pomodoroLongBreakMinutes
+            pomodoroCyclesBeforeLongBreak = repo.pomodoroCyclesBeforeLongBreak
+            pomodoroAutoStartNext = repo.pomodoroAutoStartNext
+            pomodoroPictureInPicture = repo.pomodoroPictureInPicture
+            pomodoroTimerNotification = repo.pomodoroTimerNotification
+            pomodoroAlarmSoundEnabled = repo.pomodoroAlarmSoundEnabled
+            pomodoroAlarmVibrationEnabled = repo.pomodoroAlarmVibrationEnabled
+            pomodoroWorkSoundUri = repo.pomodoroWorkSoundUri
+            pomodoroBreakSoundUri = repo.pomodoroBreakSoundUri
             WidgetRefresher.refreshAll(getApplication())
             if (repo.notificationsEnabled && repo.classDayNotificationEnabled) {
                 ClassDayNotificationScheduler.ensureScheduled(getApplication())
@@ -1521,8 +1599,10 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
             }
             com.uplb.punla.worker.ReminderScheduler.scheduleDaily(getApplication(), updateExisting = true)
             backupResult = BackupResult.Success("Backup restored.")
-        }.onFailure { e ->
-            backupResult = BackupResult.Failure(e.message ?: "Couldn't restore that backup.")
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            backupResult = BackupResult.Failure(error.message ?: "Couldn't restore that backup.")
         }
     }
 
@@ -1546,13 +1626,13 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
 
     fun updateDailyStudyGoal(minutes: Int) {
         repo.dailyStudyGoalMinutes = minutes
-        dailyStudyGoalMinutes = minutes
-        dailyStudyGoalFlow.value = minutes
+        dailyStudyGoalMinutes = repo.dailyStudyGoalMinutes
+        dailyStudyGoalFlow.value = dailyStudyGoalMinutes
     }
 
     fun updateWeeklyStudyGoal(minutes: Int) {
         repo.weeklyStudyGoalMinutes = minutes
-        weeklyStudyGoalMinutes = minutes
+        weeklyStudyGoalMinutes = repo.weeklyStudyGoalMinutes
     }
 
     /** Today's studied minutes, recomputed whenever the session log changes. */
@@ -1704,7 +1784,9 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun createRecurringRuleFromPattern(pattern: com.uplb.punla.ml.ExpensePattern) = viewModelScope.launch {
+        if (!pattern.typicalAmount.isFinite() || pattern.typicalAmount <= 0.0 || pattern.category.isBlank()) return@launch
         val latest = expenses.value.filter { it.id in pattern.expenseIds }.maxByOrNull { it.date } ?: return@launch
+        if (runCatching { java.time.LocalDate.parse(latest.date) }.isFailure) return@launch
         val rule = ExpenseRule(
             amount = pattern.typicalAmount,
             category = pattern.category,
@@ -1714,8 +1796,10 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
             lastGenerated = latest.date,
             isFixed = latest.isFixed
         )
-        db.expenseDao().upsertRule(rule)
-        db.expenseDao().upsert(latest.copy(ruleId = rule.id, isRecurring = true))
+        db.withTransaction {
+            db.expenseDao().upsertRule(rule)
+            db.expenseDao().upsert(latest.copy(ruleId = rule.id, isRecurring = true))
+        }
         dismissExpensePattern(pattern.key)
         WidgetRefresher.refreshAll(getApplication())
     }
@@ -1780,22 +1864,22 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
 
     fun updatePomodoroWorkMinutes(minutes: Int) {
         repo.pomodoroWorkMinutes = minutes
-        pomodoroWorkMinutes = minutes
+        pomodoroWorkMinutes = repo.pomodoroWorkMinutes
     }
 
     fun updatePomodoroShortBreakMinutes(minutes: Int) {
         repo.pomodoroShortBreakMinutes = minutes
-        pomodoroShortBreakMinutes = minutes
+        pomodoroShortBreakMinutes = repo.pomodoroShortBreakMinutes
     }
 
     fun updatePomodoroLongBreakMinutes(minutes: Int) {
         repo.pomodoroLongBreakMinutes = minutes
-        pomodoroLongBreakMinutes = minutes
+        pomodoroLongBreakMinutes = repo.pomodoroLongBreakMinutes
     }
 
     fun updatePomodoroCyclesBeforeLongBreak(cycles: Int) {
         repo.pomodoroCyclesBeforeLongBreak = cycles
-        pomodoroCyclesBeforeLongBreak = cycles
+        pomodoroCyclesBeforeLongBreak = repo.pomodoroCyclesBeforeLongBreak
     }
 
     fun updatePomodoroAutoStartNext(enabled: Boolean) {

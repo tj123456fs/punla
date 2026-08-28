@@ -12,7 +12,7 @@ interface ClassSessionDao {
     @Query("SELECT * FROM class_sessions ORDER BY CASE day WHEN 'Mon' THEN 1 WHEN 'Tue' THEN 2 WHEN 'Wed' THEN 3 WHEN 'Thu' THEN 4 WHEN 'Fri' THEN 5 WHEN 'Sat' THEN 6 WHEN 'Sun' THEN 7 ELSE 8 END, start")
     suspend fun getAll(): List<ClassSession>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsert(session: ClassSession)
 
     // Roadmap #4 — simple absence tally, incremented/decremented from a tap

@@ -485,7 +485,7 @@ fun DashboardScreen(
                                     )
                                 }
                             } else {
-                                val c = nextClass!!
+                                val c = nextClass ?: return@Column
                                 val sh = runCatching { LocalTime.parse(c.start, DateTimeFormatter.ofPattern("HH:mm")).format(DateTimeFormatter.ofPattern("h:mm a")) }.getOrDefault(c.start)
                                 val eh = runCatching { LocalTime.parse(c.end, DateTimeFormatter.ofPattern("HH:mm")).format(DateTimeFormatter.ofPattern("h:mm a")) }.getOrDefault(c.end)
                                 Text(
@@ -730,7 +730,7 @@ fun DashboardScreen(
                                     )
                                 }
                             } else {
-                                val d = nextDeadline!!
+                                val d = nextDeadline ?: return@Column
                                 val dayLabel = when {
                                     days == null -> d.due
                                     days < 0 -> "${-days}d overdue"

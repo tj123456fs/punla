@@ -28,12 +28,14 @@ import com.uplb.punla.data.entity.NotificationEvent
 import com.uplb.punla.notification.ClassDayTimeline
 import com.uplb.punla.notification.PunlaNotifications
 import com.uplb.punla.notification.TrackedNotification
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.time.Duration
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -94,7 +96,7 @@ class ClassDayNotificationWorker(
                     manager.notify(ClassDayNotification.NOTIFICATION_ID, builder.build())
                     if (prefs.getString(KEY_LAST_STATE, null) != stateKey) {
                         prefs.edit().putString(KEY_LAST_STATE, stateKey).apply()
-                        runCatching {
+                        try {
                             repo.logNotificationEvent(
                                 NotificationEvent(
                                     notificationKey = stateKey,
@@ -104,6 +106,10 @@ class ClassDayNotificationWorker(
                                     outcome = "FIRED"
                                 )
                             )
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            // Delivery state is already persisted; learning telemetry is optional.
                         }
                     }
                 } catch (_: SecurityException) {
@@ -221,6 +227,10 @@ class ClassDayNotificationActionReceiver : BroadcastReceiver() {
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
                 ClassDayNotificationScheduler.refresh(context.applicationContext)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // The action already hid today's card; a failed refresh should not crash the app process.
             } finally {
                 pendingResult.finish()
             }
@@ -239,18 +249,26 @@ class ClassDayNotificationActionReceiver : BroadcastReceiver() {
         val pendingResult = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
+                val date = runCatching { LocalDate.parse(occurrenceDate) }.getOrNull() ?: return@launch
+                val start = runCatching { LocalTime.parse(scheduledStart) }.getOrNull() ?: return@launch
+                val canonicalKey = AttendanceLog.occurrenceKey(sessionId, date, start.toString())
+                if (canonicalKey != occurrenceKey) return@launch
                 PunlaRepository(context.applicationContext).setAttendance(
                     AttendanceRecord(
                         occurrenceKey = occurrenceKey,
                         sessionId = sessionId,
                         classCode = classCode,
                         occurrenceDate = occurrenceDate,
-                        scheduledStart = scheduledStart,
+                        scheduledStart = start.toString(),
                         status = status,
                         source = "notification"
                     )
                 )
                 ClassDayNotificationScheduler.refresh(context.applicationContext)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // Notification actions are best-effort and must never crash the process.
             } finally {
                 pendingResult.finish()
             }

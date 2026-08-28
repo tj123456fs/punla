@@ -114,6 +114,7 @@ import com.uplb.punla.worker.ClassReminderWorker
 import com.uplb.punla.worker.StudyNudgeWorker
 import com.uplb.punla.worker.ClassDayNotificationScheduler
 import com.uplb.punla.worker.ReminderScheduler
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
@@ -159,6 +160,15 @@ class MainActivity : ComponentActivity() {
     // MainActivity is already running — which triggers onNewIntent() rather
     // than a fresh onCreate() — still re-navigates instead of being ignored.
     private val startRouteState = mutableStateOf<String?>(null)
+    // A repeated tap can request the exact same route string. Snapshot state does
+    // not emit when a value is assigned to itself, so keep a monotonically
+    // increasing request token to make every external navigation intent one-shot.
+    private val startRouteRequestIdState = mutableStateOf(0L)
+
+    private fun recordStartRouteRequest(route: String?) {
+        startRouteState.value = route
+        if (route != null) startRouteRequestIdState.value = startRouteRequestIdState.value + 1L
+    }
 
     private fun recordNotificationOpen(intent: Intent?) {
         if (intent?.getStringExtra(TrackedNotification.EXTRA_OUTCOME) != "OPENED") return
@@ -169,7 +179,7 @@ class MainActivity : ComponentActivity() {
         // lifecycle callbacks do not duplicate the same OPENED event.
         intent.removeExtra(TrackedNotification.EXTRA_OUTCOME)
         lifecycleScope.launch(Dispatchers.IO) {
-            runCatching {
+            try {
                 PunlaRepository(applicationContext).logNotificationEvent(
                     NotificationEvent(
                         notificationKey = key,
@@ -179,6 +189,10 @@ class MainActivity : ComponentActivity() {
                         outcome = "OPENED"
                     )
                 )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // Navigation/opening the app must not fail because optional telemetry could not be stored.
             }
         }
     }
@@ -237,7 +251,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        startRouteState.value = intent.getStringExtra(EXTRA_START_ROUTE)
+        recordStartRouteRequest(intent.getStringExtra(EXTRA_START_ROUTE))
         intent.getStringExtra(EXTRA_MAP_QUERY)?.let(vm::searchOnMap)
         recordNotificationOpen(intent)
     }
@@ -259,10 +273,17 @@ class MainActivity : ComponentActivity() {
         // gets ahead of the Android 15+ edge-to-edge requirement once
         // targetSdk moves to 35.
         enableEdgeToEdge()
-        startRouteState.value = intent?.getStringExtra(EXTRA_START_ROUTE)
+        // Let Navigation/Compose restore their own state after configuration or
+        // process recreation. Replaying an old widget/deep-link intent here would
+        // unexpectedly kick the user back to the base destination on rotation.
+        if (savedInstanceState == null) {
+            recordStartRouteRequest(intent?.getStringExtra(EXTRA_START_ROUTE))
+        }
+        // The map query itself is ViewModel state. Reapplying the same query is
+        // harmless on rotation and preserves it if Android recreates the process.
         intent?.getStringExtra(EXTRA_MAP_QUERY)?.let(vm::searchOnMap)
         notificationPermissionGrantedState.value = hasNotificationPermission()
-        
+
         // Daily deadline, budget, and checklist checks share one
         // locally learned delivery hour when enough interaction history exists.
         ReminderScheduler.scheduleDaily(this)
@@ -314,6 +335,7 @@ class MainActivity : ComponentActivity() {
                 ThemeMode.SYSTEM -> systemDark
             }
             val startRoute by startRouteState
+            val startRouteRequestId by startRouteRequestIdState
             val notificationPermissionGranted by notificationPermissionGrantedState
             val inPictureInPicture by pipModeState
             val pomodoroRunning = vm.pomodoroState.isRunning
@@ -347,6 +369,7 @@ class MainActivity : ComponentActivity() {
                             PunlaApp(
                                 vm = vm,
                                 startRoute = startRoute,
+                                startRouteRequestId = startRouteRequestId,
                                 darkTheme = isDark,
                                 notificationPermissionGranted = notificationPermissionGranted,
                                 onRequestNotificationPermission = { requestNotificationPermission() }
@@ -517,6 +540,7 @@ private fun isTabSwitch(from: NavBackStackEntry, to: NavBackStackEntry): Boolean
 fun PunlaApp(
     vm: PunlaViewModel,
     startRoute: String? = null,
+    startRouteRequestId: Long = 0L,
     darkTheme: Boolean = false,
     notificationPermissionGranted: Boolean = true,
     onRequestNotificationPermission: () -> Unit = {}
@@ -571,7 +595,8 @@ fun PunlaApp(
     // which jumps straight to a given tab's create form from anywhere.
     fun quickAddTo(route: String) {
         quickAddOpen = false
-        navController.navigate("$route?quickAdd=true") {
+        val quickAddToken = "${System.currentTimeMillis()}-${System.nanoTime()}"
+        navController.navigate("$route?quickAdd=true&quickAddToken=$quickAddToken") {
             popUpTo(navController.graph.startDestinationId) { saveState = true }
             launchSingleTop = true
         }
@@ -579,7 +604,7 @@ fun PunlaApp(
 
     // One-shot jump to whatever tab a widget tap asked for (e.g. tapping the
     // Budget widget's body opens straight to "budget" instead of dashboard).
-    LaunchedEffect(startRoute) {
+    LaunchedEffect(startRoute, startRouteRequestId) {
         if (startRoute != null && ALL_DESTINATIONS.any { it.route == startRoute }) {
             navigateTo(startRoute)
         }
@@ -862,12 +887,16 @@ fun PunlaApp(
                     )
                 }
                 composable(
-                    "schedule?quickAdd={quickAdd}",
-                    arguments = listOf(navArgument("quickAdd") { type = NavType.BoolType; defaultValue = false })
+                    "schedule?quickAdd={quickAdd}&quickAddToken={quickAddToken}",
+                    arguments = listOf(
+                        navArgument("quickAdd") { type = NavType.BoolType; defaultValue = false },
+                        navArgument("quickAddToken") { type = NavType.StringType; defaultValue = "" }
+                    )
                 ) { backEntry ->
                     ScheduleScreen(
                         vm,
                         openFormOnStart = backEntry.arguments?.getBoolean("quickAdd") ?: false,
+                        quickAddToken = backEntry.arguments?.getString("quickAddToken").orEmpty(),
                         onStudyHere = { course ->
                             if (course != null) {
                                 navController.navigate("pomodoro?course=${android.net.Uri.encode(course)}")
@@ -878,22 +907,43 @@ fun PunlaApp(
                     )
                 }
                 composable(
-                    "budget?quickAdd={quickAdd}",
-                    arguments = listOf(navArgument("quickAdd") { type = NavType.BoolType; defaultValue = false })
+                    "budget?quickAdd={quickAdd}&quickAddToken={quickAddToken}",
+                    arguments = listOf(
+                        navArgument("quickAdd") { type = NavType.BoolType; defaultValue = false },
+                        navArgument("quickAddToken") { type = NavType.StringType; defaultValue = "" }
+                    )
                 ) { backEntry ->
-                    BudgetScreen(vm, openFormOnStart = backEntry.arguments?.getBoolean("quickAdd") ?: false)
+                    BudgetScreen(
+                        vm,
+                        openFormOnStart = backEntry.arguments?.getBoolean("quickAdd") ?: false,
+                        quickAddToken = backEntry.arguments?.getString("quickAddToken").orEmpty()
+                    )
                 }
                 composable(
-                    "deadlines?quickAdd={quickAdd}",
-                    arguments = listOf(navArgument("quickAdd") { type = NavType.BoolType; defaultValue = false })
+                    "deadlines?quickAdd={quickAdd}&quickAddToken={quickAddToken}",
+                    arguments = listOf(
+                        navArgument("quickAdd") { type = NavType.BoolType; defaultValue = false },
+                        navArgument("quickAddToken") { type = NavType.StringType; defaultValue = "" }
+                    )
                 ) { backEntry ->
-                    DeadlinesScreen(vm, openFormOnStart = backEntry.arguments?.getBoolean("quickAdd") ?: false)
+                    DeadlinesScreen(
+                        vm,
+                        openFormOnStart = backEntry.arguments?.getBoolean("quickAdd") ?: false,
+                        quickAddToken = backEntry.arguments?.getString("quickAddToken").orEmpty()
+                    )
                 }
                 composable(
-                    "grades?quickAdd={quickAdd}",
-                    arguments = listOf(navArgument("quickAdd") { type = NavType.BoolType; defaultValue = false })
+                    "grades?quickAdd={quickAdd}&quickAddToken={quickAddToken}",
+                    arguments = listOf(
+                        navArgument("quickAdd") { type = NavType.BoolType; defaultValue = false },
+                        navArgument("quickAddToken") { type = NavType.StringType; defaultValue = "" }
+                    )
                 ) { backEntry ->
-                    GradesScreen(vm, openFormOnStart = backEntry.arguments?.getBoolean("quickAdd") ?: false)
+                    GradesScreen(
+                        vm,
+                        openFormOnStart = backEntry.arguments?.getBoolean("quickAdd") ?: false,
+                        quickAddToken = backEntry.arguments?.getString("quickAddToken").orEmpty()
+                    )
                 }
                 composable("campus") {
                     CampusMapScreen(

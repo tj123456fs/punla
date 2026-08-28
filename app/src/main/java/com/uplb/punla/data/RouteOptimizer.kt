@@ -83,7 +83,7 @@ private fun bestVisitOrder(stopCount: Int, cost: (from: Int, to: Int) -> Double)
     val ordered = mutableListOf<Int>()
     var current = 0 // start at the "from" point
     while (remaining.isNotEmpty()) {
-        val nearest = remaining.minByOrNull { cost(current, it + 1) }!!
+        val nearest = remaining.minByOrNull { cost(current, it + 1) } ?: break
         ordered.add(nearest)
         remaining.remove(nearest)
         current = nearest + 1

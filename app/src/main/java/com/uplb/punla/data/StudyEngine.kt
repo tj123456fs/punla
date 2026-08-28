@@ -261,10 +261,11 @@ object StudyEngine {
             QuizQuestionTypes.NUMERIC -> {
                 val actual = answer.trim().toDoubleOrNull()
                 val expected = question.correctAnswer.trim().toDoubleOrNull()
-                if (actual == null || expected == null) false else {
+                if (actual == null || expected == null || !actual.isFinite() || !expected.isFinite()) false else {
                     val tolerance = runCatching { JSONObject(question.metadataJson).optDouble("tolerance", 0.0) }
                         .getOrDefault(0.0)
-                        .coerceAtLeast(0.0)
+                        .takeIf { it.isFinite() && it >= 0.0 }
+                        ?: 0.0
                     kotlin.math.abs(actual - expected) <= tolerance
                 }
             }

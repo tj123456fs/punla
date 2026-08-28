@@ -14,6 +14,7 @@ import com.uplb.punla.data.PunlaDatabase
 import com.uplb.punla.data.PunlaRepository
 import com.uplb.punla.notification.PunlaNotifications
 import com.uplb.punla.notification.TrackedNotification
+import kotlinx.coroutines.CancellationException
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
@@ -105,10 +106,14 @@ class StudyNudgeWorker(private val context: Context, params: WorkerParameters) :
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setAutoCancel(true)
-        return runCatching {
+        return try {
             TrackedNotification.post(context, NotificationManagerCompat.from(context), PunlaNotifications.ID_STUDY_NUDGE + Math.floorMod(key.hashCode(), 40), builder, "StudyNudgeWorker", "study", "study")
             true
-        }.getOrDefault(false)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            false
+        }
     }
 
     private fun dayKey(day: DayOfWeek): String = when (day) {

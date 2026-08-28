@@ -72,7 +72,7 @@ private fun QuickAddExpenseCard(onDismiss: () -> Unit, onSave: (Expense) -> Unit
     var category by remember { mutableStateOf(QUICK_ADD_CATEGORIES.first()) }
     var note by remember { mutableStateOf("") }
     val today = remember { LocalDate.now().toString() }
-    val canSave = amount.toDoubleOrNull()?.let { it > 0 } == true
+    val canSave = amount.toDoubleOrNull()?.let { it.isFinite() && it > 0 } == true
 
     Box(
         modifier = Modifier
@@ -153,7 +153,7 @@ private fun QuickAddExpenseCard(onDismiss: () -> Unit, onSave: (Expense) -> Unit
                     Button(
                         enabled = canSave,
                         onClick = {
-                            val value = amount.toDoubleOrNull() ?: return@Button
+                            val value = amount.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0 } ?: return@Button
                             onSave(
                                 Expense(
                                     amount = value,

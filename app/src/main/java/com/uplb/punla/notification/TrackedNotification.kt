@@ -9,6 +9,7 @@ import androidx.core.app.NotificationManagerCompat
 import com.uplb.punla.MainActivity
 import com.uplb.punla.data.PunlaRepository
 import com.uplb.punla.data.entity.NotificationEvent
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -53,6 +54,8 @@ object TrackedNotification {
                     outcome = "FIRED"
                 )
             )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             // Reminder delivery must not fail because optional learning data
             // could not be persisted.
@@ -141,6 +144,8 @@ class NotificationInteractionReceiver : BroadcastReceiver() {
                             outcome = interaction.outcome
                         )
                     )
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
                 } catch (_: Exception) {
                     // Opening the destination is more important than optional
                     // engagement logging.

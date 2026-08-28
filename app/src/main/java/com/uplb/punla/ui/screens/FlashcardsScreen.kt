@@ -95,6 +95,7 @@ import coil.compose.AsyncImage
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -168,21 +169,34 @@ fun FlashcardsScreen(vm: PunlaViewModel, initialCourse: String? = null, initialT
         label = "flashcardScreenMode"
     ) { mode ->
         when (mode) {
-            "study" -> StudyDeckView(
-                deck = selectedDeck!!,
-                startingCards = studyRequest.orEmpty(),
-                runId = studyRunId ?: "restored-study",
-                onRate = vm::rateFlashcard,
-                onExit = { clearStudy() }
-            )
-            "deck" -> DeckDetailView(
-                deck = selectedDeck!!,
-                cards = selectedCards,
-                vm = vm,
-                topics = studyTopics,
-                onBack = { selectedDeckId = null },
-                onStudy = { startStudy(it) }
-            )
+            "study" -> {
+                // Crossfade keeps outgoing content composed briefly after navigation
+                // state is cleared. Avoid force-unwrapping selectedDeck during that
+                // transition or Back to deck/library can crash on recomposition.
+                val activeDeck = selectedDeck
+                if (activeDeck != null) {
+                    StudyDeckView(
+                        deck = activeDeck,
+                        startingCards = studyRequest.orEmpty(),
+                        runId = studyRunId ?: "restored-study",
+                        onRate = vm::rateFlashcard,
+                        onExit = { clearStudy() }
+                    )
+                }
+            }
+            "deck" -> {
+                val activeDeck = selectedDeck
+                if (activeDeck != null) {
+                    DeckDetailView(
+                        deck = activeDeck,
+                        cards = selectedCards,
+                        vm = vm,
+                        topics = studyTopics,
+                        onBack = { selectedDeckId = null },
+                        onStudy = { startStudy(it) }
+                    )
+                }
+            }
             else -> FlashcardLibraryView(
                 decks = scopedDecks,
                 cards = scopedCards,
@@ -219,14 +233,12 @@ private fun FlashcardLibraryView(
         if (uri != null && !importInProgress) {
             importScope.launch {
                 importInProgress = true
-                val parsed = runCatching {
-                    withContext(Dispatchers.IO) {
+                try {
+                    val imported = withContext(Dispatchers.IO) {
                         FlashcardJsonImport.parse(
                             PunlaJsonImportReader.readText(context, uri, FlashcardJsonImport.MAX_FILE_CHARS)
                         )
                     }
-                }
-                parsed.onSuccess { imported ->
                     vm.checkJsonImport(FlashcardJsonImport.FILE_ID, imported.contentId)
                         .onSuccess { already ->
                             duplicateImport = already
@@ -235,10 +247,13 @@ private fun FlashcardLibraryView(
                         .onFailure { error ->
                             importError = importFailureMessage("check this file", error)
                         }
-                }.onFailure { error ->
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
                     importError = error.message ?: "Punla couldn't import that JSON file."
+                } finally {
+                    importInProgress = false
                 }
-                importInProgress = false
             }
         }
     }
@@ -463,14 +478,12 @@ private fun DeckDetailView(
         if (uri != null && !importInProgress) {
             importScope.launch {
                 importInProgress = true
-                val parsed = runCatching {
-                    withContext(Dispatchers.IO) {
+                try {
+                    val imported = withContext(Dispatchers.IO) {
                         FlashcardJsonImport.parse(
                             PunlaJsonImportReader.readText(context, uri, FlashcardJsonImport.MAX_FILE_CHARS)
                         )
                     }
-                }
-                parsed.onSuccess { imported ->
                     vm.checkJsonImport(FlashcardJsonImport.FILE_ID, imported.contentId)
                         .onSuccess { already ->
                             duplicateImport = already
@@ -479,10 +492,13 @@ private fun DeckDetailView(
                         .onFailure { error ->
                             importError = importFailureMessage("check this file", error)
                         }
-                }.onFailure { error ->
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
                     importError = error.message ?: "Punla couldn't import that JSON file."
+                } finally {
+                    importInProgress = false
                 }
-                importInProgress = false
             }
         }
     }

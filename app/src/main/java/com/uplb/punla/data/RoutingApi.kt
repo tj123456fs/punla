@@ -1,6 +1,7 @@
 package com.uplb.punla.data
 
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -111,6 +112,8 @@ suspend fun fetchWalkingRoute(from: Pair<Double, Double>, to: Pair<Double, Doubl
                 distanceMeters = route.getDouble("distance"),
                 durationSeconds = route.getDouble("duration")
             )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             Log.w(TAG, "OSRM request threw for $from -> $to", e)
             null
@@ -195,6 +198,8 @@ suspend fun fetchWalkingMatrix(points: List<Pair<Double, Double>>): WalkingMatri
                 durationsSeconds = toMatrix(durationsJson),
                 distancesMeters = toMatrix(distancesJson)
             )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             Log.w(TAG, "OSRM table request threw for ${points.size} points", e)
             null

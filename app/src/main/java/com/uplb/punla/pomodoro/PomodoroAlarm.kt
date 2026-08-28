@@ -21,6 +21,7 @@ import com.uplb.punla.R
 import com.uplb.punla.data.PunlaRepository
 import com.uplb.punla.data.entity.StudySession
 import com.uplb.punla.ui.pomodoro.PomodoroPhase
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -94,6 +95,11 @@ class PomodoroAlarmReceiver : BroadcastReceiver() {
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
                 PomodoroCompletionCoordinator.complete(context.applicationContext, expectedDeadline)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // Broadcast delivery must not crash the process if local storage or
+                // notification services fail. The persisted runtime lets Punla retry.
             } finally {
                 pendingResult.finish()
             }
@@ -121,6 +127,10 @@ class PomodoroBootReceiver : BroadcastReceiver() {
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
                 PomodoroCompletionCoordinator.complete(context.applicationContext, deadline)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // Leave the persisted runtime intact so the app can recover later.
             } finally {
                 pendingResult.finish()
             }
@@ -148,9 +158,9 @@ object PomodoroCompletionCoordinator {
             val finishedPhase = runCatching { PomodoroPhase.valueOf(storedPhase) }.getOrNull() ?: return false
             if (finishedPhase == PomodoroPhase.IDLE) return false
 
-            // Claim first so a near-simultaneous UI tick/receiver cannot duplicate
-            // the notification or completed StudySession row.
-            repo.pomodoroLastHandledDeadline = expectedDeadline
+            // The mutex serializes in-process completion. Persist the handled marker
+            // only after suspendable history writes have succeeded/failed so a cancelled
+            // coroutine can safely retry the same deadline instead of stranding the timer.
 
             val finishedTotalSeconds = repo.pomodoroRuntimeTotalSeconds.coerceAtLeast(0)
             val finishedStartedAt = repo.pomodoroRuntimeStartedAt.takeIf { it > 0L }
@@ -162,6 +172,7 @@ object PomodoroCompletionCoordinator {
             if (finishedPhase == PomodoroPhase.WORK) {
                 val suggestionId = repo.pendingStudySuggestionId
                 val session = StudySession(
+                    id = "pomodoro:$expectedDeadline",
                     courseCode = finishedCourse,
                     startedAt = finishedStartedAt,
                     endedAt = expectedDeadline,
@@ -178,7 +189,7 @@ object PomodoroCompletionCoordinator {
                         repo.latestStudySuggestionEvent(suggestionId)?.let { source ->
                             repo.logStudySuggestionEvent(
                                 source.copy(
-                                    id = java.util.UUID.randomUUID().toString(),
+                                    id = "pomodoro-suggestion:$expectedDeadline:$suggestionId",
                                     occurredAt = expectedDeadline,
                                     outcome = "COMPLETED",
                                     sessionId = session.id
@@ -186,23 +197,30 @@ object PomodoroCompletionCoordinator {
                             )
                         }
                     }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
                 } catch (_: Exception) {
                     // The timer must still advance even if optional history or
                     // local learning storage is temporarily unavailable.
-                } finally {
-                    if (suggestionId != null) {
-                        repo.pendingStudySuggestionId = null
-                        repo.pendingStudySuggestionFeatures = null
-                    }
+                }
+                if (suggestionId != null) {
+                    repo.pendingStudySuggestionId = null
+                    repo.pendingStudySuggestionFeatures = null
                 }
             }
 
             PomodoroRunningNotification.cancel(context)
             try {
                 PomodoroNotificationHelper.postCompletion(context, repo, finishedPhase)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (_: Exception) {
                 // A missing/deleted custom ringtone must never strand the timer.
             }
+
+            // From here onward there are no suspend points. Marking handled now is
+            // safe: the runtime transition below will also make stale alarm deliveries no-ops.
+            repo.pomodoroLastHandledDeadline = expectedDeadline
 
             val nextPhase = when (finishedPhase) {
                 PomodoroPhase.WORK -> {

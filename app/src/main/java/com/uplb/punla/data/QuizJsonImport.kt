@@ -109,7 +109,7 @@ object QuizJsonImport {
                 warnings += "Question ${index + 1} had an answer that did not match any choice and was skipped."; skipped++; continue
             }
             if (type == QuizQuestionTypes.TRUE_FALSE && answer.lowercase() !in setOf("true", "false")) { skipped++; continue }
-            if (type == QuizQuestionTypes.NUMERIC && answer.toDoubleOrNull() == null) { skipped++; continue }
+            if (type == QuizQuestionTypes.NUMERIC && answer.toDoubleOrNull()?.isFinite() != true) { skipped++; continue }
             if (type == QuizQuestionTypes.MULTI_SELECT) {
                 val chosen = runCatching {
                     val arr = JSONArray(answer)

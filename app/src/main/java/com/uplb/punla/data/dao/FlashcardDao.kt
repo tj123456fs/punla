@@ -3,10 +3,10 @@ package com.uplb.punla.data.dao
 import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Insert
-import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
+import androidx.room.Upsert
 import com.uplb.punla.data.entity.Flashcard
 import com.uplb.punla.data.entity.FlashcardDeck
 import kotlinx.coroutines.flow.Flow
@@ -37,16 +37,16 @@ interface FlashcardDao {
     @Query("SELECT COUNT(*) FROM flashcards WHERE deckId = :deckId AND (dueAt = 0 OR dueAt <= :now)")
     fun observeDueCount(deckId: String, now: Long): Flow<Int>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertDeck(deck: FlashcardDeck)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertDecks(decks: List<FlashcardDeck>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertCard(card: Flashcard)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertCards(cards: List<Flashcard>)
 
     @Transaction
