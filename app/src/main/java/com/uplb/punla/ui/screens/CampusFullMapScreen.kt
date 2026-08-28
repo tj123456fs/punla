@@ -573,7 +573,7 @@ private fun CampusFullMapView(
                 val lc = map.locationComponent
                 if (style != null && !lc.isLocationComponentActivated) {
                     lc.activateLocationComponent(
-                        LocationComponentActivationOptions.builder(mapViewHolder[0]?.context ?: context, style).build()
+                        LocationComponentActivationOptions.builder(it.context, style).build()
                     )
                 }
                 lc.isLocationComponentEnabled = true

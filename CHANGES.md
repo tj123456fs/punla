@@ -1,3 +1,10 @@
+# Session 34g — Campus map compile fix
+
+- Fixed `CampusFullMapScreen.kt` compile failure (`Unresolved reference: context`) in the MapLibre `AndroidView` update block.
+- The location-component activation now uses the active `MapView` context (`it.context`), which is guaranteed to be in scope inside `AndroidView.update`.
+- No feature or database-schema changes.
+- Version bumped to **2.8.3** (`versionCode 23`).
+
 # Session 34 — Course Learning Path
 
 - Bumped app to **2.8.0 / versionCode 20**.
