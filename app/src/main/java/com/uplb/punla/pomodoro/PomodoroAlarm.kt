@@ -16,6 +16,12 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.work.CoroutineWorker
+import androidx.work.Data
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.WorkerParameters
 import com.uplb.punla.MainActivity
 import com.uplb.punla.R
 import com.uplb.punla.data.PunlaRepository
@@ -27,6 +33,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import java.util.concurrent.TimeUnit
 
 /**
  * AlarmManager-backed completion signal for the Pomodoro clock.
@@ -40,7 +47,10 @@ import kotlinx.coroutines.sync.Mutex
 object PomodoroAlarmScheduler {
     const val ACTION_PHASE_DEADLINE = "com.uplb.punla.POMODORO_PHASE_DEADLINE"
     const val EXTRA_EXPECTED_DEADLINE = "pomodoro_expected_deadline"
+    internal const val WORK_EXPECTED_DEADLINE = "pomodoro_work_expected_deadline"
     private const val REQUEST_CODE = 41017
+    private const val DEADLINE_WORK_PREFIX = "punla_pomodoro_deadline_backup"
+    private const val DEADLINE_WORK_TAG = "punla_pomodoro_deadline"
 
     fun exactAlarmAvailable(context: Context): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
@@ -50,8 +60,9 @@ object PomodoroAlarmScheduler {
 
     fun schedule(context: Context, deadline: Long) {
         if (deadline <= System.currentTimeMillis()) return
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val operation = pendingIntent(context, deadline)
+        val appContext = context.applicationContext
+        val alarmManager = appContext.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val operation = pendingIntent(appContext, deadline)
         try {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarmManager.canScheduleExactAlarms()) {
                 alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, deadline, operation)
@@ -60,14 +71,38 @@ object PomodoroAlarmScheduler {
             }
         } catch (_: SecurityException) {
             // Permission may have changed between canScheduleExactAlarms() and
-            // the call. Fall back rather than losing the user's timer alert.
-            alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, deadline, operation)
+            // the call. Try the non-exact path, but never let an OEM-specific
+            // alarm restriction prevent the independent WorkManager fallback.
+            try {
+                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, deadline, operation)
+            } catch (_: SecurityException) {
+                // WorkManager below remains the recovery path.
+            }
         }
+
+        // OEM battery managers can occasionally defer an AlarmManager delivery
+        // even though the persisted timer itself is still correct. Keep one
+        // WorkManager deadline as an independent fallback. Both paths enter the
+        // same idempotent completion coordinator, so duplicate wake-ups are safe.
+        val delayMillis = (deadline - System.currentTimeMillis()).coerceAtLeast(1_000L)
+        val input = Data.Builder().putLong(WORK_EXPECTED_DEADLINE, deadline).build()
+        val backup = OneTimeWorkRequestBuilder<PomodoroDeadlineWorker>()
+            .setInputData(input)
+            .setInitialDelay(delayMillis, TimeUnit.MILLISECONDS)
+            .addTag(DEADLINE_WORK_TAG)
+            .build()
+        WorkManager.getInstance(appContext).enqueueUniqueWork(
+            "$DEADLINE_WORK_PREFIX:$deadline",
+            ExistingWorkPolicy.REPLACE,
+            backup
+        )
     }
 
     fun cancel(context: Context) {
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        alarmManager.cancel(pendingIntent(context, 0L))
+        val appContext = context.applicationContext
+        val alarmManager = appContext.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        alarmManager.cancel(pendingIntent(appContext, 0L))
+        WorkManager.getInstance(appContext).cancelAllWorkByTag(DEADLINE_WORK_TAG)
     }
 
     private fun pendingIntent(context: Context, deadline: Long): PendingIntent {
@@ -103,6 +138,32 @@ class PomodoroAlarmReceiver : BroadcastReceiver() {
             } finally {
                 pendingResult.finish()
             }
+        }
+    }
+}
+
+/**
+ * Independent deadline fallback for phones that aggressively defer app alarms.
+ * WorkManager is deliberately secondary: AlarmManager still supplies the precise
+ * wake-up when Android allows it, while this worker recovers a missed/deferred
+ * delivery without requiring the user to reopen Punla.
+ */
+class PomodoroDeadlineWorker(
+    context: Context,
+    params: WorkerParameters
+) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result {
+        val expectedDeadline = inputData.getLong(PomodoroAlarmScheduler.WORK_EXPECTED_DEADLINE, 0L)
+        if (expectedDeadline <= 0L) return Result.success()
+        return try {
+            PomodoroCompletionCoordinator.complete(applicationContext, expectedDeadline)
+            Result.success()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // A transient storage failure should get another chance; stale
+            // deadlines become harmless no-ops inside the coordinator.
+            Result.retry()
         }
     }
 }

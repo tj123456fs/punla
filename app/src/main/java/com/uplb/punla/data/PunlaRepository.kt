@@ -214,6 +214,12 @@ class PunlaRepository(context: Context) {
         get() = prefs.getBoolean("class_day_notification_enabled", true)
         set(value) = prefs.edit().putBoolean("class_day_notification_enabled", value).apply()
 
+    /** Automatically marks an unlogged scheduled class as attended after it ends.
+     * Manual attendance always wins and can correct the automatic assumption. */
+    var attendanceAutoLogEnabled: Boolean
+        get() = prefs.getBoolean("attendance_auto_log_enabled", true)
+        set(value) = prefs.edit().putBoolean("attendance_auto_log_enabled", value).apply()
+
     /** Quiet, once-daily summary of today's schedule and due work. */
     var morningAgendaEnabled: Boolean
         get() = prefs.getBoolean("morning_agenda_enabled", true)

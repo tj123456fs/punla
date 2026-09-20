@@ -150,6 +150,7 @@ object BackupManager {
             put("fontChoice", repo.fontChoice.name.lowercase())
             put("notificationsEnabled", repo.notificationsEnabled)
             put("classDayNotificationEnabled", repo.classDayNotificationEnabled)
+            put("attendanceAutoLogEnabled", repo.attendanceAutoLogEnabled)
             put("morningAgendaEnabled", repo.morningAgendaEnabled)
             put("quietHoursEnabled", repo.quietHoursEnabled)
             put("studyRemindersEnabled", repo.studyRemindersEnabled)
@@ -701,6 +702,7 @@ object BackupManager {
         restoredFontChoice?.let { repo.fontChoice = it }
         repo.notificationsEnabled = root.optBoolean("notificationsEnabled", true)
         repo.classDayNotificationEnabled = root.optBoolean("classDayNotificationEnabled", true)
+        repo.attendanceAutoLogEnabled = root.optBoolean("attendanceAutoLogEnabled", repo.attendanceAutoLogEnabled)
         repo.morningAgendaEnabled = root.optBoolean("morningAgendaEnabled", true)
         repo.quietHoursEnabled = root.optBoolean("quietHoursEnabled", true)
         repo.studyRemindersEnabled = root.optBoolean("studyRemindersEnabled", true)

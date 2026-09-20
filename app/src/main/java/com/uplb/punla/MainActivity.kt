@@ -113,6 +113,7 @@ import com.uplb.punla.worker.BackupNudgeWorker
 import com.uplb.punla.worker.ClassReminderWorker
 import com.uplb.punla.worker.StudyNudgeWorker
 import com.uplb.punla.worker.ClassDayNotificationScheduler
+import com.uplb.punla.worker.AttendanceAutoLogScheduler
 import com.uplb.punla.worker.ReminderScheduler
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -312,6 +313,15 @@ class MainActivity : ComponentActivity() {
             ClassDayNotificationScheduler.ensureScheduled(this)
         } else {
             ClassDayNotificationScheduler.cancel(this)
+        }
+
+        // Attendance auto-log is independent of notification permission: it
+        // records completed scheduled classes locally and never overwrites a
+        // manual attendance choice.
+        if (vm.attendanceAutoLogEnabled) {
+            AttendanceAutoLogScheduler.ensureScheduled(this)
+        } else {
+            AttendanceAutoLogScheduler.cancel(this)
         }
 
         // Roadmap #6 — weekly check for whether it's time to nudge a backup

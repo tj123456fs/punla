@@ -295,6 +295,29 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(Modifier.weight(1f)) {
+                            Text("Auto-log attendance", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                "After a scheduled class ends, mark it Attended if you have not logged that occurrence yet. Manual Attended/Absent choices are never overwritten.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Switch(
+                            checked = vm.attendanceAutoLogEnabled,
+                            onCheckedChange = vm::updateAttendanceAutoLogEnabled
+                        )
+                    }
+
+                    Spacer(Modifier.height(10.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
                             Text("Morning agenda", style = MaterialTheme.typography.bodyMedium)
                             Text(
                                 "A quiet 7:15 AM summary of today's classes and deadlines due today.",

@@ -59,6 +59,7 @@ import com.uplb.punla.data.StudyEngine
 import com.uplb.punla.data.StudyJsonBundle
 import com.uplb.punla.widget.WidgetRefresher
 import com.uplb.punla.worker.ClassDayNotificationScheduler
+import com.uplb.punla.worker.AttendanceAutoLogScheduler
 import com.uplb.punla.ml.StudySlotFeatures
 import com.uplb.punla.ml.StudySlotPredictor
 import com.uplb.punla.ui.pomodoro.StudySuggestion
@@ -75,6 +76,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -84,6 +86,12 @@ import org.json.JSONObject
 class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     private val db = PunlaDatabase.get(app)
     val repo = PunlaRepository(app)
+
+    private fun <T> Flow<List<T>>.safeStudyFlow(label: String): Flow<List<T>> =
+        catch { error ->
+            Log.e("PunlaStudyHub", "$label flow failed; showing an empty section instead of crashing", error)
+            emit(emptyList())
+        }
 
     // Roadmap C — separate "has Room actually emitted yet" flags from the
     // lists themselves. A freshly-emptied list and the emptyList() default
@@ -113,41 +121,56 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val flashcardDecks: StateFlow<List<FlashcardDeck>> = db.flashcardDao().observeDecks()
+        .safeStudyFlow("flashcard decks")
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val flashcards: StateFlow<List<Flashcard>> = db.flashcardDao().observeAllCards()
+        .safeStudyFlow("flashcards")
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val quizzes: StateFlow<List<Quiz>> = db.quizDao().observeQuizzes()
+        .safeStudyFlow("quizzes")
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val quizQuestions: StateFlow<List<QuizQuestion>> = db.quizDao().observeAllQuestions()
+        .safeStudyFlow("quiz questions")
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val quizAttempts: StateFlow<List<QuizAttempt>> = db.quizDao().observeAllAttempts()
+        .safeStudyFlow("quiz attempts")
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
 
     val studyTopics: StateFlow<List<StudyTopic>> = db.studyMaterialDao().observeTopics()
+        .safeStudyFlow("study topics")
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val studyNotes: StateFlow<List<StudyNote>> = db.studyMaterialDao().observeNotes()
+        .safeStudyFlow("study notes")
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val formulaReferences: StateFlow<List<FormulaReference>> = db.studyMaterialDao().observeFormulas()
+        .safeStudyFlow("formula references")
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val mistakeRecords: StateFlow<List<MistakeRecord>> = db.studyMaterialDao().observeMistakes()
+        .safeStudyFlow("mistakes")
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val studyGoals: StateFlow<List<StudyGoal>> = db.studyMaterialDao().observeGoals()
+        .safeStudyFlow("study goals")
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val studyPlanItems: StateFlow<List<StudyPlanItem>> = db.studyMaterialDao().observePlanItems()
+        .safeStudyFlow("study plan")
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val studyReviewProgress: StateFlow<List<StudyReviewProgress>> = db.studyMaterialDao().observeReviewProgress()
+        .safeStudyFlow("review progress")
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val flashcardReviewEvents: StateFlow<List<FlashcardReviewEvent>> = db.studyMaterialDao().observeFlashcardReviewEvents()
+        .safeStudyFlow("flashcard review events")
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val quizAnswerResults: StateFlow<List<QuizAnswerResult>> = db.studyMaterialDao().observeAnswerResults()
+        .safeStudyFlow("quiz answer results")
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val questionBank: StateFlow<List<QuestionBankItem>> = db.studyMaterialDao().observeQuestionBank()
+        .safeStudyFlow("question bank")
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun flashcardsFlow(deckId: String): Flow<List<Flashcard>> = db.flashcardDao().observeCards(deckId)
@@ -320,6 +343,9 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     var classDayNotificationEnabled by mutableStateOf(repo.classDayNotificationEnabled)
         private set
 
+    var attendanceAutoLogEnabled by mutableStateOf(repo.attendanceAutoLogEnabled)
+        private set
+
     var morningAgendaEnabled by mutableStateOf(repo.morningAgendaEnabled)
         private set
 
@@ -410,6 +436,16 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
             ClassDayNotificationScheduler.ensureScheduled(getApplication())
         } else {
             ClassDayNotificationScheduler.cancel(getApplication())
+        }
+    }
+
+    fun updateAttendanceAutoLogEnabled(enabled: Boolean) {
+        repo.attendanceAutoLogEnabled = enabled
+        attendanceAutoLogEnabled = enabled
+        if (enabled) {
+            AttendanceAutoLogScheduler.ensureScheduled(getApplication())
+        } else {
+            AttendanceAutoLogScheduler.cancel(getApplication())
         }
     }
 
@@ -518,12 +554,14 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         )
         WidgetRefresher.refreshAll(getApplication())
         ClassDayNotificationScheduler.refresh(getApplication())
+        if (repo.attendanceAutoLogEnabled) AttendanceAutoLogScheduler.refresh(getApplication())
     }
 
     fun deleteClass(session: ClassSession) = viewModelScope.launch {
         repo.deleteClassWithAttendance(session)
         WidgetRefresher.refreshAll(getApplication())
         ClassDayNotificationScheduler.refresh(getApplication())
+        if (repo.attendanceAutoLogEnabled) AttendanceAutoLogScheduler.refresh(getApplication())
     }
 
     // Per-occurrence attendance history. ATTENDED and ABSENT overwrite the
