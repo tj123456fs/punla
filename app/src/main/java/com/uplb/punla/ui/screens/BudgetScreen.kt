@@ -29,6 +29,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.uplb.punla.data.BudgetPeriod
 import com.uplb.punla.data.entity.Expense
 import com.uplb.punla.ui.PunlaViewModel
@@ -51,11 +52,11 @@ fun getCategoryColor(category: String, palette: PunlaPalette): Color = when (cat
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BudgetScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false, quickAddToken: String = "") {
-    val expenses by vm.expenses.collectAsState()
-    val expenseRules by vm.expenseRules.collectAsState()
+    val expenses by vm.expenses.collectAsStateWithLifecycle()
+    val expenseRules by vm.expenseRules.collectAsStateWithLifecycle()
     // Roadmap C — withhold "No expenses logged yet" until Room's first
     // real emission, so it doesn't flash for a frame on cold launch.
-    val dataReady by vm.isDataReady.collectAsState()
+    val dataReady by vm.isDataReady.collectAsStateWithLifecycle()
     val screenGutter = punlaScreenHorizontalPadding()
     var showForm by rememberSaveable { mutableStateOf(false) }
     var budgetInput by rememberSaveable(vm.monthlyBudget) { mutableStateOf(vm.monthlyBudget.let { if (it > 0) it.toInt().toString() else "" }) }

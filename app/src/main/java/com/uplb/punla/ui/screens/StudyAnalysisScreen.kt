@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.uplb.punla.data.entity.StudySession
 import com.uplb.punla.ui.PunlaViewModel
 import com.uplb.punla.ml.bestStudyHour
@@ -67,8 +68,8 @@ private fun formatHoursMinutes(totalSeconds: Int): String {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StudyAnalysisScreen(vm: PunlaViewModel) {
-    val allSessions by vm.studySessions.collectAsState()
-    val streak by vm.currentStudyStreak.collectAsState()
+    val allSessions by vm.studySessions.collectAsStateWithLifecycle()
+    val streak by vm.currentStudyStreak.collectAsStateWithLifecycle()
     val dailyGoalMinutes = vm.dailyStudyGoalMinutes
     var range by remember { mutableStateOf(AnalysisRange.WEEK) }
 

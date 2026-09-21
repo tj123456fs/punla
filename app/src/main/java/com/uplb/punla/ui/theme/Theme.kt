@@ -7,6 +7,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
@@ -99,11 +100,19 @@ fun PunlaTheme(
     fontChoice: FontChoice = FontChoice.DEFAULT,
     content: @Composable () -> Unit
 ) {
-    val palette = resolvePalette(preset, customSeedArgb)
+    // Theme resolution can include HCT/material-kolor work for a custom seed.
+    // Cache the resolved objects so unrelated child recompositions don't rebuild
+    // the full palette/color scheme/typography graph.
+    val palette = remember(preset, customSeedArgb) { resolvePalette(preset, customSeedArgb) }
+    val colorScheme = remember(palette, darkTheme) {
+        if (darkTheme) darkColorsFor(palette) else lightColorsFor(palette)
+    }
+    val typography = remember(fontChoice) { punlaTypography(fontChoice) }
+
     CompositionLocalProvider(LocalPunlaPalette provides palette) {
         MaterialTheme(
-            colorScheme = if (darkTheme) darkColorsFor(palette) else lightColorsFor(palette),
-            typography = punlaTypography(fontChoice),
+            colorScheme = colorScheme,
+            typography = typography,
             shapes = PunlaShapes,
             content = content
         )

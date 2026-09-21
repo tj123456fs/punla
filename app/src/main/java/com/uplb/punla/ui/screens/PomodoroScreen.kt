@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.background
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.uplb.punla.ui.PunlaViewModel
 import com.uplb.punla.ui.pomodoro.PomodoroPhase
 import com.uplb.punla.ui.theme.LocalPunlaPalette
@@ -39,7 +40,7 @@ import com.uplb.punla.ui.theme.PunlaMono
 @Composable
 fun PomodoroScreen(vm: PunlaViewModel, preselectedCourse: String? = null, onOpenAnalysis: () -> Unit = {}) {
     val state = vm.pomodoroState
-    val classes by vm.classes.collectAsState()
+    val classes by vm.classes.collectAsStateWithLifecycle()
     val haptics = LocalHapticFeedback.current
     val palette = LocalPunlaPalette.current
 

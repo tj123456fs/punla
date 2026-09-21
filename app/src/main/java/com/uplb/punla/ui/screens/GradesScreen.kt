@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.uplb.punla.data.entity.GradeCourse
 import com.uplb.punla.data.entity.Semester
 import com.uplb.punla.ui.PunlaViewModel
@@ -53,7 +54,7 @@ private fun computeGwa(courses: List<GradeCourse>): Pair<Double?, Double> {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GradesScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false, quickAddToken: String = "") {
-    val semesters by vm.semesters.collectAsState()
+    val semesters by vm.semesters.collectAsStateWithLifecycle()
     val selectedId = vm.selectedSemesterId
 
     LaunchedEffect(semesters) {
@@ -65,7 +66,7 @@ fun GradesScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false, quickAddT
     val selectedSemester = semesters.firstOrNull { it.id == vm.selectedSemesterId }
     val courses by remember(selectedSemester?.id) {
         selectedSemester?.let { vm.coursesFlow(it.id) } ?: flowOf(emptyList())
-    }.collectAsState(initial = emptyList())
+    }.collectAsStateWithLifecycle(initialValue = emptyList())
 
     var showSemesterDialog by rememberSaveable { mutableStateOf(false) }
     var showCourseDialog by rememberSaveable { mutableStateOf(false) }
@@ -92,7 +93,7 @@ fun GradesScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false, quickAddT
     // Roadmap #1: cumulative GWA across every semester, not just the
     // selected tab — this is usually the number a scholarship/CHED target
     // actually tracks.
-    val allCourses by vm.allCourses.collectAsState()
+    val allCourses by vm.allCourses.collectAsStateWithLifecycle()
     val screenGutter = punlaScreenHorizontalPadding()
     val (cumulativeGwa, cumulativeUnits) = computeGwa(allCourses)
 

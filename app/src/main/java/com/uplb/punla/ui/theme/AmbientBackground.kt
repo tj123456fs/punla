@@ -1,16 +1,16 @@
 package com.uplb.punla.ui.theme
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
+import android.os.SystemClock
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.drawBehind
@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import com.uplb.punla.data.BackgroundStyle
 import com.uplb.punla.data.ThemePreset
 import com.uplb.punla.data.resolveForTheme
+import kotlinx.coroutines.isActive
 
 /**
  * Applies one deterministic procedural background. The renderer itself lives
@@ -29,18 +30,42 @@ private fun Modifier.animatedProceduralBackground(
     style: BackgroundStyle,
     themePreset: ThemePreset,
     darkTheme: Boolean,
+    animationEnabled: Boolean = true,
 ): Modifier = composed {
     val palette = LocalPunlaPalette.current
-    val transition = rememberInfiniteTransition(label = "background_${style.storageKey}")
-    val tSeconds by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 4_000f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 4_000_000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "background_time_${style.storageKey}",
-    )
+
+    // Atmospheric backgrounds do not need display-refresh-rate animation. Driving
+    // a full-screen procedural shader at 60/90/120 Hz is expensive and competes
+    // directly with scrolling and touch feedback. Keep the motion alive at a
+    // style-appropriate cadence while letting the UI render interactions freely.
+    var tSeconds by remember(style) { mutableFloatStateOf(0f) }
+    LaunchedEffect(style, animationEnabled) {
+        if (!animationEnabled) return@LaunchedEffect
+        // Continue from the currently displayed phase after a temporary pause
+        // (e.g. while a list is being scrolled) instead of snapping to zero.
+        val startedAt = SystemClock.uptimeMillis() - (tSeconds * 1000f).toLong()
+        val frameIntervalNanos = when (style) {
+            BackgroundStyle.AMBIENT, BackgroundStyle.STARFIELD -> 66_000_000L  // ~15 fps
+            BackgroundStyle.AURORA, BackgroundStyle.FIREFLIES -> 50_000_000L  // ~20 fps
+            BackgroundStyle.RAIN, BackgroundStyle.OCEAN_WAVES,
+            BackgroundStyle.SAKURA, BackgroundStyle.SNOW, BackgroundStyle.BUBBLES -> 40_000_000L // ~25 fps
+            else -> 66_000_000L
+        }
+        var lastPublishedFrame = Long.MIN_VALUE
+        while (isActive) {
+            // Publish animation state on a real display frame instead of waking at
+            // arbitrary delay boundaries. That avoids invalidating the draw tree just
+            // after a vsync and gives touch/scroll frames more predictable headroom.
+            withFrameNanos { frameTimeNanos ->
+                if (lastPublishedFrame == Long.MIN_VALUE ||
+                    frameTimeNanos - lastPublishedFrame >= frameIntervalNanos
+                ) {
+                    tSeconds = (SystemClock.uptimeMillis() - startedAt) / 1000f
+                    lastPublishedFrame = frameTimeNanos
+                }
+            }
+        }
+    }
 
     this.then(
         Modifier.drawBehind {
@@ -103,11 +128,12 @@ fun Modifier.appBackground(
     style: BackgroundStyle,
     themePreset: ThemePreset = ThemePreset.FIELD_NOTEBOOK,
     darkTheme: Boolean = isSystemInDarkTheme(),
+    animationEnabled: Boolean = true,
 ): Modifier {
     val resolved = style.resolveForTheme(themePreset)
     return when (resolved) {
         BackgroundStyle.MINIMAL -> this.background(MaterialTheme.colorScheme.background)
         BackgroundStyle.PAPER_GRAIN -> this.staticProceduralBackground(resolved, themePreset, darkTheme)
-        else -> this.animatedProceduralBackground(resolved, themePreset, darkTheme)
+        else -> this.animatedProceduralBackground(resolved, themePreset, darkTheme, animationEnabled)
     }
 }

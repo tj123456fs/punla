@@ -31,6 +31,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.uplb.punla.data.entity.AttendanceRecord
 import com.uplb.punla.data.entity.AttendanceStatus
 import com.uplb.punla.data.entity.ClassSession
@@ -119,12 +120,12 @@ internal fun fmtTime(t: String): String {
 
 @Composable
 fun ScheduleScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false, quickAddToken: String = "", onStudyHere: (String?) -> Unit = {}) {
-    val classes by vm.classes.collectAsState()
-    val deadlines by vm.deadlines.collectAsState()
-    val attendanceRecords by vm.attendanceRecords.collectAsState()
+    val classes by vm.classes.collectAsStateWithLifecycle()
+    val deadlines by vm.deadlines.collectAsStateWithLifecycle()
+    val attendanceRecords by vm.attendanceRecords.collectAsStateWithLifecycle()
     // Roadmap C — withhold the "No classes scheduled" empty state until
     // Room's first real emission, so it doesn't flash on cold launch.
-    val dataReady by vm.isDataReady.collectAsState()
+    val dataReady by vm.isDataReady.collectAsStateWithLifecycle()
     val screenGutter = punlaScreenHorizontalPadding()
 
     val initialDay = remember {

@@ -33,6 +33,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.uplb.punla.data.CampusDirectory
 import com.uplb.punla.data.entity.AttendanceStatus
 import com.uplb.punla.data.entity.ClassSession
@@ -70,24 +71,24 @@ fun DashboardScreen(
     onOpenPomodoro: (String?) -> Unit = {},
     onOpenStudy: () -> Unit = {}
 ) {
-    val classes by vm.classes.collectAsState()
-    val deadlines by vm.deadlines.collectAsState()
-    val attendanceRecords by vm.attendanceRecords.collectAsState()
-    val expenses by vm.expenses.collectAsState()
-    val expenseRules by vm.expenseRules.collectAsState()
-    val checklistItems by vm.checklistItems.collectAsState()
-    val studySessions by vm.studySessions.collectAsState()
-    val studyStreak by vm.currentStudyStreak.collectAsState()
-    val flashcards by vm.flashcards.collectAsState()
-    val mistakes by vm.mistakeRecords.collectAsState()
-    val studyPlan by vm.studyPlanItems.collectAsState()
+    val classes by vm.classes.collectAsStateWithLifecycle()
+    val deadlines by vm.deadlines.collectAsStateWithLifecycle()
+    val attendanceRecords by vm.attendanceRecords.collectAsStateWithLifecycle()
+    val expenses by vm.expenses.collectAsStateWithLifecycle()
+    val expenseRules by vm.expenseRules.collectAsStateWithLifecycle()
+    val checklistItems by vm.checklistItems.collectAsStateWithLifecycle()
+    val studySessions by vm.studySessions.collectAsStateWithLifecycle()
+    val studyStreak by vm.currentStudyStreak.collectAsStateWithLifecycle()
+    val flashcards by vm.flashcards.collectAsStateWithLifecycle()
+    val mistakes by vm.mistakeRecords.collectAsStateWithLifecycle()
+    val studyPlan by vm.studyPlanItems.collectAsStateWithLifecycle()
     // Roadmap C — gates "No classes scheduled" / "Nothing due" / weekly
     // empty state so they don't flash for one frame before Room's first
     // real emission lands on a cold launch.
-    val dataReady by vm.isDataReady.collectAsState()
+    val dataReady by vm.isDataReady.collectAsStateWithLifecycle()
 
-    val nextClass by vm.nextClassFlow.collectAsState(initial = null)
-    val nextDeadline by vm.nextDeadlineFlow.collectAsState(initial = null)
+    val nextClass by vm.nextClassFlow.collectAsStateWithLifecycle(initialValue = null)
+    val nextDeadline by vm.nextDeadlineFlow.collectAsStateWithLifecycle(initialValue = null)
     val haptics = LocalHapticFeedback.current
     val screenGutter = punlaScreenHorizontalPadding()
 
@@ -287,7 +288,7 @@ fun DashboardScreen(
         // current streak. Purely informational: a missed streak just reads
         // as "0", never a nag.
         item {
-            val todayMinutes by vm.todayStudyMinutes.collectAsState()
+            val todayMinutes by vm.todayStudyMinutes.collectAsStateWithLifecycle()
             val streak = studyStreak
             val dailyGoal = vm.dailyStudyGoalMinutes
             val goalProgress = if (dailyGoal > 0) (todayMinutes.toFloat() / dailyGoal).coerceIn(0f, 1f) else 0f

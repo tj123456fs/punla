@@ -502,7 +502,7 @@ object BackupManager {
         mistakeRecords.forEach { mistake ->
             requireBackup(mistake.sourceType in setOf("QUIZ", "FLASHCARD", "PRACTICE") && mistake.sourceId.isNotBlank() && mistake.prompt.isNotBlank() && mistake.correctAnswer.isNotBlank(), "A mistake record is invalid.")
             requireBackup(mistake.confidence in setOf("GUESSED", "UNSURE", "CONFIDENT", "UNSET"), "A mistake record has an invalid confidence value.")
-            requireBackup(mistake.missedAt >= 0L && mistake.retryAt >= 0L && mistake.timesMissed >= 1, "A mistake record has invalid timing/count data.")
+            requireBackup(mistake.missedAt >= 0L && mistake.retryAt >= mistake.missedAt && mistake.timesMissed >= 0, "A mistake record has invalid timing/count data.")
         }
         studyGoals.forEach { goal ->
             requireBackup(goal.title.isNotBlank() && goal.goalType in setOf("MINUTES", "FLASHCARDS", "QUESTIONS", "SCORE", "CUSTOM"), "A study goal is invalid.")

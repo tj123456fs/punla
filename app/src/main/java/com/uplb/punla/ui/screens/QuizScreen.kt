@@ -59,7 +59,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -77,6 +76,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.uplb.punla.data.QuizJsonExport
 import com.uplb.punla.data.QuizJsonImport
 import com.uplb.punla.data.QuizJsonPayload
@@ -128,8 +128,8 @@ private fun quizTypeIndex(type: String): Int = when (type) {
 
 @Composable
 fun QuizScreen(vm: PunlaViewModel, initialCourse: String? = null, initialTopicId: String? = null, overallOnly: Boolean = false) {
-    val quizzes by vm.quizzes.collectAsState()
-    val studyTopics by vm.studyTopics.collectAsState()
+    val quizzes by vm.quizzes.collectAsStateWithLifecycle()
+    val studyTopics by vm.studyTopics.collectAsStateWithLifecycle()
     val scopedTopicIds = remember(studyTopics, initialTopicId) {
         if (initialTopicId == null) emptySet<String>() else {
             val ids = linkedSetOf(initialTopicId)
@@ -151,10 +151,10 @@ fun QuizScreen(vm: PunlaViewModel, initialCourse: String? = null, initialTopicId
                 }
         }
     }
-    val allQuestions by vm.quizQuestions.collectAsState()
-    val allAttempts by vm.quizAttempts.collectAsState()
-    val decks by vm.flashcardDecks.collectAsState()
-    val flashcards by vm.flashcards.collectAsState()
+    val allQuestions by vm.quizQuestions.collectAsStateWithLifecycle()
+    val allAttempts by vm.quizAttempts.collectAsStateWithLifecycle()
+    val decks by vm.flashcardDecks.collectAsStateWithLifecycle()
+    val flashcards by vm.flashcards.collectAsStateWithLifecycle()
     val scopedFlashcardDecks = remember(decks, initialCourse, initialTopicId, overallOnly, scopedTopicIds) {
         decks.filter { deck ->
             (initialCourse.isNullOrBlank() || deck.courseCode.equals(initialCourse, true)) &&

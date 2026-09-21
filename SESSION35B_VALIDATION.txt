@@ -1,0 +1,51 @@
+Punla Session 35B — Smooth Interaction Pass
+Validation date: 2026-09-21
+
+Base:
+- Punla_session35a_interaction_performance_hotfix.zip
+
+Primary changed areas:
+- app/build.gradle.kts
+- MainActivity.kt
+- AmbientBackground.kt
+- Theme.kt
+- SettingsScreen.kt
+- WidgetRefresher.kt
+- Compose screen Flow subscriptions (14 screen files)
+
+Static validation:
+- All remaining screen collectAsState() calls: NONE
+- collectAsStateWithLifecycle() call count: 68
+- lifecycle-runtime-compose version aligned with existing lifecycle-runtime-ktx: PASS (2.8.4)
+- MainActivity Kotlin parser/syntax smoke check: no syntax/"expecting" errors detected
+- AmbientBackground Kotlin parser/syntax smoke check: no syntax/"expecting" errors detected
+- Theme Kotlin parser/syntax smoke check: no syntax/"expecting" errors detected
+- SettingsScreen Kotlin parser/syntax smoke check: no syntax/"expecting" errors detected
+- WidgetRefresher Kotlin parser/syntax smoke check: no syntax/"expecting" errors detected
+- No Room schema/version change
+- No backup schema change
+
+Performance behavior expected:
+- Animated background redraws are isolated from foreground UI rendering.
+- Decorative background animation pauses for active Compose scroll/fling gestures.
+- Background animation ticks are vsync-aligned and still capped at ~15–25 FPS.
+- Off-screen/inactive screens stop lifecycle-aware Flow collection.
+- Widget refresh work no longer starts on the UI dispatcher and concurrent bursts are serialized.
+- Settings background thumbnails reuse cached rasterized previews.
+- Theme palette/color-scheme/typography generation is memoized.
+- Theme catalog is lazy instead of eagerly composing all cards.
+- Bottom-tab transitions avoid full-screen scale animation.
+
+Build boundary:
+- The supplied source tree does not contain gradlew or gradle-wrapper.jar.
+- This environment does not provide the Android SDK/ADB toolchain.
+- Therefore :app:assembleDebug / KSP / device frame metrics were NOT authoritatively run here.
+- The next CI/GitHub Actions Android build remains the compile gate before device testing.
+
+Recommended on-device check:
+1. Install the 2.9.1 build over/alongside the existing development build as appropriate.
+2. Test Settings with Ambient selected and rapidly scroll vertically.
+3. Switch between Home/Schedule/Deadlines/Budget/Grades repeatedly.
+4. Change theme preset and background several times.
+5. Repeat with Rain/Aurora to stress the painter more than Ambient.
+6. Compare a Release/R8 build if the development APK is Debug, because Debug Compose performance is not representative of release performance.

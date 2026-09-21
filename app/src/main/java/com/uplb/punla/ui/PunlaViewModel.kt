@@ -2114,8 +2114,15 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
                     onPhaseComplete()
                     break
                 }
-                pomodoroState = pomodoroState.copy(remainingSeconds = ((remainingMs + 999L) / 1000L).toInt())
-                kotlinx.coroutines.delay(250) // sub-second poll, cheap, keeps UI smooth
+                val remainingSeconds = ((remainingMs + 999L) / 1000L).toInt()
+                // The deadline is checked four times per second so phase completion stays
+                // responsive, but publishing the exact same second repeatedly forces every
+                // Compose observer of pomodoroState to re-run. Only emit when the displayed
+                // second actually changes.
+                if (remainingSeconds != pomodoroState.remainingSeconds) {
+                    pomodoroState = pomodoroState.copy(remainingSeconds = remainingSeconds)
+                }
+                kotlinx.coroutines.delay(250)
             }
         }
     }

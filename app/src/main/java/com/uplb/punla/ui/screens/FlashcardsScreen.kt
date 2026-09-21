@@ -62,7 +62,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
@@ -80,6 +79,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.uplb.punla.data.FlashcardJsonDeck
 import com.uplb.punla.data.FlashcardJsonExport
 import com.uplb.punla.data.FlashcardJsonImport
@@ -102,9 +102,9 @@ import kotlinx.coroutines.withContext
 
 @Composable
 fun FlashcardsScreen(vm: PunlaViewModel, initialCourse: String? = null, initialTopicId: String? = null, overallOnly: Boolean = false) {
-    val decks by vm.flashcardDecks.collectAsState()
-    val allCards by vm.flashcards.collectAsState()
-    val studyTopics by vm.studyTopics.collectAsState()
+    val decks by vm.flashcardDecks.collectAsStateWithLifecycle()
+    val allCards by vm.flashcards.collectAsStateWithLifecycle()
+    val studyTopics by vm.studyTopics.collectAsStateWithLifecycle()
     val scopedTopicIds = remember(studyTopics, initialTopicId) {
         if (initialTopicId == null) emptySet<String>() else {
             val ids = linkedSetOf(initialTopicId)

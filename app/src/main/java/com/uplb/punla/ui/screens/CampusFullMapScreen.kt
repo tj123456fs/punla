@@ -32,7 +32,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,6 +48,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.uplb.punla.data.Building
 import com.uplb.punla.data.CampusDirectory
 import com.uplb.punla.data.LocationFailure
@@ -135,11 +135,11 @@ fun CampusFullMapScreen(vm: PunlaViewModel) {
     var locateFailure by remember { mutableStateOf<LocationFailure?>(null) }
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
 
-    val nextClass by vm.nextClassFlow.collectAsState(initial = null)
+    val nextClass by vm.nextClassFlow.collectAsStateWithLifecycle(initialValue = null)
     val nextClassBuilding = remember(nextClass) {
         nextClass?.let { CampusDirectory.findBuildingForRoom(it.room) }
     }
-    val routePlan by vm.routePlan.collectAsState()
+    val routePlan by vm.routePlan.collectAsStateWithLifecycle()
 
     // ---- Real walking route to the next class (single-destination case) ----
     // Resets whenever the destination itself changes (a new `nextClassBuilding`

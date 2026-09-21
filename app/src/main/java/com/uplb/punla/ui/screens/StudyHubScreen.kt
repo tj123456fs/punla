@@ -22,6 +22,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.uplb.punla.data.StudyEngine
 import com.uplb.punla.data.StudyMathText
 import com.uplb.punla.data.StudyJsonImport
@@ -48,25 +49,25 @@ fun StudyHubScreen(
     onOpenQuizzes: (String?, String?, Boolean) -> Unit,
     onOpenFocus: (String?) -> Unit
 ) {
-    val topics by vm.studyTopics.collectAsState()
-    val notes by vm.studyNotes.collectAsState()
-    val formulas by vm.formulaReferences.collectAsState()
-    val mistakes by vm.mistakeRecords.collectAsState()
-    val goals by vm.studyGoals.collectAsState()
-    val planItems by vm.studyPlanItems.collectAsState()
-    val reviewProgress by vm.studyReviewProgress.collectAsState()
-    val answerResults by vm.quizAnswerResults.collectAsState()
-    val flashcardReviews by vm.flashcardReviewEvents.collectAsState()
-    val bank by vm.questionBank.collectAsState()
-    val decks by vm.flashcardDecks.collectAsState()
-    val cards by vm.flashcards.collectAsState()
-    val quizzes by vm.quizzes.collectAsState()
-    val questions by vm.quizQuestions.collectAsState()
-    val attempts by vm.quizAttempts.collectAsState()
-    val sessions by vm.studySessions.collectAsState(initial = emptyList())
-    val deadlines by vm.deadlines.collectAsState()
-    val classes by vm.classes.collectAsState()
-    val loadError by vm.studyHubLoadError.collectAsState()
+    val topics by vm.studyTopics.collectAsStateWithLifecycle()
+    val notes by vm.studyNotes.collectAsStateWithLifecycle()
+    val formulas by vm.formulaReferences.collectAsStateWithLifecycle()
+    val mistakes by vm.mistakeRecords.collectAsStateWithLifecycle()
+    val goals by vm.studyGoals.collectAsStateWithLifecycle()
+    val planItems by vm.studyPlanItems.collectAsStateWithLifecycle()
+    val reviewProgress by vm.studyReviewProgress.collectAsStateWithLifecycle()
+    val answerResults by vm.quizAnswerResults.collectAsStateWithLifecycle()
+    val flashcardReviews by vm.flashcardReviewEvents.collectAsStateWithLifecycle()
+    val bank by vm.questionBank.collectAsStateWithLifecycle()
+    val decks by vm.flashcardDecks.collectAsStateWithLifecycle()
+    val cards by vm.flashcards.collectAsStateWithLifecycle()
+    val quizzes by vm.quizzes.collectAsStateWithLifecycle()
+    val questions by vm.quizQuestions.collectAsStateWithLifecycle()
+    val attempts by vm.quizAttempts.collectAsStateWithLifecycle()
+    val sessions by vm.studySessions.collectAsStateWithLifecycle(initialValue = emptyList())
+    val deadlines by vm.deadlines.collectAsStateWithLifecycle()
+    val classes by vm.classes.collectAsStateWithLifecycle()
+    val loadError by vm.studyHubLoadError.collectAsStateWithLifecycle()
 
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var selectedCourse by rememberSaveable { mutableStateOf<String?>(null) }

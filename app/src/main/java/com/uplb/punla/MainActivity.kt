@@ -61,6 +61,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -69,8 +70,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
@@ -343,7 +349,7 @@ class MainActivity : ComponentActivity() {
             val startRouteRequestId by startRouteRequestIdState
             val notificationPermissionGranted by notificationPermissionGrantedState
             val inPictureInPicture by pipModeState
-            val pomodoroRunning = vm.pomodoroState.isRunning
+            val pomodoroRunning by remember { derivedStateOf { vm.pomodoroState.isRunning } }
             val pomodoroPiPEnabled = vm.pomodoroPictureInPicture
 
             LaunchedEffect(pomodoroRunning, pomodoroPiPEnabled) {
@@ -585,6 +591,25 @@ fun PunlaApp(
     var quickAddOpen by rememberSaveable { mutableStateOf(false) }
     val useNavigationRail = LocalConfiguration.current.screenWidthDp >= 600
 
+    // Decorative atmosphere yields to content motion. LazyColumn/LazyRow scrolls
+    // bubble nested-scroll events up here; while they are active we freeze only
+    // the background clock, then resume shortly after the last scroll event.
+    // This protects 60/90/120 Hz interaction frames without changing list behavior.
+    var contentInMotion by remember { mutableStateOf(false) }
+    val interactionScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (!contentInMotion) contentInMotion = true
+                return Offset.Zero
+            }
+
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                contentInMotion = false
+                return Velocity.Zero
+            }
+        }
+    }
+
     // Navigates to a base route (drawer/bottom-nav taps) without triggering
     // any quick-add form.
     fun navigateTo(route: String) {
@@ -662,7 +687,21 @@ fun PunlaApp(
             }
         }
     ) {
-      Box(Modifier.fillMaxSize().appBackground(vm.backgroundStyle, vm.themePreset, darkTheme = darkTheme)) {
+      Box(Modifier.fillMaxSize().nestedScroll(interactionScrollConnection)) {
+        // Keep the animated procedural surface in its own RenderNode-like layer.
+        // Background invalidations can then re-record this layer without forcing
+        // the foreground navigation/content tree to redraw on every atmosphere frame.
+        Box(
+            Modifier
+                .matchParentSize()
+                .graphicsLayer()
+                .appBackground(
+                    vm.backgroundStyle,
+                    vm.themePreset,
+                    darkTheme = darkTheme,
+                    animationEnabled = !contentInMotion && currentRoute != "campus/fullmap"
+                )
+        )
         Row(Modifier.fillMaxSize()) {
             if (useNavigationRail) {
                 NavigationRail(
@@ -832,16 +871,17 @@ fun PunlaApp(
                 //
                 // Fix: tell the two cases apart with isTabSwitch() (defined
                 // above, near BOTTOM_TABS).
-                // - Sibling tab <-> sibling tab: Material's "fade through" —
-                //   outgoing fades out in place, incoming fades/scales in.
-                //   No slide, so there's no direction to get wrong.
+                // - Sibling tab <-> sibling tab: a short fade only. The earlier full-screen
+                //   scale added GPU work to already data-rich destinations and could
+                //   make a normal tab press feel heavier than it should.
                 // - A real push/pop (drawer destination, quick-add form):
                 //   a symmetric slide+fade, forward and back mirroring each
                 //   other instead of two unrelated-looking motions.
                 enterTransition = {
                     if (isTabSwitch(initialState, targetState)) {
-                        fadeIn(tween(220, easing = FastOutSlowInEasing)) +
-                            scaleIn(initialScale = 0.98f, animationSpec = tween(220, easing = FastOutSlowInEasing))
+                        // Sibling tabs are heavy, data-rich screens. A short fade avoids
+                        // scaling/rasterizing the whole destination during every tab tap.
+                        fadeIn(tween(160, easing = FastOutSlowInEasing))
                     } else {
                         fadeIn(tween(220, easing = FastOutSlowInEasing)) +
                             slideInHorizontally(tween(220, easing = FastOutSlowInEasing)) { it / 8 }
@@ -849,7 +889,7 @@ fun PunlaApp(
                 },
                 exitTransition = {
                     if (isTabSwitch(initialState, targetState)) {
-                        fadeOut(tween(160))
+                        fadeOut(tween(110))
                     } else {
                         fadeOut(tween(160)) +
                             slideOutHorizontally(tween(160)) { -it / 8 }
@@ -857,8 +897,7 @@ fun PunlaApp(
                 },
                 popEnterTransition = {
                     if (isTabSwitch(initialState, targetState)) {
-                        fadeIn(tween(220, easing = FastOutSlowInEasing)) +
-                            scaleIn(initialScale = 0.98f, animationSpec = tween(220, easing = FastOutSlowInEasing))
+                        fadeIn(tween(160, easing = FastOutSlowInEasing))
                     } else {
                         fadeIn(tween(220, easing = FastOutSlowInEasing)) +
                             slideInHorizontally(tween(220, easing = FastOutSlowInEasing)) { -it / 8 }
@@ -866,7 +905,7 @@ fun PunlaApp(
                 },
                 popExitTransition = {
                     if (isTabSwitch(initialState, targetState)) {
-                        fadeOut(tween(160))
+                        fadeOut(tween(110))
                     } else {
                         fadeOut(tween(160)) +
                             slideOutHorizontally(tween(160)) { it / 8 }

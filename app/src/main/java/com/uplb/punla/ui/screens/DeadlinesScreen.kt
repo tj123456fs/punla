@@ -36,6 +36,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.uplb.punla.data.entity.Deadline
 import com.uplb.punla.ui.PunlaViewModel
 import com.uplb.punla.ui.theme.PunlaDisplay
@@ -52,10 +53,10 @@ private val PRIORITIES = listOf("High", "Medium", "Low")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DeadlinesScreen(vm: PunlaViewModel, openFormOnStart: Boolean = false, quickAddToken: String = "") {
-    val deadlines by vm.deadlines.collectAsState()
+    val deadlines by vm.deadlines.collectAsStateWithLifecycle()
     // Roadmap C — withhold "No deadlines logged yet" until Room's first
     // real emission, so it doesn't flash for a frame on cold launch.
-    val dataReady by vm.isDataReady.collectAsState()
+    val dataReady by vm.isDataReady.collectAsStateWithLifecycle()
     val screenGutter = punlaScreenHorizontalPadding()
     var showForm by rememberSaveable { mutableStateOf(false) }
     var viewMode by rememberSaveable { mutableStateOf(0) } // 0 = List, 1 = Calendar

@@ -2,6 +2,7 @@ package com.uplb.punla.ui.screens
 
 import android.app.Activity
 import android.content.Intent
+import android.graphics.Bitmap
 import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
@@ -9,12 +10,10 @@ import android.provider.Settings as AndroidSettings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudDownload
@@ -33,13 +32,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
-import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.uplb.punla.data.BackgroundStyle
 import com.uplb.punla.data.BackupManager
 import com.uplb.punla.data.BudgetPeriod
@@ -133,8 +133,8 @@ fun SettingsScreen(
 
 
 
-    val archives by vm.archives.collectAsState()
-    val notificationEvents by vm.notificationEvents.collectAsState()
+    val archives by vm.archives.collectAsStateWithLifecycle()
+    val notificationEvents by vm.notificationEvents.collectAsStateWithLifecycle()
     val adaptiveReminderEvents = remember(notificationEvents) {
         notificationEvents.filter { it.notificationType in setOf("deadline", "budget", "checklist") }
     }
@@ -614,25 +614,28 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(Modifier.height(12.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        PunlaThemeCatalog.forEach { theme ->
+                        items(
+                            items = PunlaThemeCatalog,
+                            key = { it.preset.name }
+                        ) { theme ->
                             ThemePresetCard(
                                 theme = theme,
                                 selected = vm.themePreset == theme.preset,
                                 onClick = { vm.updateThemePreset(theme.preset) }
                             )
                         }
-                        CustomThemeCard(
-                            swatchColor = vm.customSeedColor?.let { Color(it) }
-                                ?: MaterialTheme.colorScheme.primary,
-                            selected = vm.themePreset == ThemePreset.CUSTOM,
-                            onClick = { showCustomColorDialog = true }
-                        )
+                        item(key = "custom_theme") {
+                            CustomThemeCard(
+                                swatchColor = vm.customSeedColor?.let { Color(it) }
+                                    ?: MaterialTheme.colorScheme.primary,
+                                selected = vm.themePreset == ThemePreset.CUSTOM,
+                                onClick = { showCustomColorDialog = true }
+                            )
+                        }
                     }
                 }
             }
@@ -1374,25 +1377,29 @@ private fun BackgroundStyleOptionRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (previewStyle != null) {
-            Canvas(
+            Box(
                 modifier = Modifier
                     .size(width = 64.dp, height = 48.dp)
                     .clip(MaterialTheme.shapes.extraSmall)
+                    .drawWithCache {
+                        val width = size.width.toInt().coerceAtLeast(1)
+                        val height = size.height.toInt().coerceAtLeast(1)
+                        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                        paintBackgroundFrame(
+                            canvas = android.graphics.Canvas(bitmap),
+                            style = previewStyle,
+                            widthPx = width.toFloat(),
+                            heightPx = height.toFloat(),
+                            palette = palette,
+                            isDark = isDark,
+                            themePreset = themePreset,
+                            tSeconds = 7.3f,
+                        )
+                        val image = bitmap.asImageBitmap()
+                        onDrawBehind { drawImage(image) }
+                    }
                     .border(1.dp, MaterialTheme.colorScheme.outline, MaterialTheme.shapes.extraSmall)
-            ) {
-                drawIntoCanvas { canvas ->
-                    paintBackgroundFrame(
-                        canvas = canvas.nativeCanvas,
-                        style = previewStyle,
-                        widthPx = size.width,
-                        heightPx = size.height,
-                        palette = palette,
-                        isDark = isDark,
-                        themePreset = themePreset,
-                        tSeconds = 7.3f,
-                    )
-                }
-            }
+            )
             Spacer(Modifier.width(12.dp))
         }
         Column(Modifier.weight(1f)) {

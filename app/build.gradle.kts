@@ -13,8 +13,8 @@ android {
         applicationId = "com.uplb.punla"
         minSdk = 26
         targetSdk = 34
-        versionCode = 24
-        versionName = "2.9.0"
+        versionCode = 25
+        versionName = "2.9.1"
     }
 
     buildTypes {
@@ -52,6 +52,7 @@ android {
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.4")
     implementation("androidx.activity:activity-compose:1.9.1")
     // Explicit pin: activity-compose/navigation-compose pull in an old transitive
     // Fragment version that predates the ActivityResult APIs used in MainActivity.

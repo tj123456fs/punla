@@ -1,0 +1,35 @@
+Punla Session 35A — Interaction Performance Hotfix
+Validation date: 2026-09-21
+
+Base:
+- Punla_session35_phase0a_stable_core(1).zip
+
+Changed Kotlin files:
+- MainActivity.kt
+- PunlaViewModel.kt
+- AmbientBackground.kt
+- BackupManager.kt
+
+Static review:
+- Changed-file diffs reviewed: PASS
+- Duplicate-import scan across Kotlin source: PASS
+- Android XML parse: PASS (13 files including manifest)
+- Root JSON example parse: PASS
+- No database schema/version change
+- No dependency change
+
+Performance changes:
+- Root app now observes Pomodoro running state through derivedStateOf, so second-by-second timer updates do not invalidate the whole app shell.
+- Pomodoro ticker no longer republishes identical remainingSeconds values four times per second.
+- Animated procedural backgrounds are capped to style-appropriate 15–25 FPS instead of device refresh rate.
+- Static MINIMAL/PAPER_GRAIN backgrounds remain static.
+
+Backup validation fix carried forward:
+- timesMissed = 0 is valid for correct-but-UNSURE review records.
+- retryAt must be >= missedAt.
+
+Build boundary:
+- The supplied source tree does not contain gradlew/gradle-wrapper.jar.
+- This container does not provide the Android SDK/ADB toolchain.
+- Therefore :app:assembleDebug / KSP / install-time behavior was NOT authoritatively run here.
+- GitHub Actions assembleDebug remains the required compile gate before device testing.

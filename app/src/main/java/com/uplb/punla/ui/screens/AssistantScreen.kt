@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.uplb.punla.assistant.AssistantAction
 import com.uplb.punla.assistant.AssistantSnapshot
 import com.uplb.punla.assistant.LocalAssistant
@@ -42,10 +43,10 @@ fun AssistantScreen(
     vm: PunlaViewModel,
     onOpenPomodoro: (String?) -> Unit = {}
 ) {
-    val classes by vm.classes.collectAsState()
-    val deadlines by vm.deadlines.collectAsState()
-    val expenses by vm.expenses.collectAsState()
-    val sessions by vm.studySessions.collectAsState()
+    val classes by vm.classes.collectAsStateWithLifecycle()
+    val deadlines by vm.deadlines.collectAsStateWithLifecycle()
+    val expenses by vm.expenses.collectAsStateWithLifecycle()
+    val sessions by vm.studySessions.collectAsStateWithLifecycle()
     val messages = remember {
         mutableStateListOf(
             AssistantChatMessage(

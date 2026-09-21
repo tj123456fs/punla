@@ -1,3 +1,14 @@
+# Session 35B — Smooth interaction pass
+
+- Isolated the animated procedural background into its own `graphicsLayer` so atmosphere redraws do not re-record the foreground app tree.
+- Pauses decorative background animation during active Compose scroll/fling gestures, then resumes afterward.
+- Vsync-aligned the existing 15–25 FPS background ticker with `withFrameNanos`.
+- Migrated Compose screen Flow subscriptions to lifecycle-aware collection (`collectAsStateWithLifecycle`).
+- Moved/serialized Glance widget refresh work off the UI dispatcher.
+- Cached Settings background preview rasters and made the theme chooser lazy.
+- Memoized palette/color-scheme/typography resolution and simplified sibling-tab transitions to short fades.
+- No Room/backup schema change. Version **2.9.1** (`versionCode 25`).
+
 # Session 34g — Campus map compile fix
 
 - Fixed `CampusFullMapScreen.kt` compile failure (`Unresolved reference: context`) in the MapLibre `AndroidView` update block.

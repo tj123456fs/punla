@@ -20,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.uplb.punla.data.entity.ChecklistItem
 import com.uplb.punla.ui.PunlaViewModel
 import com.uplb.punla.ui.theme.LocalPunlaPalette
@@ -36,8 +37,8 @@ import com.uplb.punla.ui.theme.PunlaDisplay
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChecklistScreen(vm: PunlaViewModel) {
-    val items by vm.checklistItems.collectAsState()
-    val dataReady by vm.isDataReady.collectAsState()
+    val items by vm.checklistItems.collectAsStateWithLifecycle()
+    val dataReady by vm.isDataReady.collectAsStateWithLifecycle()
     var showAddDialog by rememberSaveable { mutableStateOf(false) }
     var showResetConfirm by rememberSaveable { mutableStateOf(false) }
     var pendingDeleteItemId by rememberSaveable { mutableStateOf<String?>(null) }
