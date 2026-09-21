@@ -423,3 +423,7 @@ Applied a broad Compose performance pass after app-wide scrolling/tap stutter wa
 ## Session 35C — Phase 0B System Health (v2.9.2)
 
 Added the user-facing Phase 0 reliability dashboard under Settings. System Health checks notification permission/categories, exact alarms, Android background restrictions, battery optimization, expected WorkManager jobs, SQLite integrity, and backup freshness. The Phase 0A local diagnostic log can now be viewed, exported, or cleared from the app, and standard notification channels are created at app startup so their state can be inspected immediately. Phase 0 still requires the real-device failure-mode matrix and one-week stability exit soak before it is considered complete.
+## Session 35D — Scroll-aware animation smoothing (v2.9.3)
+
+Refined the Session 35B interaction optimization after the hard background pause proved visually awkward during scrolling. Animated backgrounds now keep a continuous virtual animation clock, smoothly ease down to a reduced playback speed and lower publish cadence while content is moving, then ease back to normal after the gesture. This keeps foreground scroll frames prioritized without the visible stop/resume effect. No database or backup schema change.
+

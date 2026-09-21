@@ -1,0 +1,16 @@
+Session 35D validation
+======================
+
+Static source checks:
+- AmbientBackground no longer keys animationEnabled to active scrolling.
+- Active scrolling is passed separately as interactionActive.
+- Animated background uses a continuous virtual clock.
+- Scroll-mode target playback speed: 0.32x with eased transition.
+- Scroll-mode frame publication capped to <= ~12 FPS.
+- Idle style cadence from Session 35B retained.
+- Full-screen Campus Map still disables decorative animation.
+- Version bumped to 2.9.3 / 27.
+- No Room schema or backup format changes.
+
+Build limitation:
+- This source package does not include a runnable Gradle wrapper and the current environment has no Android SDK/Gradle toolchain, so assembleDebug could not be executed here. GitHub Actions remains the compile gate.

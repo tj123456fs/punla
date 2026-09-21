@@ -1,6 +1,5 @@
 package com.uplb.punla.ui.theme
 
-import android.os.SystemClock
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
@@ -9,6 +8,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
@@ -20,6 +20,7 @@ import com.uplb.punla.data.BackgroundStyle
 import com.uplb.punla.data.ThemePreset
 import com.uplb.punla.data.resolveForTheme
 import kotlinx.coroutines.isActive
+import kotlin.math.exp
 
 /**
  * Applies one deterministic procedural background. The renderer itself lives
@@ -31,37 +32,66 @@ private fun Modifier.animatedProceduralBackground(
     themePreset: ThemePreset,
     darkTheme: Boolean,
     animationEnabled: Boolean = true,
+    interactionActive: Boolean = false,
 ): Modifier = composed {
     val palette = LocalPunlaPalette.current
 
-    // Atmospheric backgrounds do not need display-refresh-rate animation. Driving
-    // a full-screen procedural shader at 60/90/120 Hz is expensive and competes
-    // directly with scrolling and touch feedback. Keep the motion alive at a
-    // style-appropriate cadence while letting the UI render interactions freely.
+    // Keep the decorative motion on a virtual clock instead of wall-clock time.
+    // During active scrolling we *ease* the clock toward a slower rate and publish
+    // fewer background frames rather than freezing it. This preserves frame budget
+    // for lists/touch input without the visually awkward stop -> jump -> resume
+    // behavior of the previous hard pause.
     var tSeconds by remember(style) { mutableFloatStateOf(0f) }
+    val interactionActiveState = rememberUpdatedState(interactionActive)
+
     LaunchedEffect(style, animationEnabled) {
         if (!animationEnabled) return@LaunchedEffect
-        // Continue from the currently displayed phase after a temporary pause
-        // (e.g. while a list is being scrolled) instead of snapping to zero.
-        val startedAt = SystemClock.uptimeMillis() - (tSeconds * 1000f).toLong()
-        val frameIntervalNanos = when (style) {
+
+        val idleFrameIntervalNanos = when (style) {
             BackgroundStyle.AMBIENT, BackgroundStyle.STARFIELD -> 66_000_000L  // ~15 fps
             BackgroundStyle.AURORA, BackgroundStyle.FIREFLIES -> 50_000_000L  // ~20 fps
             BackgroundStyle.RAIN, BackgroundStyle.OCEAN_WAVES,
             BackgroundStyle.SAKURA, BackgroundStyle.SNOW, BackgroundStyle.BUBBLES -> 40_000_000L // ~25 fps
             else -> 66_000_000L
         }
-        var lastPublishedFrame = Long.MIN_VALUE
+        val interactionFrameIntervalNanos = maxOf(idleFrameIntervalNanos, 83_000_000L) // <= ~12 fps while scrolling
+
+        var virtualTimeSeconds = tSeconds
+        var playbackSpeed = 1f
+        var previousFrameNanos = Long.MIN_VALUE
+        var lastPublishedFrameNanos = Long.MIN_VALUE
+
         while (isActive) {
-            // Publish animation state on a real display frame instead of waking at
-            // arbitrary delay boundaries. That avoids invalidating the draw tree just
-            // after a vsync and gives touch/scroll frames more predictable headroom.
             withFrameNanos { frameTimeNanos ->
-                if (lastPublishedFrame == Long.MIN_VALUE ||
-                    frameTimeNanos - lastPublishedFrame >= frameIntervalNanos
-                ) {
-                    tSeconds = (SystemClock.uptimeMillis() - startedAt) / 1000f
-                    lastPublishedFrame = frameTimeNanos
+                if (previousFrameNanos == Long.MIN_VALUE) {
+                    previousFrameNanos = frameTimeNanos
+                    lastPublishedFrameNanos = frameTimeNanos
+                    return@withFrameNanos
+                }
+
+                // Clamp huge deltas after sleep/backgrounding so the atmosphere never
+                // leaps forward when Android resumes the activity.
+                val deltaSeconds = ((frameTimeNanos - previousFrameNanos) / 1_000_000_000f)
+                    .coerceIn(0f, 0.050f)
+                previousFrameNanos = frameTimeNanos
+
+                val targetSpeed = if (interactionActiveState.value) 0.32f else 1f
+                // Exponential easing (~180 ms time constant) makes both entering and
+                // leaving scroll mode visually continuous.
+                val blend = (1f - exp((-deltaSeconds / 0.18f).toDouble()).toFloat())
+                    .coerceIn(0f, 1f)
+                playbackSpeed += (targetSpeed - playbackSpeed) * blend
+                virtualTimeSeconds += deltaSeconds * playbackSpeed
+
+                val publishInterval = if (interactionActiveState.value) {
+                    interactionFrameIntervalNanos
+                } else {
+                    idleFrameIntervalNanos
+                }
+
+                if (frameTimeNanos - lastPublishedFrameNanos >= publishInterval) {
+                    tSeconds = virtualTimeSeconds
+                    lastPublishedFrameNanos = frameTimeNanos
                 }
             }
         }
@@ -129,11 +159,18 @@ fun Modifier.appBackground(
     themePreset: ThemePreset = ThemePreset.FIELD_NOTEBOOK,
     darkTheme: Boolean = isSystemInDarkTheme(),
     animationEnabled: Boolean = true,
+    interactionActive: Boolean = false,
 ): Modifier {
     val resolved = style.resolveForTheme(themePreset)
     return when (resolved) {
         BackgroundStyle.MINIMAL -> this.background(MaterialTheme.colorScheme.background)
         BackgroundStyle.PAPER_GRAIN -> this.staticProceduralBackground(resolved, themePreset, darkTheme)
-        else -> this.animatedProceduralBackground(resolved, themePreset, darkTheme, animationEnabled)
+        else -> this.animatedProceduralBackground(
+            resolved,
+            themePreset,
+            darkTheme,
+            animationEnabled = animationEnabled,
+            interactionActive = interactionActive,
+        )
     }
 }

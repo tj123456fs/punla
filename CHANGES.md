@@ -1,3 +1,13 @@
+# Session 35D — Scroll-aware animation smoothing
+
+- Replaced the hard animated-background freeze during scrolling with adaptive slow motion.
+- Added a continuous virtual animation clock so background motion does not stop/jump around scroll gestures.
+- Eases toward ~32% background playback speed while scrolling and back to full speed afterward.
+- Caps decorative background publishing to ~12 FPS during active scrolling while preserving the existing idle cadence.
+- Clamps large resume-time deltas to prevent atmosphere jumps after app sleep/backgrounding.
+- Bumped app version to 2.9.3 (27).
+- No database migration and no new dependencies.
+
 # Session 35C — Phase 0B System Health
 
 - Added a local System Health screen for notifications, exact alarms, background restrictions, battery optimization, WorkManager jobs, database integrity, backup freshness, and diagnostics.

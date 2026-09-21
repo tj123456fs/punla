@@ -594,9 +594,9 @@ fun PunlaApp(
     val useNavigationRail = LocalConfiguration.current.screenWidthDp >= 600
 
     // Decorative atmosphere yields to content motion. LazyColumn/LazyRow scrolls
-    // bubble nested-scroll events up here; while they are active we freeze only
-    // the background clock, then resume shortly after the last scroll event.
-    // This protects 60/90/120 Hz interaction frames without changing list behavior.
+    // bubble nested-scroll events up here. The background renderer uses this signal
+    // to ease into a slower virtual clock / lower publish cadence while scrolling,
+    // instead of hard-freezing and abruptly resuming the animation.
     var contentInMotion by remember { mutableStateOf(false) }
     val interactionScrollConnection = remember {
         object : NestedScrollConnection {
@@ -701,7 +701,8 @@ fun PunlaApp(
                     vm.backgroundStyle,
                     vm.themePreset,
                     darkTheme = darkTheme,
-                    animationEnabled = !contentInMotion && currentRoute != "campus/fullmap"
+                    animationEnabled = currentRoute != "campus/fullmap",
+                    interactionActive = contentInMotion,
                 )
         )
         Row(Modifier.fillMaxSize()) {
