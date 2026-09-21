@@ -3,9 +3,15 @@
     <cloud-backup disableIfNoEncryptionCapabilities="true">
         <exclude domain="sharedpref" path="punla_secure_secrets.xml" />
         <exclude domain="file" path="punla_diagnostics.log" />
+        <exclude domain="sharedpref" path="punla_diagnostics_meta.xml" />
+        <exclude domain="sharedpref" path="punla_reliability.xml" />
+        <exclude domain="sharedpref" path="punla_restore_verification.xml" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="punla_secure_secrets.xml" />
         <exclude domain="file" path="punla_diagnostics.log" />
+        <exclude domain="sharedpref" path="punla_diagnostics_meta.xml" />
+        <exclude domain="sharedpref" path="punla_reliability.xml" />
+        <exclude domain="sharedpref" path="punla_restore_verification.xml" />
     </device-transfer>
 </data-extraction-rules>

@@ -431,3 +431,7 @@ Refined the Session 35B interaction optimization after the hard background pause
 ## Session 35F — Phase 0C Recovery Hardening (v2.9.4)
 
 Phase 0 reliability now has a single background-job scheduler reused by normal startup, backup restore, reboot, app replacement, and clock/time-zone changes. System Health can repair missing jobs directly and includes a two-minute background execution probe plus an arm-and-reboot recovery probe, making the remaining Android reliability checks testable on the real phone. Backup restore now performs SQLite `quick_check` and `foreign_key_check` inside the Room transaction before commit so a failed post-restore integrity check rolls the restore back. The remaining Phase 0 gate is primarily real-device soak testing plus the one-week stability exit condition.
+
+## Session 35G — Phase 0D Validation Harness (v2.9.5)
+
+Turned more of the remaining Phase 0 exit matrix into observable on-device checks. System Health now includes a 20-minute Battery/idle WorkManager probe intended for screen-off and Battery Saver testing, a verified restore receipt that appears only after a backup import commits cleanly and passes SQLite integrity/reference checks, and a persistent seven-day crash-free soak tracker backed by a monotonic uncaught-crash counter. Phase 0 is now primarily waiting on actual device execution of the background/reboot/idle/restore tests plus manual quiz/flashcard, attendance, Campus Map, reminder, and one-week usage validation.

@@ -14,6 +14,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.uplb.punla.data.PunlaDatabase
 import com.uplb.punla.data.PunlaRepository
+import com.uplb.punla.data.RestoreVerification
 import com.uplb.punla.notification.PunlaNotifications
 import com.uplb.punla.pomodoro.PomodoroAlarmScheduler
 import com.uplb.punla.pomodoro.PomodoroBootReceiver
@@ -38,7 +39,9 @@ enum class HealthAction {
     APP_SETTINGS,
     REPAIR_BACKGROUND_JOBS,
     RUN_BACKGROUND_PROBE,
-    ARM_REBOOT_PROBE
+    RUN_IDLE_PROBE,
+    ARM_REBOOT_PROBE,
+    ARM_STABILITY_SOAK
 }
 
 data class HealthCheck(
@@ -91,10 +94,13 @@ object SystemHealthInspector {
         checks += batteryHealth(app)
         checks += recoveryHealth(app)
         checks += backgroundProbeHealth(app)
+        checks += idleProbeHealth(app)
         checks += rebootProbeHealth(app)
         checks += workerHealth(app, repo)
         checks += databaseHealth(app)
+        checks += restoreVerificationHealth(app)
         checks += backupHealth(repo.lastBackupAt)
+        checks += stabilitySoakHealth(app)
 
         val diagnostics = PunlaDiagnostics.read(app)
         val lines = diagnostics.lineSequence().filter { it.isNotBlank() }.toList()
@@ -321,6 +327,69 @@ object SystemHealthInspector {
         }
     }
 
+    private fun idleProbeHealth(context: Context): HealthCheck {
+        val scheduledAt = ReliabilityProbe.idleScheduledAt(context)
+        val completedAt = ReliabilityProbe.idleCompletedAt(context)
+        if (scheduledAt <= 0L) {
+            return HealthCheck(
+                key = "idle_probe",
+                title = "Battery / idle test",
+                status = "Not tested",
+                detail = "Run the 20-minute probe, optionally enable Battery Saver, lock the phone, and leave Punla closed. Reopen System Health after about 25 minutes.",
+                state = HealthState.INFO,
+                action = HealthAction.RUN_IDLE_PROBE,
+                actionLabel = "Run 20-min test"
+            )
+        }
+
+        if (completedAt >= scheduledAt) {
+            val expectedAt = scheduledAt + TimeUnit.MINUTES.toMillis(ReliabilityProbe.IDLE_DELAY_MINUTES)
+            val lateMinutes = TimeUnit.MILLISECONDS.toMinutes((completedAt - expectedAt).coerceAtLeast(0L))
+            return if (lateMinutes <= 10L) {
+                HealthCheck(
+                    key = "idle_probe",
+                    title = "Battery / idle test",
+                    status = "Passed",
+                    detail = "Punla completed the long-idle probe within about $lateMinutes minute${if (lateMinutes == 1L) "" else "s"} of its target time.",
+                    state = HealthState.HEALTHY,
+                    action = HealthAction.RUN_IDLE_PROBE,
+                    actionLabel = "Run again"
+                )
+            } else {
+                HealthCheck(
+                    key = "idle_probe",
+                    title = "Battery / idle test",
+                    status = "Passed late",
+                    detail = "The probe eventually ran, but Android deferred it by about $lateMinutes minutes beyond its target. Battery or OEM background controls may delay non-urgent work.",
+                    state = HealthState.ATTENTION,
+                    action = HealthAction.RUN_IDLE_PROBE,
+                    actionLabel = "Retry"
+                )
+            }
+        }
+
+        val ageMinutes = TimeUnit.MILLISECONDS.toMinutes((System.currentTimeMillis() - scheduledAt).coerceAtLeast(0L))
+        return if (ageMinutes <= ReliabilityProbe.IDLE_TIMEOUT_MINUTES) {
+            HealthCheck(
+                key = "idle_probe",
+                title = "Battery / idle test",
+                status = "Pending",
+                detail = "Leave Punla closed and the phone idle. The target delay is ${ReliabilityProbe.IDLE_DELAY_MINUTES} minutes; Android may legally defer ordinary WorkManager jobs while idle.",
+                state = HealthState.INFO
+            )
+        } else {
+            HealthCheck(
+                key = "idle_probe",
+                title = "Battery / idle test",
+                status = "Delayed / blocked",
+                detail = "The long-idle probe has not completed after $ageMinutes minutes. Review battery optimization, background restrictions, and manufacturer auto-start controls.",
+                state = HealthState.ATTENTION,
+                action = HealthAction.RUN_IDLE_PROBE,
+                actionLabel = "Retry"
+            )
+        }
+    }
+
     private fun rebootProbeHealth(context: Context): HealthCheck {
         val armedAt = ReliabilityProbe.rebootArmedAt(context)
         val passedAt = ReliabilityProbe.rebootPassedAt(context)
@@ -442,6 +511,85 @@ object SystemHealthInspector {
                 state = HealthState.BLOCKED
             )
         }
+    }
+
+    private fun restoreVerificationHealth(context: Context): HealthCheck {
+        val receipt = RestoreVerification.last(context)
+        if (receipt == null) {
+            return HealthCheck(
+                key = "restore_verification",
+                title = "Restore verification",
+                status = "Not tested",
+                detail = "For the Phase 0 restore test: export a backup, uninstall/reinstall Punla, then import it. A verified receipt appears here only after SQLite integrity checks and preference restoration complete.",
+                state = HealthState.INFO
+            )
+        }
+        val ageMinutes = TimeUnit.MILLISECONDS.toMinutes((System.currentTimeMillis() - receipt.verifiedAt).coerceAtLeast(0L))
+        val age = when {
+            ageMinutes < 1L -> "just now"
+            ageMinutes < 60L -> "$ageMinutes min ago"
+            ageMinutes < 1_440L -> "${ageMinutes / 60L} h ago"
+            else -> "${ageMinutes / 1_440L} d ago"
+        }
+        return HealthCheck(
+            key = "restore_verification",
+            title = "Restore verification",
+            status = "Verified",
+            detail = "Backup v${receipt.backupVersion} restored $age and passed SQLite quick_check + foreign_key_check. Restored ${receipt.classes} classes, ${receipt.deadlines} deadlines, ${receipt.attendance} attendance records, ${receipt.flashcards} flashcards, and ${receipt.quizzes} quizzes.",
+            state = HealthState.HEALTHY
+        )
+    }
+
+    private fun stabilitySoakHealth(context: Context): HealthCheck {
+        val startedAt = ReliabilityProbe.soakStartedAt(context)
+        if (startedAt <= 0L) {
+            return HealthCheck(
+                key = "stability_soak",
+                title = "7-day stability soak",
+                status = "Not started",
+                detail = "Start the final Phase 0 crash-free soak, then use Punla normally for one week. This automatically detects uncaught app crashes; reminder/data checks still need normal real-world use.",
+                state = HealthState.INFO,
+                action = HealthAction.ARM_STABILITY_SOAK,
+                actionLabel = "Start soak"
+            )
+        }
+
+        val baseline = ReliabilityProbe.soakBaselineCrashes(context)
+        val currentCrashes = PunlaDiagnostics.fatalCrashCount(context)
+        val elapsed = (System.currentTimeMillis() - startedAt).coerceAtLeast(0L)
+        val elapsedDays = TimeUnit.MILLISECONDS.toDays(elapsed)
+        if (currentCrashes > baseline) {
+            return HealthCheck(
+                key = "stability_soak",
+                title = "7-day stability soak",
+                status = "Crash detected",
+                detail = "Punla recorded ${currentCrashes - baseline} uncaught crash${if (currentCrashes - baseline == 1L) "" else "es"} since this soak started. Inspect Diagnostics, fix the cause, then restart the seven-day soak.",
+                state = HealthState.BLOCKED,
+                action = HealthAction.ARM_STABILITY_SOAK,
+                actionLabel = "Restart soak"
+            )
+        }
+        if (elapsedDays >= ReliabilityProbe.SOAK_DAYS) {
+            return HealthCheck(
+                key = "stability_soak",
+                title = "7-day stability soak",
+                status = "Crash-free",
+                detail = "Punla has completed at least ${ReliabilityProbe.SOAK_DAYS} days without an uncaught app crash since the soak was armed. Finish the reminder/data-loss checklist before closing Phase 0.",
+                state = HealthState.HEALTHY,
+                action = HealthAction.ARM_STABILITY_SOAK,
+                actionLabel = "Restart"
+            )
+        }
+        val hours = TimeUnit.MILLISECONDS.toHours(elapsed)
+        return HealthCheck(
+            key = "stability_soak",
+            title = "7-day stability soak",
+            status = "Day $elapsedDays / ${ReliabilityProbe.SOAK_DAYS}",
+            detail = "Crash-free for about $hours hours. Keep using Punla normally; the soak reaches its code-side gate after seven days.",
+            state = HealthState.INFO,
+            action = HealthAction.ARM_STABILITY_SOAK,
+            actionLabel = "Restart"
+        )
     }
 
     private fun backupHealth(lastBackupAt: Long?): HealthCheck {

@@ -16,6 +16,8 @@ object PunlaDiagnostics {
     private const val MAX_BYTES = 256 * 1024L
     private const val KEEP_BYTES = 128 * 1024
     private const val MAX_THROWABLE_CHARS = 12_000
+    private const val META_PREFS = "punla_diagnostics_meta"
+    private const val KEY_FATAL_CRASH_COUNT = "fatal_crash_count"
 
     private val lock = Any()
 
@@ -26,6 +28,19 @@ object PunlaDiagnostics {
 
     fun error(context: Context, tag: String, message: String, error: Throwable? = null) =
         write(context, "ERROR", tag, message, error)
+
+    /** Records a process-ending crash and keeps a tiny monotonic counter for the Phase 0 soak test. */
+    fun fatal(context: Context, tag: String, message: String, error: Throwable? = null) {
+        val app = context.applicationContext
+        val prefs = app.getSharedPreferences(META_PREFS, Context.MODE_PRIVATE)
+        val next = prefs.getLong(KEY_FATAL_CRASH_COUNT, 0L) + 1L
+        prefs.edit().putLong(KEY_FATAL_CRASH_COUNT, next).commit()
+        write(app, "ERROR", tag, message, error)
+    }
+
+    fun fatalCrashCount(context: Context): Long =
+        context.applicationContext.getSharedPreferences(META_PREFS, Context.MODE_PRIVATE)
+            .getLong(KEY_FATAL_CRASH_COUNT, 0L)
 
     fun read(context: Context): String = synchronized(lock) {
         runCatching { file(context).takeIf(File::exists)?.readText().orEmpty() }.getOrDefault("")

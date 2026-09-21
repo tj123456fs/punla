@@ -114,7 +114,6 @@ import com.uplb.punla.ui.theme.PunlaDisplay
 import com.uplb.punla.ui.theme.PunlaMono
 import com.uplb.punla.ui.theme.PunlaTheme
 import com.uplb.punla.worker.ClassDayNotificationScheduler
-import com.uplb.punla.worker.CoreReliabilityScheduler
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -283,10 +282,6 @@ class MainActivity : ComponentActivity() {
         // harmless on rotation and preserves it if Android recreates the process.
         intent?.getStringExtra(EXTRA_MAP_QUERY)?.let(vm::searchOnMap)
         notificationPermissionGrantedState.value = hasNotificationPermission()
-
-        // Keep every persistent worker registration in one recovery-safe path.
-        // The same scheduler is reused after reboot, package replacement, and restore.
-        CoreReliabilityScheduler.ensureScheduled(this)
 
         setContent {
             // Resolves against the live system setting so ThemeMode.SYSTEM

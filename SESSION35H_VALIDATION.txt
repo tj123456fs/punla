@@ -1,0 +1,24 @@
+Punla Session 35H — Main-thread Scheduler Merge Validation
+
+Merged from: Session 35G Phase 0D + user-provided main-thread scheduler fix
+Version: 2.9.6 (30)
+Room schema: unchanged
+Backup schema: unchanged
+
+Verified by source audit:
+[PASS] CoreReliabilityScheduler.ensureScheduled is suspendable and dispatches work off Main.
+[PASS] PunlaApplication schedules persistent jobs asynchronously.
+[PASS] PunlaApplication still records uncaught crashes through PunlaDiagnostics.fatal().
+[PASS] Duplicate synchronous CoreReliabilityScheduler call removed from MainActivity.
+[PASS] PomodoroBootReceiver uses goAsync() and background coroutine for recovery work.
+[PASS] System Health Repair jobs action is asynchronous.
+[PASS] 2-minute background probe preserved.
+[PASS] 20-minute Battery/Idle probe preserved.
+[PASS] Reboot probe preserved.
+[PASS] 7-day stability soak preserved.
+[PASS] Restore path can await CoreReliabilityScheduler after verified restore.
+[PASS] All remaining ensureScheduled call sites are in coroutine/suspend contexts.
+
+Build note:
+The source package does not include gradlew/gradle-wrapper.jar in this environment,
+so a full Android compile was not run here. GitHub/Termux build remains the compile gate.

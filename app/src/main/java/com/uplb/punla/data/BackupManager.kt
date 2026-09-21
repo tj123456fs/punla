@@ -746,6 +746,23 @@ object BackupManager {
         if (root.has("pomodoroAlarmVibrationEnabled")) repo.pomodoroAlarmVibrationEnabled = root.optBoolean("pomodoroAlarmVibrationEnabled", repo.pomodoroAlarmVibrationEnabled)
         if (root.has("pomodoroWorkSoundUri")) repo.pomodoroWorkSoundUri = root.optStringOrNull("pomodoroWorkSoundUri")
         if (root.has("pomodoroBreakSoundUri")) repo.pomodoroBreakSoundUri = root.optStringOrNull("pomodoroBreakSoundUri")
+
+        // Phase 0D: persist a metadata-only receipt only after the Room transaction
+        // and all preference restoration completed successfully. A reinstall -> import
+        // test can therefore prove that Punla reached the verified restore path.
+        RestoreVerification.record(
+            context = context,
+            backupVersion = backupVersion,
+            contentId = root.optStringOrNull("contentId"),
+            exportedAt = root.optStringOrNull("exportedAt"),
+            classes = schedule.size,
+            deadlines = deadlines.size,
+            attendance = attendanceRecords.size,
+            flashcards = flashcards.size,
+            quizzes = quizzes.size,
+            studyItems = studyTopics.size + studyNotes.size + formulaReferences.size +
+                mistakeRecords.size + studyGoals.size + studyPlanItems.size + questionBank.size
+        )
     }
 }
 

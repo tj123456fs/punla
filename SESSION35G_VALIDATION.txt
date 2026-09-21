@@ -1,0 +1,59 @@
+Punla Session 35G — Phase 0D Validation Harness
+Version: 2.9.5 (versionCode 29)
+
+Implemented
+===========
+1. 20-minute Battery / idle WorkManager probe
+   - persistent scheduled/completed timestamps
+   - Passed / Passed late / Pending / Delayed-blocked System Health states
+   - intended for screen-off + optional Battery Saver testing
+
+2. Verified restore receipt
+   - written only after backup restore Room transaction passes quick_check + foreign_key_check
+   - written after restored preferences are applied
+   - stores metadata/counts only; no study content
+   - surfaced in System Health
+
+3. Seven-day stability soak
+   - persistent soak start + fatal-crash baseline
+   - uncaught crash handler increments a local monotonic counter
+   - System Health shows elapsed soak time and flags a crash automatically
+
+4. Test-evidence backup isolation
+   - diagnostics crash counter, reliability probe state, and restore receipt prefs are excluded
+     from Android cloud backup/device transfer so reinstall tests cannot inherit stale PASS state.
+
+Schema
+======
+Room database: v12 (unchanged)
+Punla backup: v9 (unchanged)
+No migration required.
+
+Static validation performed
+===========================
+- AndroidManifest.xml parsed successfully.
+- backup_rules.xml parsed successfully.
+- data_extraction_rules.xml parsed successfully.
+- Kotlin changed-file delimiter balance checked.
+- kotlinc parser pass found no syntax-pattern errors; Android/Compose references are unresolved
+  in this container because Android SDK/dependency classpaths are unavailable.
+- diff whitespace check produced no whitespace-error output.
+
+Build limitation
+================
+A full assembleDebug build was not run in this container because the project package does not
+include gradlew/gradle-wrapper.jar and the Android SDK is not installed here. GitHub Actions
+remains the compile gate.
+
+Recommended real-device order
+==============================
+1. Build/install Session 35G.
+2. Run Background execution 2-min test.
+3. Run Reboot recovery test.
+4. Run Battery / idle 20-min test (repeat once with Battery Saver enabled if desired).
+5. Export a Punla backup.
+6. Uninstall Punla, reinstall the same/newer APK, import the backup.
+7. Confirm System Health shows Restore verification = Verified.
+8. Start the 7-day stability soak only after the reinstall/restore test is complete.
+9. During the week, exercise attendance manual/undo/auto-log, quiz/flashcard imports,
+   Campus Map, Pomodoro completion, and normal reminder delivery.

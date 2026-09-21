@@ -177,25 +177,28 @@ class PomodoroBootReceiver : BroadcastReceiver() {
         // WorkManager normally survives reboot itself; this explicit recovery path
         // also repairs jobs after package replacement and realigns wall-clock work
         // after manual time/time-zone changes.
-        CoreReliabilityScheduler.ensureScheduled(context, updateExisting = true)
-        CoreReliabilityScheduler.recordRecoveryEvent(context, action)
-        ReliabilityProbe.onRecoveryBroadcast(context, action)
-        PunlaDiagnostics.info(context, "RecoveryReceiver", "Recovered background schedules after ${action ?: "unknown"}")
-
-        val repo = PunlaRepository(context.applicationContext)
-        if (!repo.pomodoroRuntimeRunning) return
-        val deadline = repo.pomodoroRuntimeDeadline
-        if (deadline <= 0L) return
-
-        if (deadline > System.currentTimeMillis()) {
-            PomodoroAlarmScheduler.schedule(context, deadline)
-            PomodoroRunningNotification.showFromRepository(context)
-            return
-        }
-
+        // A manifest-registered receiver's onReceive runs on the main thread, so this
+        // whole body — including the suspend scheduler call — is moved onto goAsync()
+        // + a background coroutine rather than blocking it there.
         val pendingResult = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
+                CoreReliabilityScheduler.ensureScheduled(context, updateExisting = true)
+                CoreReliabilityScheduler.recordRecoveryEvent(context, action)
+                ReliabilityProbe.onRecoveryBroadcast(context, action)
+                PunlaDiagnostics.info(context, "RecoveryReceiver", "Recovered background schedules after ${action ?: "unknown"}")
+
+                val repo = PunlaRepository(context.applicationContext)
+                if (!repo.pomodoroRuntimeRunning) return@launch
+                val deadline = repo.pomodoroRuntimeDeadline
+                if (deadline <= 0L) return@launch
+
+                if (deadline > System.currentTimeMillis()) {
+                    PomodoroAlarmScheduler.schedule(context, deadline)
+                    PomodoroRunningNotification.showFromRepository(context)
+                    return@launch
+                }
+
                 PomodoroCompletionCoordinator.complete(context.applicationContext, deadline)
             } catch (cancelled: CancellationException) {
                 throw cancelled

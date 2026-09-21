@@ -1,3 +1,12 @@
+## Session 35H — Main-thread scheduler merge
+
+- Moved persistent worker scheduling/recovery off the Android main thread.
+- Boot/time/package recovery now uses `goAsync()` plus a background coroutine.
+- System Health job repair no longer blocks the interaction frame.
+- Preserved Phase 0D Battery/Idle, restore-verification, and 7-day stability validation features.
+- Removed duplicate Activity-level cold-start scheduling; Application owns the startup repair path.
+- Version 2.9.6 (30).
+
 # Session 35D — Scroll-aware animation smoothing
 
 - Replaced the hard animated-background freeze during scrolling with adaptive slow motion.
@@ -1158,3 +1167,12 @@ A full Android build was not run because this editing environment lacks Gradle a
 - Successful backup restore immediately re-syncs persistent workers with restored settings.
 - Carried forward the System Health `Modifier.weight()` compile fix.
 - Room remains v12; backup format remains v9.
+
+## Session 35G — Phase 0D Validation Harness (v2.9.5)
+
+- Added a 20-minute Battery / idle reliability probe to System Health for real-device screen-off, Battery Saver, and OEM background testing.
+- The idle probe reports whether ordinary WorkManager execution completed near its target, completed late, or remained blocked/delayed.
+- Backup restore now writes a metadata-only verified restore receipt after Room integrity checks and preference restoration succeed; System Health surfaces the latest verified receipt and restored record counts.
+- Added a persistent seven-day Phase 0 stability soak tracker. It records a crash-counter baseline and automatically flags uncaught crashes during the soak.
+- Uncaught process crashes now increment a tiny local monotonic crash counter in addition to the existing rotating diagnostic log.
+- No Room migration and no backup-format change. Room remains v12; backup remains v9.

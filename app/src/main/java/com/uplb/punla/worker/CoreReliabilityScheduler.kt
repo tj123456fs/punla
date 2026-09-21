@@ -6,6 +6,8 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.uplb.punla.data.PunlaRepository
 import com.uplb.punla.diagnostics.PunlaDiagnostics
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 
 /**
@@ -13,13 +15,21 @@ import java.util.concurrent.TimeUnit
  *
  * Keeping these registrations in one place prevents startup, restore, and boot
  * recovery paths from drifting apart as new workers are added.
+ *
+ * `ensureScheduled` is `suspend` and hops to [Dispatchers.Default] internally
+ * (repository/SharedPreferences access plus up to ~8 WorkManager/AlarmManager
+ * registrations) so callers on the main thread — app startup, Activity
+ * startup, and the System Health "repair" action — never block a frame on it.
  */
 object CoreReliabilityScheduler {
     const val CLASS_REMINDER_WORK = "class_reminder_work"
     const val STUDY_NUDGE_WORK = "study_nudge_work"
     const val BACKUP_NUDGE_WORK = "backup_nudge_work"
 
-    fun ensureScheduled(context: Context, updateExisting: Boolean = false) {
+    suspend fun ensureScheduled(context: Context, updateExisting: Boolean = false): Unit =
+        withContext(Dispatchers.Default) { ensureScheduledBlocking(context, updateExisting) }
+
+    private fun ensureScheduledBlocking(context: Context, updateExisting: Boolean) {
         val app = context.applicationContext
         val repo = PunlaRepository(app)
         val manager = WorkManager.getInstance(app)

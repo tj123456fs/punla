@@ -180,15 +180,25 @@ fun SystemHealthScreen() {
                     onAction = { action ->
                         when (action) {
                             HealthAction.REPAIR_BACKGROUND_JOBS -> {
-                                CoreReliabilityScheduler.ensureScheduled(context, updateExisting = true)
-                                refreshToken++
+                                scope.launch {
+                                    CoreReliabilityScheduler.ensureScheduled(context, updateExisting = true)
+                                    refreshToken++
+                                }
                             }
                             HealthAction.RUN_BACKGROUND_PROBE -> {
                                 ReliabilityProbe.scheduleBackgroundProbe(context)
                                 refreshToken++
                             }
+                            HealthAction.RUN_IDLE_PROBE -> {
+                                ReliabilityProbe.scheduleIdleProbe(context)
+                                refreshToken++
+                            }
                             HealthAction.ARM_REBOOT_PROBE -> {
                                 ReliabilityProbe.armRebootProbe(context)
+                                refreshToken++
+                            }
+                            HealthAction.ARM_STABILITY_SOAK -> {
+                                ReliabilityProbe.startStabilitySoak(context)
                                 refreshToken++
                             }
                             else -> openHealthAction(context, action)
@@ -384,7 +394,9 @@ private fun openHealthAction(context: Context, action: HealthAction) {
         HealthAction.APP_SETTINGS -> appDetailsIntent(context)
         HealthAction.REPAIR_BACKGROUND_JOBS,
         HealthAction.RUN_BACKGROUND_PROBE,
-        HealthAction.ARM_REBOOT_PROBE -> return
+        HealthAction.RUN_IDLE_PROBE,
+        HealthAction.ARM_REBOOT_PROBE,
+        HealthAction.ARM_STABILITY_SOAK -> return
     }
     runCatching { context.startActivity(intent) }
         .recoverCatching { context.startActivity(appDetailsIntent(context)) }
