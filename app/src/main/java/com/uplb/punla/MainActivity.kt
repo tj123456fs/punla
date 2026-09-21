@@ -106,6 +106,7 @@ import com.uplb.punla.ui.screens.glassCard
 import com.uplb.punla.ui.screens.PomodoroScreen
 import com.uplb.punla.ui.screens.ScheduleScreen
 import com.uplb.punla.ui.screens.SettingsScreen
+import com.uplb.punla.ui.screens.SystemHealthScreen
 import com.uplb.punla.ui.screens.StudyAnalysisScreen
 import com.uplb.punla.ui.screens.AssistantScreen
 import com.uplb.punla.ui.screens.FlashcardsScreen
@@ -517,7 +518,7 @@ private val ALL_DESTINATIONS = BOTTOM_TABS + DRAWER_ITEMS
 // hidden on those to avoid two FABs stacking in the same corner. Pomodoro
 // has no add-form of its own — its FAB slot doesn't apply, so it's hidden
 // here too rather than showing an unrelated speed dial over the timer.
-private val ROUTES_WITH_OWN_FAB = setOf("budget", "deadlines", "grades", "checklist", "campus/fullmap", "pomodoro", "study", "flashcards", "quizzes", "assistant")
+private val ROUTES_WITH_OWN_FAB = setOf("budget", "deadlines", "grades", "checklist", "campus/fullmap", "pomodoro", "study", "flashcards", "quizzes", "assistant", "system-health")
 
 private data class QuickAddAction(
     val kind: String,
@@ -562,6 +563,7 @@ fun PunlaApp(
     val currentTitle = BOTTOM_TABS.firstOrNull { it.route == currentRoute }?.label
         ?: when (currentRoute) {
             "settings" -> "Settings"
+            "system-health" -> "System Health"
             "checklist" -> "Checklist"
             "campus" -> "Campus"
             "campus/fullmap" -> "Campus Map"
@@ -573,7 +575,7 @@ fun PunlaApp(
             "assistant" -> "Assistant"
             else -> "Punla"
         }
-    val onSettings = currentRoute == "settings"
+    val onSettings = currentRoute == "settings" || currentRoute == "system-health"
     // Drawer-only destinations (reachable via the drawer, not a bottom tab)
     // get a Back arrow instead of the hamburger menu, same as Settings —
     // there's no bottom-tab "home" to return to via the drawer itself.
@@ -584,7 +586,7 @@ fun PunlaApp(
     // Drawer destinations are top-level destinations and keep the hamburger menu.
     // Only true drill-down screens use a Back arrow; this keeps Quizzes/Study visible
     // from Flashcards instead of trapping the user behind a back-only top bar.
-    val showBackArrow = currentRoute == "campus/fullmap" || currentRoute == "study-analysis"
+    val showBackArrow = currentRoute == "campus/fullmap" || currentRoute == "study-analysis" || currentRoute == "system-health"
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -1073,8 +1075,12 @@ fun PunlaApp(
                     SettingsScreen(
                         vm = vm,
                         notificationPermissionGranted = notificationPermissionGranted,
-                        onRequestNotificationPermission = onRequestNotificationPermission
+                        onRequestNotificationPermission = onRequestNotificationPermission,
+                        onOpenSystemHealth = { navController.navigate("system-health") }
                     )
+                }
+                composable("system-health") {
+                    SystemHealthScreen()
                 }
             }
         }

@@ -1,3 +1,12 @@
+# Session 35C — Phase 0B System Health
+
+- Added a local System Health screen for notifications, exact alarms, background restrictions, battery optimization, WorkManager jobs, database integrity, backup freshness, and diagnostics.
+- Added in-app diagnostic log viewing, text export, and confirmed clearing.
+- Added direct Android settings shortcuts for actionable reliability problems.
+- Standard notification channels are now created at application startup so channel health is immediately inspectable.
+- Bumped app version to 2.9.2 (26).
+- No database migration and no new dependencies.
+
 # Session 35B — Smooth interaction pass
 
 - Isolated the animated procedural background into its own `graphicsLayer` so atmosphere redraws do not re-record the foreground app tree.

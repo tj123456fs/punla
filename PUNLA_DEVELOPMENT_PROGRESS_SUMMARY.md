@@ -415,3 +415,11 @@ Punla's procedural backgrounds received a motion-quality pass focused on making 
 ## Session 35 — Phase 0A Stable Core (v2.9.0)
 
 Started the roadmap's Phase 0 reliability work with the active daily-use failures first. Study Hub study-material streams now degrade safely and expose a visible warning instead of letting a recoverable Room stream failure take down the screen; Smart Study queue access is bounds-safe. Pomodoro deadlines now have a persisted WorkManager recovery job in addition to AlarmManager, while both use one idempotent completion path. Added opt-in schedule-based attendance auto-logging after a 10-minute grace period with manual records taking precedence. Added a local rotating diagnostic/crash log excluded from Android backup. Room remains v12. The remaining Phase 0 work includes System Health, Android restriction diagnostics, restore/import/migration soak tests, real-device attendance/Campus Map checks, and the one-week stability exit soak.
+
+## Session 35B — Smooth Interaction Optimization (v2.9.1)
+
+Applied a broad Compose performance pass after app-wide scrolling/tap stutter was observed. Animated backgrounds were isolated into their own graphics layer, decorative animation yields during active scrolling, ticker invalidations were aligned to display frames, Flow collection became lifecycle-aware, widget refresh work moved off the UI dispatcher, Settings previews were cached, theme resolution was memoized, and sibling-tab motion was simplified. No Room or backup schema change.
+
+## Session 35C — Phase 0B System Health (v2.9.2)
+
+Added the user-facing Phase 0 reliability dashboard under Settings. System Health checks notification permission/categories, exact alarms, Android background restrictions, battery optimization, expected WorkManager jobs, SQLite integrity, and backup freshness. The Phase 0A local diagnostic log can now be viewed, exported, or cleared from the app, and standard notification channels are created at app startup so their state can be inspected immediately. Phase 0 still requires the real-device failure-mode matrix and one-week stability exit soak before it is considered complete.

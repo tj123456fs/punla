@@ -73,7 +73,8 @@ private fun formatHour(hour: Int): String {
 fun SettingsScreen(
     vm: PunlaViewModel,
     notificationPermissionGranted: Boolean = true,
-    onRequestNotificationPermission: () -> Unit = {}
+    onRequestNotificationPermission: () -> Unit = {},
+    onOpenSystemHealth: () -> Unit = {}
 ) {
     var userNameInput by rememberSaveable { mutableStateOf(vm.userName) }
     var budgetInput by rememberSaveable {
@@ -395,6 +396,41 @@ fun SettingsScreen(
                                 contentPadding = PaddingValues(0.dp)
                             ) { Text("Reset learning") }
                         }
+                    }
+                }
+            }
+        }
+
+        // Phase 0B — one place to verify the Android services Punla depends on.
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 6.dp)
+                    .shadow(
+                        1.dp,
+                        MaterialTheme.shapes.medium,
+                        ambientColor = LocalPunlaPalette.current.shadowInk.copy(alpha = 0.05f),
+                        spotColor = LocalPunlaPalette.current.shadowInk.copy(alpha = 0.05f)
+                    ),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Text(
+                        "SYSTEM HEALTH",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Check notification permission, exact alarms, battery/background restrictions, persistent jobs, database integrity, backup freshness, and local diagnostics.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedButton(onClick = onOpenSystemHealth) {
+                        Text("Open System Health")
                     }
                 }
             }
