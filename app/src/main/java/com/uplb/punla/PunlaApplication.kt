@@ -1,0 +1,27 @@
+package com.uplb.punla
+
+import android.app.Application
+import com.uplb.punla.diagnostics.PunlaDiagnostics
+
+/** Installs local crash logging before any Activity/ViewModel is created. */
+class PunlaApplication : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, error ->
+            runCatching {
+                PunlaDiagnostics.error(
+                    this,
+                    "Uncaught",
+                    "Fatal exception on ${thread.name}",
+                    error
+                )
+            }
+            if (previous != null) {
+                previous.uncaughtException(thread, error)
+            } else {
+                android.os.Process.killProcess(android.os.Process.myPid())
+            }
+        }
+    }
+}

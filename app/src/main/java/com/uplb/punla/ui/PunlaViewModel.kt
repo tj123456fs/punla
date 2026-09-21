@@ -57,6 +57,7 @@ import com.uplb.punla.data.entity.QuizAnswerResult
 import com.uplb.punla.data.entity.QuestionBankItem
 import com.uplb.punla.data.StudyEngine
 import com.uplb.punla.data.StudyJsonBundle
+import com.uplb.punla.diagnostics.PunlaDiagnostics
 import com.uplb.punla.widget.WidgetRefresher
 import com.uplb.punla.worker.ClassDayNotificationScheduler
 import com.uplb.punla.worker.AttendanceAutoLogScheduler
@@ -87,12 +88,6 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     private val db = PunlaDatabase.get(app)
     val repo = PunlaRepository(app)
 
-    private fun <T> Flow<List<T>>.safeStudyFlow(label: String): Flow<List<T>> =
-        catch { error ->
-            Log.e("PunlaStudyHub", "$label flow failed; showing an empty section instead of crashing", error)
-            emit(emptyList())
-        }
-
     // Roadmap C — separate "has Room actually emitted yet" flags from the
     // lists themselves. A freshly-emptied list and the emptyList() default
     // stateIn() starts with look identical by content, so this is tracked
@@ -121,57 +116,49 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val flashcardDecks: StateFlow<List<FlashcardDeck>> = db.flashcardDao().observeDecks()
-        .safeStudyFlow("flashcard decks")
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val flashcards: StateFlow<List<Flashcard>> = db.flashcardDao().observeAllCards()
-        .safeStudyFlow("flashcards")
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val quizzes: StateFlow<List<Quiz>> = db.quizDao().observeQuizzes()
-        .safeStudyFlow("quizzes")
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val quizQuestions: StateFlow<List<QuizQuestion>> = db.quizDao().observeAllQuestions()
-        .safeStudyFlow("quiz questions")
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val quizAttempts: StateFlow<List<QuizAttempt>> = db.quizDao().observeAllAttempts()
-        .safeStudyFlow("quiz attempts")
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
 
-    val studyTopics: StateFlow<List<StudyTopic>> = db.studyMaterialDao().observeTopics()
-        .safeStudyFlow("study topics")
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val studyNotes: StateFlow<List<StudyNote>> = db.studyMaterialDao().observeNotes()
-        .safeStudyFlow("study notes")
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val formulaReferences: StateFlow<List<FormulaReference>> = db.studyMaterialDao().observeFormulas()
-        .safeStudyFlow("formula references")
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val mistakeRecords: StateFlow<List<MistakeRecord>> = db.studyMaterialDao().observeMistakes()
-        .safeStudyFlow("mistakes")
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val studyGoals: StateFlow<List<StudyGoal>> = db.studyMaterialDao().observeGoals()
-        .safeStudyFlow("study goals")
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val studyPlanItems: StateFlow<List<StudyPlanItem>> = db.studyMaterialDao().observePlanItems()
-        .safeStudyFlow("study plan")
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val studyReviewProgress: StateFlow<List<StudyReviewProgress>> = db.studyMaterialDao().observeReviewProgress()
-        .safeStudyFlow("review progress")
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val flashcardReviewEvents: StateFlow<List<FlashcardReviewEvent>> = db.studyMaterialDao().observeFlashcardReviewEvents()
-        .safeStudyFlow("flashcard review events")
+    private val _studyHubLoadError = MutableStateFlow<String?>(null)
+    val studyHubLoadError: StateFlow<String?> = _studyHubLoadError
+
+    private fun <T> safeStudyListFlow(
+        label: String,
+        source: Flow<List<T>>
+    ): StateFlow<List<T>> = source
+        .catch { error ->
+            PunlaDiagnostics.error(getApplication(), "StudyHub/$label", "Room stream failed", error)
+            _studyHubLoadError.value = "$label couldn't be loaded. Punla kept the rest of Study Hub open and saved a local diagnostic."
+            emit(emptyList())
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val quizAnswerResults: StateFlow<List<QuizAnswerResult>> = db.studyMaterialDao().observeAnswerResults()
-        .safeStudyFlow("quiz answer results")
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val questionBank: StateFlow<List<QuestionBankItem>> = db.studyMaterialDao().observeQuestionBank()
-        .safeStudyFlow("question bank")
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    fun dismissStudyHubLoadError() {
+        _studyHubLoadError.value = null
+    }
+
+    val studyTopics: StateFlow<List<StudyTopic>> = safeStudyListFlow("Topics", db.studyMaterialDao().observeTopics())
+    val studyNotes: StateFlow<List<StudyNote>> = safeStudyListFlow("Notes", db.studyMaterialDao().observeNotes())
+    val formulaReferences: StateFlow<List<FormulaReference>> = safeStudyListFlow("Formulas", db.studyMaterialDao().observeFormulas())
+    val mistakeRecords: StateFlow<List<MistakeRecord>> = safeStudyListFlow("Mistakes", db.studyMaterialDao().observeMistakes())
+    val studyGoals: StateFlow<List<StudyGoal>> = safeStudyListFlow("Goals", db.studyMaterialDao().observeGoals())
+    val studyPlanItems: StateFlow<List<StudyPlanItem>> = safeStudyListFlow("Plan", db.studyMaterialDao().observePlanItems())
+    val studyReviewProgress: StateFlow<List<StudyReviewProgress>> = safeStudyListFlow("Review progress", db.studyMaterialDao().observeReviewProgress())
+    val flashcardReviewEvents: StateFlow<List<FlashcardReviewEvent>> = safeStudyListFlow("Flashcard review history", db.studyMaterialDao().observeFlashcardReviewEvents())
+    val quizAnswerResults: StateFlow<List<QuizAnswerResult>> = safeStudyListFlow("Quiz answer history", db.studyMaterialDao().observeAnswerResults())
+    val questionBank: StateFlow<List<QuestionBankItem>> = safeStudyListFlow("Question bank", db.studyMaterialDao().observeQuestionBank())
 
     fun flashcardsFlow(deckId: String): Flow<List<Flashcard>> = db.flashcardDao().observeCards(deckId)
     fun quizQuestionsFlow(quizId: String): Flow<List<QuizQuestion>> = db.quizDao().observeQuestions(quizId)
@@ -343,15 +330,15 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     var classDayNotificationEnabled by mutableStateOf(repo.classDayNotificationEnabled)
         private set
 
-    var attendanceAutoLogEnabled by mutableStateOf(repo.attendanceAutoLogEnabled)
-        private set
-
     var morningAgendaEnabled by mutableStateOf(repo.morningAgendaEnabled)
         private set
 
     var quietHoursEnabled by mutableStateOf(repo.quietHoursEnabled)
         private set
     var studyRemindersEnabled by mutableStateOf(repo.studyRemindersEnabled)
+        private set
+
+    var autoAttendanceEnabled by mutableStateOf(repo.autoAttendanceEnabled)
         private set
 
     var termStartDate by mutableStateOf(repo.termStartDate)
@@ -439,16 +426,6 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun updateAttendanceAutoLogEnabled(enabled: Boolean) {
-        repo.attendanceAutoLogEnabled = enabled
-        attendanceAutoLogEnabled = enabled
-        if (enabled) {
-            AttendanceAutoLogScheduler.ensureScheduled(getApplication())
-        } else {
-            AttendanceAutoLogScheduler.cancel(getApplication())
-        }
-    }
-
     fun updateMorningAgendaEnabled(enabled: Boolean) {
         repo.morningAgendaEnabled = enabled
         morningAgendaEnabled = enabled
@@ -464,6 +441,12 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     fun updateStudyRemindersEnabled(enabled: Boolean) {
         repo.studyRemindersEnabled = enabled
         studyRemindersEnabled = enabled
+    }
+
+    fun updateAutoAttendanceEnabled(enabled: Boolean) {
+        repo.autoAttendanceEnabled = enabled
+        autoAttendanceEnabled = enabled
+        AttendanceAutoLogScheduler.sync(getApplication(), enabled)
     }
 
     fun updateBudgetPeriod(period: BudgetPeriod) {
@@ -554,14 +537,12 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         )
         WidgetRefresher.refreshAll(getApplication())
         ClassDayNotificationScheduler.refresh(getApplication())
-        if (repo.attendanceAutoLogEnabled) AttendanceAutoLogScheduler.refresh(getApplication())
     }
 
     fun deleteClass(session: ClassSession) = viewModelScope.launch {
         repo.deleteClassWithAttendance(session)
         WidgetRefresher.refreshAll(getApplication())
         ClassDayNotificationScheduler.refresh(getApplication())
-        if (repo.attendanceAutoLogEnabled) AttendanceAutoLogScheduler.refresh(getApplication())
     }
 
     // Per-occurrence attendance history. ATTENDED and ABSENT overwrite the
@@ -1603,6 +1584,7 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
             classDayNotificationEnabled = repo.classDayNotificationEnabled
             morningAgendaEnabled = repo.morningAgendaEnabled
             quietHoursEnabled = repo.quietHoursEnabled
+            autoAttendanceEnabled = repo.autoAttendanceEnabled
             studyRemindersEnabled = repo.studyRemindersEnabled
             dailyStudyGoalMinutes = repo.dailyStudyGoalMinutes
             weeklyStudyGoalMinutes = repo.weeklyStudyGoalMinutes
@@ -1635,6 +1617,7 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
             } else {
                 ClassDayNotificationScheduler.cancel(getApplication())
             }
+            AttendanceAutoLogScheduler.sync(getApplication(), repo.autoAttendanceEnabled)
             com.uplb.punla.worker.ReminderScheduler.scheduleDaily(getApplication(), updateExisting = true)
             backupResult = BackupResult.Success("Backup restored.")
         } catch (cancelled: CancellationException) {

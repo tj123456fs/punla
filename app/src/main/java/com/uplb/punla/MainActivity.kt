@@ -315,14 +315,9 @@ class MainActivity : ComponentActivity() {
             ClassDayNotificationScheduler.cancel(this)
         }
 
-        // Attendance auto-log is independent of notification permission: it
-        // records completed scheduled classes locally and never overwrites a
-        // manual attendance choice.
-        if (vm.attendanceAutoLogEnabled) {
-            AttendanceAutoLogScheduler.ensureScheduled(this)
-        } else {
-            AttendanceAutoLogScheduler.cancel(this)
-        }
+        // Attendance automation is independent of notification permission.
+        // WorkManager keeps this schedule across process death and reboot.
+        AttendanceAutoLogScheduler.sync(this, vm.autoAttendanceEnabled)
 
         // Roadmap #6 — weekly check for whether it's time to nudge a backup
         // (the worker itself decides whether a nudge is actually due).

@@ -214,12 +214,6 @@ class PunlaRepository(context: Context) {
         get() = prefs.getBoolean("class_day_notification_enabled", true)
         set(value) = prefs.edit().putBoolean("class_day_notification_enabled", value).apply()
 
-    /** Automatically marks an unlogged scheduled class as attended after it ends.
-     * Manual attendance always wins and can correct the automatic assumption. */
-    var attendanceAutoLogEnabled: Boolean
-        get() = prefs.getBoolean("attendance_auto_log_enabled", true)
-        set(value) = prefs.edit().putBoolean("attendance_auto_log_enabled", value).apply()
-
     /** Quiet, once-daily summary of today's schedule and due work. */
     var morningAgendaEnabled: Boolean
         get() = prefs.getBoolean("morning_agenda_enabled", true)
@@ -234,6 +228,15 @@ class PunlaRepository(context: Context) {
     var studyRemindersEnabled: Boolean
         get() = prefs.getBoolean("study_reminders_enabled", true)
         set(value) = prefs.edit().putBoolean("study_reminders_enabled", value).apply()
+
+    /**
+     * Optional schedule-based attendance automation. When enabled, Punla
+     * assumes a scheduled class was attended after a short grace period unless
+     * the occurrence already has an explicit Attended/Absent record.
+     */
+    var autoAttendanceEnabled: Boolean
+        get() = prefs.getBoolean("auto_attendance_enabled", false)
+        set(value) = prefs.edit().putBoolean("auto_attendance_enabled", value).apply()
 
     // ---- Weekly budget (Weekly Budgeting feature) ----
 

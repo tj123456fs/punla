@@ -1,13 +1,3 @@
-# Session 35 — Background timer reliability, Study Hub hardening, attendance auto-log
-
-- Added a WorkManager fallback for every active Pomodoro deadline. AlarmManager remains the precise path; the backup worker can finish the phase and post the focus/break alert even when an OEM defers the alarm until Punla is reopened. Both paths share the existing idempotent completion coordinator, so duplicate wake-ups do not duplicate notifications or study logs.
-- Hardened Study Hub data subscriptions and derived queue/readiness/streak calculations. A bad legacy/imported study row now degrades the affected section to empty and logs the error instead of terminating the app when Study Hub opens.
-- Added **Auto-log attendance** (enabled by default). After a scheduled class ends, Punla marks that occurrence Attended only when no attendance record exists. Manual Attended/Absent records are never overwritten, and the feature can be disabled in Settings.
-- Added a dedicated attendance worker with a 15-minute recovery cadence plus a one-time job targeted at the next class end, independent of Android notification permission.
-- Version bumped to **2.9.0** (`versionCode 24`).
-
----
-
 # Session 34g — Campus map compile fix
 
 - Fixed `CampusFullMapScreen.kt` compile failure (`Unresolved reference: context`) in the MapLibre `AndroidView` update block.
@@ -1119,3 +1109,11 @@ A full Android build was not run because this editing environment lacks Gradle a
 - Fixed the duplicated `studyNotes` restore declaration and duplicate question-bank validation introduced during the debug pass.
 - Final source validation: Kotlin delimiter/string/comment structural scan passed; Android XML and bundled JSON parse cleanly; representative Room v11→v12 migration SQL passed; no main-source `!!` or `OnConflictStrategy.REPLACE` remains.
 - A full Android/KSP compile still requires the Android SDK/Gradle dependency environment (GitHub Actions is the final compile/install check).
+
+## Session 35 — Phase 0A Stable Core
+- Bumped app to **2.9.0 / versionCode 24** and started roadmap Phase 0 reliability work.
+- Added guarded Study Hub Room streams plus bounds-safe Smart Study queue access so recoverable data/transition failures do not crash the entire hub.
+- Added a persisted one-time WorkManager fallback for every Pomodoro deadline while retaining AlarmManager as the punctual completion path; both converge on the existing idempotent completion coordinator.
+- Added opt-in schedule-based attendance auto-log after a 10-minute grace period. Manual Attended/Absent records always win, and the setting survives Punla backup/restore.
+- Added an app-private rotating diagnostic log plus uncaught-crash capture, with the diagnostic file excluded from Android backup/device transfer.
+- Room remains at database version 12; no schema migration is required.

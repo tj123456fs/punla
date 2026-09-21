@@ -1,7 +1,6 @@
 package com.uplb.punla.ui.screens
 
 import android.widget.Toast
-import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -41,7 +40,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private val STUDY_TABS = listOf("Overview", "Queue", "Mistakes", "Notes", "Plan", "Analytics", "Bank")
-private const val STUDY_HUB_TAG = "PunlaStudyHub"
 
 @Composable
 fun StudyHubScreen(
@@ -68,6 +66,7 @@ fun StudyHubScreen(
     val sessions by vm.studySessions.collectAsState(initial = emptyList())
     val deadlines by vm.deadlines.collectAsState()
     val classes by vm.classes.collectAsState()
+    val loadError by vm.studyHubLoadError.collectAsState()
 
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var selectedCourse by rememberSaveable { mutableStateOf<String?>(null) }
@@ -88,51 +87,33 @@ fun StudyHubScreen(
         }.filter { it.isNotBlank() }.distinctBy { it.lowercase() }.sortedBy { it.lowercase() }
     }
 
-    // Study Hub consumes the widest mix of stored data in Punla. A malformed
-    // legacy/imported row should degrade one derived section instead of taking
-    // down the whole Activity when this destination is opened.
     val weak = remember(mistakes, cards, decks, questions, quizzes, answerResults) {
-        runCatching { StudyEngine.weakTopics(mistakes, cards, decks, questions, quizzes, answerResults) }
-            .onFailure { Log.e(STUDY_HUB_TAG, "Weak-topic calculation failed", it) }
-            .getOrDefault(emptyList())
+        StudyEngine.weakTopics(mistakes, cards, decks, questions, quizzes, answerResults)
     }
     val examDates = remember(topics, deadlines) {
-        runCatching {
-            buildMap<String, LocalDate> {
-                topics.mapNotNull { t ->
-                    t.examDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() }?.let { t.courseCode.lowercase() to it }
-                }.groupBy({ it.first }, { it.second }).forEach { (course, dates) ->
-                    dates.minOrNull()?.let { put(course, it) }
-                }
-                deadlines.filter { !it.done && Regex("(?i)exam|midterm|final|quiz").containsMatchIn(it.title) }.forEach { d ->
-                    val course = d.course?.lowercase() ?: return@forEach
-                    val date = runCatching { LocalDate.parse(d.due) }.getOrNull() ?: return@forEach
-                    val old = get(course)
-                    if (old == null || date < old) put(course, date)
-                }
+        buildMap<String, LocalDate> {
+            topics.mapNotNull { t ->
+                t.examDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() }?.let { t.courseCode.lowercase() to it }
+            }.groupBy({ it.first }, { it.second }).forEach { (course, dates) ->
+                dates.minOrNull()?.let { put(course, it) }
             }
-        }.onFailure { Log.e(STUDY_HUB_TAG, "Exam-date calculation failed", it) }
-            .getOrDefault(emptyMap())
+            deadlines.filter { !it.done && Regex("(?i)exam|midterm|final|quiz").containsMatchIn(it.title) }.forEach { d ->
+                val course = d.course?.lowercase() ?: return@forEach
+                val date = runCatching { LocalDate.parse(d.due) }.getOrNull() ?: return@forEach
+                val old = get(course)
+                if (old == null || date < old) put(course, date)
+            }
+        }
     }
     val queue = remember(cards, decks, mistakes, planItems, examDates) {
-        runCatching { StudyEngine.smartQueue(cards, decks, mistakes, planItems, examDates) }
-            .onFailure { Log.e(STUDY_HUB_TAG, "Smart queue calculation failed", it) }
-            .getOrDefault(emptyList())
+        StudyEngine.smartQueue(cards, decks, mistakes, planItems, examDates)
     }
     val visibleQueue = remember(queue, selectedCourse) {
         if (selectedCourse.isNullOrBlank()) queue
         else queue.filter { it.courseCode.equals(selectedCourse, true) }
     }
-    val studyDays = remember(sessions, attempts, flashcardReviews) {
-        runCatching { StudyEngine.meaningfulStudyDays(sessions, attempts, flashcardReviews) }
-            .onFailure { Log.e(STUDY_HUB_TAG, "Study streak history calculation failed", it) }
-            .getOrDefault(emptySet())
-    }
-    val streak = remember(studyDays) {
-        runCatching { StudyEngine.currentStreak(studyDays) }
-            .onFailure { Log.e(STUDY_HUB_TAG, "Study streak calculation failed", it) }
-            .getOrDefault(0)
-    }
+    val studyDays = remember(sessions, attempts, flashcardReviews) { StudyEngine.meaningfulStudyDays(sessions, attempts, flashcardReviews) }
+    val streak = remember(studyDays) { StudyEngine.currentStreak(studyDays) }
 
     var showTopicEditor by remember { mutableStateOf(false) }
     var showNoteEditor by remember { mutableStateOf<StudyNote?>(null) }
@@ -205,6 +186,20 @@ fun StudyHubScreen(
         ) {
             STUDY_TABS.forEachIndexed { index, name ->
                 FilterChip(selected = selectedTab == index, onClick = { selectedTab = index }, label = { Text(name) })
+            }
+        }
+        loadError?.let { message ->
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.errorContainer
+            ) {
+                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.WarningAmber, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer)
+                    Spacer(Modifier.width(10.dp))
+                    Text(message, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
+                    TextButton(onClick = vm::dismissStudyHubLoadError) { Text("Dismiss") }
+                }
             }
         }
         when (selectedTab) {
@@ -665,7 +660,7 @@ private fun SmartStudySession(
             return@Column
         }
 
-        val item = queue[index]
+        val item = queue.getOrNull(index) ?: return@Column
         val card = cards.firstOrNull { it.id == item.id }
         val mistake = mistakes.firstOrNull { it.id == item.id }
         val plan = planItems.firstOrNull { it.id == item.id }

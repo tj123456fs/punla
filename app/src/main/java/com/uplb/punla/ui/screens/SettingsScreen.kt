@@ -295,29 +295,6 @@ fun SettingsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(Modifier.weight(1f)) {
-                            Text("Auto-log attendance", style = MaterialTheme.typography.bodyMedium)
-                            Text(
-                                "After a scheduled class ends, mark it Attended if you have not logged that occurrence yet. Manual Attended/Absent choices are never overwritten.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        Switch(
-                            checked = vm.attendanceAutoLogEnabled,
-                            onCheckedChange = vm::updateAttendanceAutoLogEnabled
-                        )
-                    }
-
-                    Spacer(Modifier.height(10.dp))
-                    HorizontalDivider()
-                    Spacer(Modifier.height(10.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(Modifier.weight(1f)) {
                             Text("Morning agenda", style = MaterialTheme.typography.bodyMedium)
                             Text(
                                 "A quiet 7:15 AM summary of today's classes and deadlines due today.",
@@ -418,6 +395,59 @@ fun SettingsScreen(
                                 contentPadding = PaddingValues(0.dp)
                             ) { Text("Reset learning") }
                         }
+                    }
+                }
+            }
+        }
+
+        // Attendance automation — intentionally separate from notifications.
+        item {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 6.dp)
+                    .shadow(
+                        1.dp,
+                        MaterialTheme.shapes.medium,
+                        ambientColor = LocalPunlaPalette.current.shadowInk.copy(alpha = 0.05f),
+                        spotColor = LocalPunlaPalette.current.shadowInk.copy(alpha = 0.05f)
+                    ),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Text(
+                        "ATTENDANCE",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Auto-log scheduled classes", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                "After a class has been underway for 10 minutes, mark it Attended if you haven't already logged Attended or Absent. This assumes your schedule reflects where you actually went.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Switch(
+                            checked = vm.autoAttendanceEnabled,
+                            onCheckedChange = vm::updateAutoAttendanceEnabled
+                        )
+                    }
+                    if (vm.autoAttendanceEnabled) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Manual attendance always wins; Punla will never overwrite an existing attendance record.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     }
                 }
             }
