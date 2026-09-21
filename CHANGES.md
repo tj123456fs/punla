@@ -1147,3 +1147,14 @@ A full Android build was not run because this editing environment lacks Gradle a
 - Added opt-in schedule-based attendance auto-log after a 10-minute grace period. Manual Attended/Absent records always win, and the setting survives Punla backup/restore.
 - Added an app-private rotating diagnostic log plus uncaught-crash capture, with the diagnostic file excluded from Android backup/device transfer.
 - Room remains at database version 12; no schema migration is required.
+
+## Session 35F — Phase 0C Recovery Hardening (v2.9.4)
+
+- Centralized all persistent WorkManager registration in `CoreReliabilityScheduler` so app startup, restore, reboot, and package-update paths cannot drift apart.
+- Boot/package-replaced/time/time-zone broadcasts now repair Punla's background schedules and restore an active Pomodoro deadline.
+- Added System Health **Background execution** and **Reboot recovery** probes for real-device Phase 0 validation.
+- Missing WorkManager jobs can now be repaired directly from System Health.
+- Backup restore now runs SQLite `quick_check` and `foreign_key_check` inside the Room transaction before commit; failed verification rolls the restore back.
+- Successful backup restore immediately re-syncs persistent workers with restored settings.
+- Carried forward the System Health `Modifier.weight()` compile fix.
+- Room remains v12; backup format remains v9.

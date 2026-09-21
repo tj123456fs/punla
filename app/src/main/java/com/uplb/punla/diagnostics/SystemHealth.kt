@@ -3,6 +3,7 @@ package com.uplb.punla.diagnostics
 import android.Manifest
 import android.app.ActivityManager
 import android.app.NotificationManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
@@ -15,6 +16,9 @@ import com.uplb.punla.data.PunlaDatabase
 import com.uplb.punla.data.PunlaRepository
 import com.uplb.punla.notification.PunlaNotifications
 import com.uplb.punla.pomodoro.PomodoroAlarmScheduler
+import com.uplb.punla.pomodoro.PomodoroBootReceiver
+import com.uplb.punla.worker.CoreReliabilityScheduler
+import com.uplb.punla.worker.ReliabilityProbe
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
@@ -31,7 +35,10 @@ enum class HealthAction {
     NOTIFICATION_SETTINGS,
     EXACT_ALARM_SETTINGS,
     BATTERY_SETTINGS,
-    APP_SETTINGS
+    APP_SETTINGS,
+    REPAIR_BACKGROUND_JOBS,
+    RUN_BACKGROUND_PROBE,
+    ARM_REBOOT_PROBE
 }
 
 data class HealthCheck(
@@ -82,6 +89,9 @@ object SystemHealthInspector {
         checks += exactAlarmHealth(app)
         checks += backgroundRestrictionHealth(app)
         checks += batteryHealth(app)
+        checks += recoveryHealth(app)
+        checks += backgroundProbeHealth(app)
+        checks += rebootProbeHealth(app)
         checks += workerHealth(app, repo)
         checks += databaseHealth(app)
         checks += backupHealth(repo.lastBackupAt)
@@ -232,15 +242,128 @@ object SystemHealthInspector {
         }
     }
 
+    private fun recoveryHealth(context: Context): HealthCheck {
+        val receiverEnabled = runCatching {
+            context.packageManager.getReceiverInfo(
+                ComponentName(context, PomodoroBootReceiver::class.java),
+                0
+            ).enabled
+        }.getOrDefault(false)
+
+        if (!receiverEnabled) {
+            return HealthCheck(
+                key = "recovery",
+                title = "Recovery hooks",
+                status = "Unavailable",
+                detail = "Punla's reboot/update recovery receiver is unavailable, so background schedules may not self-repair.",
+                state = HealthState.BLOCKED
+            )
+        }
+
+        val lastAction = CoreReliabilityScheduler.lastRecoveryAction(context)
+        return HealthCheck(
+            key = "recovery",
+            title = "Recovery hooks",
+            status = "Armed",
+            detail = if (lastAction.isNullOrBlank()) {
+                "Boot, app-update, clock, and time-zone changes can re-register Punla background jobs and restore an active timer."
+            } else {
+                "Recovery receiver is active. Last system recovery event: ${lastAction.substringAfterLast('.')}"
+            },
+            state = HealthState.HEALTHY
+        )
+    }
+
+    private fun backgroundProbeHealth(context: Context): HealthCheck {
+        val scheduledAt = ReliabilityProbe.backgroundScheduledAt(context)
+        val completedAt = ReliabilityProbe.backgroundCompletedAt(context)
+        if (scheduledAt <= 0L) {
+            return HealthCheck(
+                key = "background_probe",
+                title = "Background execution test",
+                status = "Not tested",
+                detail = "Run a 2-minute probe, swipe Punla away, and reopen it after a few minutes to verify WorkManager can execute while the app UI is closed.",
+                state = HealthState.INFO,
+                action = HealthAction.RUN_BACKGROUND_PROBE,
+                actionLabel = "Run 2-min test"
+            )
+        }
+        if (completedAt >= scheduledAt) {
+            return HealthCheck(
+                key = "background_probe",
+                title = "Background execution test",
+                status = "Passed",
+                detail = "The most recent delayed probe completed after it was scheduled.",
+                state = HealthState.HEALTHY,
+                action = HealthAction.RUN_BACKGROUND_PROBE,
+                actionLabel = "Run again"
+            )
+        }
+        val ageMinutes = TimeUnit.MILLISECONDS.toMinutes((System.currentTimeMillis() - scheduledAt).coerceAtLeast(0L))
+        return if (ageMinutes <= ReliabilityProbe.BACKGROUND_TIMEOUT_MINUTES) {
+            HealthCheck(
+                key = "background_probe",
+                title = "Background execution test",
+                status = "Pending",
+                detail = "Probe scheduled. Swipe Punla away and leave it closed; reopen after about ${ReliabilityProbe.BACKGROUND_DELAY_MINUTES + 1} minutes.",
+                state = HealthState.INFO
+            )
+        } else {
+            HealthCheck(
+                key = "background_probe",
+                title = "Background execution test",
+                status = "Delayed / blocked",
+                detail = "The probe has not completed after $ageMinutes minutes. Battery restrictions or force-stop behavior may be blocking background work.",
+                state = HealthState.ATTENTION,
+                action = HealthAction.RUN_BACKGROUND_PROBE,
+                actionLabel = "Retry"
+            )
+        }
+    }
+
+    private fun rebootProbeHealth(context: Context): HealthCheck {
+        val armedAt = ReliabilityProbe.rebootArmedAt(context)
+        val passedAt = ReliabilityProbe.rebootPassedAt(context)
+        if (armedAt <= 0L) {
+            return HealthCheck(
+                key = "reboot_probe",
+                title = "Reboot recovery test",
+                status = "Not tested",
+                detail = "Arm this test, restart the phone normally, then reopen Punla. The boot receiver will record whether recovery ran.",
+                state = HealthState.INFO,
+                action = HealthAction.ARM_REBOOT_PROBE,
+                actionLabel = "Arm test"
+            )
+        }
+        if (passedAt >= armedAt) {
+            return HealthCheck(
+                key = "reboot_probe",
+                title = "Reboot recovery test",
+                status = "Passed",
+                detail = "Punla received BOOT_COMPLETED after the most recently armed reboot test and re-registered its recovery schedules.",
+                state = HealthState.HEALTHY,
+                action = HealthAction.ARM_REBOOT_PROBE,
+                actionLabel = "Test again"
+            )
+        }
+        return HealthCheck(
+            key = "reboot_probe",
+            title = "Reboot recovery test",
+            status = "Armed",
+            detail = "Restart the phone normally, then open System Health again. Do not use Android's Force stop for this test.",
+            state = HealthState.ATTENTION
+        )
+    }
+
     private fun workerHealth(context: Context, repo: PunlaRepository): HealthCheck {
         val expected = buildList {
             add("DeadlineWorker")
             add("budget_nudge_work")
             add("checklist_reminder_work")
             add("morning_agenda_work")
-            add("class_reminder_work")
-            add("study_nudge_work")
-            add("backup_nudge_work")
+            add(CoreReliabilityScheduler.CLASS_REMINDER_WORK)
+            add(CoreReliabilityScheduler.STUDY_NUDGE_WORK)
+            add(CoreReliabilityScheduler.BACKUP_NUDGE_WORK)
             if (repo.notificationsEnabled && repo.classDayNotificationEnabled) add("class_day_notification_recovery")
             if (repo.autoAttendanceEnabled) add("attendance_auto_log_periodic")
         }
@@ -270,8 +393,8 @@ object SystemHealthInspector {
                     status = "${missing.size} missing",
                     detail = "Missing: ${missing.joinToString()}. Reopening Punla normally reschedules core periodic work.",
                     state = HealthState.ATTENTION,
-                    action = HealthAction.APP_SETTINGS,
-                    actionLabel = "App settings"
+                    action = HealthAction.REPAIR_BACKGROUND_JOBS,
+                    actionLabel = "Repair jobs"
                 )
             }
         } catch (error: Exception) {

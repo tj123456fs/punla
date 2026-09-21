@@ -28,6 +28,8 @@ import com.uplb.punla.data.PunlaRepository
 import com.uplb.punla.data.entity.StudySession
 import com.uplb.punla.diagnostics.PunlaDiagnostics
 import com.uplb.punla.ui.pomodoro.PomodoroPhase
+import com.uplb.punla.worker.CoreReliabilityScheduler
+import com.uplb.punla.worker.ReliabilityProbe
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -162,7 +164,24 @@ class PomodoroDeadlineWorker(
  * removes scheduled alarms when the device powers off. */
 class PomodoroBootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != Intent.ACTION_BOOT_COMPLETED && intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
+        val action = intent.action
+        if (action !in setOf(
+                Intent.ACTION_BOOT_COMPLETED,
+                Intent.ACTION_MY_PACKAGE_REPLACED,
+                Intent.ACTION_TIME_CHANGED,
+                Intent.ACTION_TIMEZONE_CHANGED
+            )
+        ) return
+
+        // Re-register every persistent Punla job from the same source of truth.
+        // WorkManager normally survives reboot itself; this explicit recovery path
+        // also repairs jobs after package replacement and realigns wall-clock work
+        // after manual time/time-zone changes.
+        CoreReliabilityScheduler.ensureScheduled(context, updateExisting = true)
+        CoreReliabilityScheduler.recordRecoveryEvent(context, action)
+        ReliabilityProbe.onRecoveryBroadcast(context, action)
+        PunlaDiagnostics.info(context, "RecoveryReceiver", "Recovered background schedules after ${action ?: "unknown"}")
+
         val repo = PunlaRepository(context.applicationContext)
         if (!repo.pomodoroRuntimeRunning) return
         val deadline = repo.pomodoroRuntimeDeadline

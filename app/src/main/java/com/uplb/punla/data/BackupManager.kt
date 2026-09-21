@@ -685,6 +685,17 @@ object BackupManager {
 
             db.jsonImportDao().clearAll()
             db.jsonImportDao().upsertAll(jsonImportRecords)
+
+            // Verify the freshly restored database before committing the transaction.
+            // If either check fails, Room rolls the entire restore back and the user's
+            // pre-restore database remains intact.
+            val sqlite = db.openHelper.writableDatabase
+            val quickCheck = sqlite.query("PRAGMA quick_check(1)").use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+            requireBackup(quickCheck.equals("ok", ignoreCase = true), "Restore verification failed SQLite quick_check.")
+            val hasForeignKeyViolation = sqlite.query("PRAGMA foreign_key_check").use { cursor -> cursor.moveToFirst() }
+            requireBackup(!hasForeignKeyViolation, "Restore verification found broken database references.")
         }
 
         // Prefs live outside Room, so they're written after the DB transaction commits.

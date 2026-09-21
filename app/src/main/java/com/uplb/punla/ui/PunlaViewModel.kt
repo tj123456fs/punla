@@ -60,6 +60,7 @@ import com.uplb.punla.data.StudyJsonBundle
 import com.uplb.punla.diagnostics.PunlaDiagnostics
 import com.uplb.punla.widget.WidgetRefresher
 import com.uplb.punla.worker.ClassDayNotificationScheduler
+import com.uplb.punla.worker.CoreReliabilityScheduler
 import com.uplb.punla.worker.AttendanceAutoLogScheduler
 import com.uplb.punla.ml.StudySlotFeatures
 import com.uplb.punla.ml.StudySlotPredictor
@@ -1612,14 +1613,8 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
             pomodoroWorkSoundUri = repo.pomodoroWorkSoundUri
             pomodoroBreakSoundUri = repo.pomodoroBreakSoundUri
             WidgetRefresher.refreshAll(getApplication())
-            if (repo.notificationsEnabled && repo.classDayNotificationEnabled) {
-                ClassDayNotificationScheduler.ensureScheduled(getApplication())
-            } else {
-                ClassDayNotificationScheduler.cancel(getApplication())
-            }
-            AttendanceAutoLogScheduler.sync(getApplication(), repo.autoAttendanceEnabled)
-            com.uplb.punla.worker.ReminderScheduler.scheduleDaily(getApplication(), updateExisting = true)
-            backupResult = BackupResult.Success("Backup restored.")
+            CoreReliabilityScheduler.ensureScheduled(getApplication(), updateExisting = true)
+            backupResult = BackupResult.Success("Backup restored and verified.")
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {

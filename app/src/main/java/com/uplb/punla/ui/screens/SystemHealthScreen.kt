@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
@@ -61,6 +60,8 @@ import com.uplb.punla.diagnostics.PunlaDiagnostics
 import com.uplb.punla.diagnostics.SystemHealthInspector
 import com.uplb.punla.diagnostics.SystemHealthSnapshot
 import com.uplb.punla.ui.theme.PunlaMono
+import com.uplb.punla.worker.CoreReliabilityScheduler
+import com.uplb.punla.worker.ReliabilityProbe
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -176,7 +177,23 @@ fun SystemHealthScreen() {
             item(key = check.key) {
                 HealthCheckCard(
                     check = check,
-                    onAction = { action -> openHealthAction(context, action) }
+                    onAction = { action ->
+                        when (action) {
+                            HealthAction.REPAIR_BACKGROUND_JOBS -> {
+                                CoreReliabilityScheduler.ensureScheduled(context, updateExisting = true)
+                                refreshToken++
+                            }
+                            HealthAction.RUN_BACKGROUND_PROBE -> {
+                                ReliabilityProbe.scheduleBackgroundProbe(context)
+                                refreshToken++
+                            }
+                            HealthAction.ARM_REBOOT_PROBE -> {
+                                ReliabilityProbe.armRebootProbe(context)
+                                refreshToken++
+                            }
+                            else -> openHealthAction(context, action)
+                        }
+                    }
                 )
             }
         }
@@ -365,6 +382,9 @@ private fun openHealthAction(context: Context, action: HealthAction) {
         }
         HealthAction.BATTERY_SETTINGS -> Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
         HealthAction.APP_SETTINGS -> appDetailsIntent(context)
+        HealthAction.REPAIR_BACKGROUND_JOBS,
+        HealthAction.RUN_BACKGROUND_PROBE,
+        HealthAction.ARM_REBOOT_PROBE -> return
     }
     runCatching { context.startActivity(intent) }
         .recoverCatching { context.startActivity(appDetailsIntent(context)) }

@@ -427,3 +427,7 @@ Added the user-facing Phase 0 reliability dashboard under Settings. System Healt
 
 Refined the Session 35B interaction optimization after the hard background pause proved visually awkward during scrolling. Animated backgrounds now keep a continuous virtual animation clock, smoothly ease down to a reduced playback speed and lower publish cadence while content is moving, then ease back to normal after the gesture. This keeps foreground scroll frames prioritized without the visible stop/resume effect. No database or backup schema change.
 
+
+## Session 35F — Phase 0C Recovery Hardening (v2.9.4)
+
+Phase 0 reliability now has a single background-job scheduler reused by normal startup, backup restore, reboot, app replacement, and clock/time-zone changes. System Health can repair missing jobs directly and includes a two-minute background execution probe plus an arm-and-reboot recovery probe, making the remaining Android reliability checks testable on the real phone. Backup restore now performs SQLite `quick_check` and `foreign_key_check` inside the Room transaction before commit so a failed post-restore integrity check rolls the restore back. The remaining Phase 0 gate is primarily real-device soak testing plus the one-week stability exit condition.

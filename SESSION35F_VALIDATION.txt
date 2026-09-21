@@ -1,0 +1,27 @@
+Session 35F — Phase 0C Recovery Hardening
+Punla v2.9.4 / versionCode 28
+
+Static validation performed in the editing environment:
+
+PASS AndroidManifest/resources XML parse
+PASS bundled root JSON examples parse
+PASS no explicit androidx.compose.foundation.layout.weight import remains
+PASS BOOT_COMPLETED / MY_PACKAGE_REPLACED / TIME_SET / TIMEZONE_CHANGED recovery actions declared
+PASS CoreReliabilityScheduler source present
+PASS background/reboot ReliabilityProbe source present
+PASS backup restore transaction includes PRAGMA quick_check(1)
+PASS backup restore transaction includes PRAGMA foreign_key_check
+PASS Kotlin delimiter/string/comment structural scan across main source
+PASS changed Kotlin files contain no trailing whitespace
+PASS kotlinc parser smoke emitted no syntax diagnostics
+
+The kotlinc smoke intentionally lacks the Android/Compose dependency classpath, so unresolved Android symbols are expected and are not treated as a build result.
+
+Not run here:
+- assembleDebug / KSP Android build (package has no gradlew or gradle-wrapper.jar and this environment has no configured Android SDK project toolchain)
+- real-device background probe
+- real-device reboot probe
+- Doze/battery-saver soak
+- uninstall/reinstall/restore soak
+
+GitHub Actions assembleDebug remains the compile gate. The new System Health probes are the intended real-device Phase 0 validation path after installation.

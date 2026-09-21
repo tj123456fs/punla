@@ -15,9 +15,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -116,16 +113,11 @@ import com.uplb.punla.ui.theme.appBackground
 import com.uplb.punla.ui.theme.PunlaDisplay
 import com.uplb.punla.ui.theme.PunlaMono
 import com.uplb.punla.ui.theme.PunlaTheme
-import com.uplb.punla.worker.BackupNudgeWorker
-import com.uplb.punla.worker.ClassReminderWorker
-import com.uplb.punla.worker.StudyNudgeWorker
 import com.uplb.punla.worker.ClassDayNotificationScheduler
-import com.uplb.punla.worker.AttendanceAutoLogScheduler
-import com.uplb.punla.worker.ReminderScheduler
+import com.uplb.punla.worker.CoreReliabilityScheduler
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import java.util.concurrent.TimeUnit
 import com.uplb.punla.ui.screens.CampusFullMapScreen
 
 
@@ -292,49 +284,9 @@ class MainActivity : ComponentActivity() {
         intent?.getStringExtra(EXTRA_MAP_QUERY)?.let(vm::searchOnMap)
         notificationPermissionGrantedState.value = hasNotificationPermission()
 
-        // Daily deadline, budget, and checklist checks share one
-        // locally learned delivery hour when enough interaction history exists.
-        ReminderScheduler.scheduleDaily(this)
-
-        // Class-start reminders need a much tighter cadence than the daily
-        // deadline check — 15 minutes is WorkManager's minimum periodic
-        // interval, which conveniently matches the reminder window.
-        val classReminderRequest = PeriodicWorkRequestBuilder<ClassReminderWorker>(15, TimeUnit.MINUTES)
-            .build()
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "class_reminder_work",
-            ExistingPeriodicWorkPolicy.KEEP,
-            classReminderRequest
-        )
-
-        // Contextual study cues (before/after class + one evening queue summary).
-        val studyNudgeRequest = PeriodicWorkRequestBuilder<StudyNudgeWorker>(30, TimeUnit.MINUTES).build()
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "study_nudge_work", ExistingPeriodicWorkPolicy.KEEP, studyNudgeRequest
-        )
-
-        // One low-priority card evolves from "leave soon" to current class,
-        // free time, and end-of-day. A system chronometer renders the live
-        // countdown without waking Punla every minute.
-        if (vm.notificationsEnabled && vm.classDayNotificationEnabled) {
-            ClassDayNotificationScheduler.ensureScheduled(this)
-        } else {
-            ClassDayNotificationScheduler.cancel(this)
-        }
-
-        // Attendance automation is independent of notification permission.
-        // WorkManager keeps this schedule across process death and reboot.
-        AttendanceAutoLogScheduler.sync(this, vm.autoAttendanceEnabled)
-
-        // Roadmap #6 — weekly check for whether it's time to nudge a backup
-        // (the worker itself decides whether a nudge is actually due).
-        val backupNudgeRequest = PeriodicWorkRequestBuilder<BackupNudgeWorker>(7, TimeUnit.DAYS)
-            .build()
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "backup_nudge_work",
-            ExistingPeriodicWorkPolicy.KEEP,
-            backupNudgeRequest
-        )
+        // Keep every persistent worker registration in one recovery-safe path.
+        // The same scheduler is reused after reboot, package replacement, and restore.
+        CoreReliabilityScheduler.ensureScheduled(this)
 
         setContent {
             // Resolves against the live system setting so ThemeMode.SYSTEM
