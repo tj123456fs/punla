@@ -82,6 +82,7 @@ fun DashboardScreen(
     val flashcards by vm.flashcards.collectAsStateWithLifecycle()
     val mistakes by vm.mistakeRecords.collectAsStateWithLifecycle()
     val studyPlan by vm.studyPlanItems.collectAsStateWithLifecycle()
+    val studentState by vm.studentState.collectAsStateWithLifecycle()
     // Roadmap C — gates "No classes scheduled" / "Nothing due" / weekly
     // empty state so they don't flash for one frame before Room's first
     // real emission lands on a cold launch.
@@ -131,7 +132,11 @@ fun DashboardScreen(
         locateFailure = null
         fetchOneShotLocation(
             context,
-            onResult = { lat, lon, _ -> userLoc = lat to lon; locating = false },
+            onResult = { lat, lon, _ ->
+                userLoc = lat to lon
+                vm.updateStudentLocation(lat, lon)
+                locating = false
+            },
             onError = { reason -> locating = false; locateFailure = reason }
         )
     }
@@ -168,7 +173,7 @@ fun DashboardScreen(
         vm.repo.projectedFixedCommitmentsFromRules(expenseRules, now, monthEnd)
     }
     val budgetDaysRemaining = (ChronoUnit.DAYS.between(now, monthEnd) + 1).coerceAtLeast(1)
-    val safeToday = if (budget > 0.0) (remaining - upcomingFixedCommitments) / budgetDaysRemaining else 0.0
+    val safeToday = studentState.budget.safeToSpendToday
 
     // Roadmap - Dashboard Redesign #1: quick-glance stat row derived counts.
     // All sourced from state already collected above - no new queries.
@@ -184,14 +189,8 @@ fun DashboardScreen(
         val todayAbbrev = dayAbbrevMap[LocalDate.now().dayOfWeek]
         classes.filter { it.day == todayAbbrev }
     }
-    val deadlinesThisWeek = remember(deadlines) {
-        deadlines.filter {
-            !it.done && runCatching {
-                val days = ChronoUnit.DAYS.between(LocalDate.now(), LocalDate.parse(it.due))
-                days in 0..7
-            }.getOrDefault(false)
-        }
-    }
+    // Shared context owns the canonical seven-day upcoming-deadline window.
+    val deadlinesThisWeek = studentState.upcomingDeadlines
     val nearLimitClasses = remember(classes) {
         classes.count { it.absences >= it.allowedAbsences() - 1 }
     }

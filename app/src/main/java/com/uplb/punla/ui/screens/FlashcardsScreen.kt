@@ -823,16 +823,29 @@ private fun StudyDeckView(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                 ) {
                     Box(Modifier.fillMaxWidth().heightIn(min = 310.dp).padding(26.dp), contentAlignment = Alignment.Center) {
-                        AnimatedContent(targetState = revealed, label = "flashcardReveal") { showBack ->
+                        AnimatedContent(targetState = card.id to revealed, label = "flashcardReveal") { (targetCardId, showBack) ->
+                            val renderedCard = queue.firstOrNull { it.id == targetCardId } ?: card
+                            val renderedIsCloze = renderedCard.cardType == FlashcardTypes.CLOZE && ClozeText.hasCloze(renderedCard.front)
+                            val renderedReversed = !renderedIsCloze && renderedCard.reverseEnabled && renderedCard.reviewCount % 2 == 1
+                            val renderedQuestionText = when {
+                                renderedIsCloze -> ClozeText.question(renderedCard.front)
+                                renderedReversed -> renderedCard.back
+                                else -> renderedCard.front
+                            }
+                            val renderedAnswerText = when {
+                                renderedIsCloze -> listOf(ClozeText.revealed(renderedCard.front), renderedCard.back).filter { it.isNotBlank() }.joinToString("\n\n")
+                                renderedReversed -> renderedCard.front
+                                else -> renderedCard.back
+                            }
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                if (!card.imageUri.isNullOrBlank()) {
-                                    FlashcardStudyImage(card = card, revealed = showBack)
+                                if (!renderedCard.imageUri.isNullOrBlank()) {
+                                    FlashcardStudyImage(card = renderedCard, revealed = showBack)
                                     Spacer(Modifier.height(14.dp))
                                 }
-                                Text(if (showBack) "ANSWER" else if (isCloze) "FILL THE BLANK" else if (reversed) "REVERSE" else "QUESTION", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                                Text(if (showBack) "ANSWER" else if (renderedIsCloze) "FILL THE BLANK" else if (renderedReversed) "REVERSE" else "QUESTION", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                                 Spacer(Modifier.height(18.dp))
-                                Text(if (showBack) answerText else questionText, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                                if (!showBack) card.hint?.takeIf { it.isNotBlank() }?.let {
+                                Text(if (showBack) renderedAnswerText else renderedQuestionText, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                                if (!showBack) renderedCard.hint?.takeIf { it.isNotBlank() }?.let {
                                     Spacer(Modifier.height(18.dp))
                                     Text("Hint: $it", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }

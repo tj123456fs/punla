@@ -8,6 +8,9 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.room.withTransaction
 import androidx.lifecycle.viewModelScope
+import com.uplb.punla.context.EnergyLevel
+import com.uplb.punla.context.StudentContextEngine
+import com.uplb.punla.context.StudentState
 import com.uplb.punla.data.BackgroundStyle
 import com.uplb.punla.data.BudgetPeriod
 import com.uplb.punla.data.ChecklistDefaults
@@ -88,6 +91,30 @@ import org.json.JSONObject
 class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     private val db = PunlaDatabase.get(app)
     val repo = PunlaRepository(app)
+
+    private val studentContextEngine = StudentContextEngine.get(app)
+    val studentState: StateFlow<StudentState> = studentContextEngine.state
+
+    fun updateStudentEnergy(level: EnergyLevel) {
+        studentContextEngine.updateEnergy(level)
+    }
+
+    fun updateStudentLocation(
+        latitude: Double,
+        longitude: Double,
+        accuracyMeters: Float? = null,
+        capturedAtEpochMillis: Long = System.currentTimeMillis()
+    ) {
+        studentContextEngine.updateLocation(latitude, longitude, accuracyMeters, capturedAtEpochMillis)
+    }
+
+    fun clearStudentLocation() {
+        studentContextEngine.clearLocation()
+    }
+
+    fun refreshStudentContext() {
+        studentContextEngine.refreshNow()
+    }
 
     // Roadmap C — separate "has Room actually emitted yet" flags from the
     // lists themselves. A freshly-emptied list and the emptyList() default
@@ -196,12 +223,20 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     val allCourses: StateFlow<List<GradeCourse>> = db.gradesDao().observeAllCourses()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val nextClassFlow: Flow<ClassSession?> = classes.map { list ->
-        repo.nextClassFromList(list)
+    /**
+     * Compatibility flows kept for existing Dashboard/Map callers, but the
+     * canonical "what is next?" decision now comes from Student Context.
+     * Mapping back by stable Room ID preserves the existing ClassSession /
+     * Deadline API without re-running separate schedule/deadline logic.
+     */
+    val nextClassFlow: Flow<ClassSession?> = kotlinx.coroutines.flow.combine(studentState, classes) { state, list ->
+        val id = state.nextClass?.sessionId
+        id?.let { sessionId -> list.firstOrNull { it.id == sessionId } }
     }
 
-    val nextDeadlineFlow: Flow<Deadline?> = deadlines.map { list ->
-        list.filter { !it.done }.minByOrNull { it.due }
+    val nextDeadlineFlow: Flow<Deadline?> = kotlinx.coroutines.flow.combine(studentState, deadlines) { state, list ->
+        val id = state.upcomingDeadlines.firstOrNull()?.id
+        id?.let { deadlineId -> list.firstOrNull { it.id == deadlineId && !it.done } }
     }
 
     // ---- Campus multi-stop route plan ----
@@ -453,12 +488,14 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     fun updateBudgetPeriod(period: BudgetPeriod) {
         repo.budgetPeriod = period
         budgetPeriod = period
+        studentContextEngine.refreshNow()
         viewModelScope.launch { WidgetRefresher.refreshAll(getApplication()) }
     }
 
     fun updateWeekStartDay(day: java.time.DayOfWeek) {
         repo.weekStartDay = day
         weekStartDay = day
+        studentContextEngine.refreshNow()
         viewModelScope.launch { WidgetRefresher.refreshAll(getApplication()) }
     }
 
@@ -467,12 +504,14 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         if (amount != null && (!amount.isFinite() || amount <= 0.0 || amount > Float.MAX_VALUE.toDouble())) return
         repo.weeklyBudgetOverride = amount
         weeklyBudgetOverride = repo.weeklyBudgetOverride
+        studentContextEngine.refreshNow()
         viewModelScope.launch { WidgetRefresher.refreshAll(getApplication()) }
     }
 
     fun updateWeeklyRolloverEnabled(enabled: Boolean) {
         repo.weeklyRolloverEnabled = enabled
         weeklyRolloverEnabled = enabled
+        studentContextEngine.refreshNow()
         viewModelScope.launch { WidgetRefresher.refreshAll(getApplication()) }
     }
 
@@ -525,8 +564,12 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     fun addOrUpdateClass(session: ClassSession) = viewModelScope.launch {
         val start = runCatching { java.time.LocalTime.parse(session.start) }.getOrNull() ?: return@launch
         val end = runCatching { java.time.LocalTime.parse(session.end) }.getOrNull() ?: return@launch
+        // A weekly class may legally cross midnight (for example 22:00 ->
+        // 01:00). StudentContextReducer and ClassDayTimeline already model
+        // that as an end on the following day, so validation only rejects a
+        // zero-length / ambiguous equal-time block here.
         if (session.code.isBlank() || session.day !in setOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun") ||
-            session.type !in setOf("lec", "lab") || !end.isAfter(start) || session.absences < 0
+            session.type !in setOf("lec", "lab") || end == start || session.absences < 0
         ) return@launch
         val timeFormat = java.time.format.DateTimeFormatter.ofPattern("HH:mm")
         db.classSessionDao().upsert(
@@ -638,6 +681,7 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         if (!amount.isFinite() || amount < 0.0 || amount > Float.MAX_VALUE.toDouble()) return@launch
         repo.monthlyBudget = amount
         monthlyBudget = repo.monthlyBudget
+        studentContextEngine.refreshNow()
         WidgetRefresher.refreshAll(getApplication())
     }
 
@@ -1651,9 +1695,9 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         weeklyStudyGoalMinutes = repo.weeklyStudyGoalMinutes
     }
 
-    /** Today's studied minutes, recomputed whenever the session log changes. */
-    val todayStudyMinutes: StateFlow<Int> = studySessions
-        .map { repo.studySecondsOn(it, java.time.LocalDate.now()) / 60 }
+    /** Today's studied minutes from the canonical Student Context snapshot. */
+    val todayStudyMinutes: StateFlow<Int> = studentState
+        .map { it.study.minutesToday }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     /** Consecutive-day streak of meeting the daily goal, see

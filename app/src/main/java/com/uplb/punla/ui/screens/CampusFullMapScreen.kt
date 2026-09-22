@@ -208,6 +208,7 @@ fun CampusFullMapScreen(vm: PunlaViewModel) {
             context,
             onResult = { lat, lon, _ ->
                 userLoc = lat to lon
+                vm.updateStudentLocation(lat, lon)
                 locateFailure = null
                 if (recenterCamera) {
                     map?.cameraPosition = CameraPosition.Builder()
@@ -230,8 +231,15 @@ fun CampusFullMapScreen(vm: PunlaViewModel) {
     // so the numbers next to it stay just as live. See `rememberLiveLocation`
     // in LocationUtils.kt for why this is scoped to this screen only.
     val liveLocation by rememberLiveLocation(enabled = hasPermission)
-    LaunchedEffect(liveLocation) {
-        liveLocation?.let { userLoc = it }
+    LaunchedEffect(liveLocation, hasPermission) {
+        if (!hasPermission) {
+            vm.clearStudentLocation()
+        } else {
+            liveLocation?.let { (lat, lon) ->
+                userLoc = lat to lon
+                vm.updateStudentLocation(lat, lon)
+            }
+        }
     }
 
     val permanentlyDenied = locateFailure == LocationFailure.PERMISSION_DENIED &&
