@@ -421,7 +421,7 @@ private fun DeadlineRow(d: Deadline, vm: PunlaViewModel, onDelete: (Deadline) ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 d.title,
-                                style = MaterialTheme.typography.titleLarge.copy(fontFamily = PunlaDisplay, fontSize = 15.5.sp),
+                                style = MaterialTheme.typography.titleLarge.copy(fontSize = 15.5.sp),
                                 color = if (d.done) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
                             )
                             if (d.isRecurring) {

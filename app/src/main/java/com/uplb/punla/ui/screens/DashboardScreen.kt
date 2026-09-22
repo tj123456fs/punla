@@ -508,7 +508,7 @@ fun DashboardScreen(
                                 val eh = runCatching { LocalTime.parse(c.end, DateTimeFormatter.ofPattern("HH:mm")).format(DateTimeFormatter.ofPattern("h:mm a")) }.getOrDefault(c.end)
                                 Text(
                                     c.code,
-                                    style = MaterialTheme.typography.titleLarge.copy(fontFamily = PunlaDisplay)
+                                    style = MaterialTheme.typography.titleLarge
                                 )
                                 Text(
                                     "$sh – $eh · ${c.room ?: "Room TBA"}",
@@ -758,7 +758,7 @@ fun DashboardScreen(
                                 }
                                 Text(
                                     d.title,
-                                    style = MaterialTheme.typography.titleLarge.copy(fontFamily = PunlaDisplay)
+                                    style = MaterialTheme.typography.titleLarge
                                 )
                                 Text(
                                     "${d.course ?: d.type} · $dayLabel · ${d.priority} Priority",
@@ -842,7 +842,7 @@ fun ClassItemCompact(c: ClassSession) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text(c.code, style = MaterialTheme.typography.bodyLarge.copy(fontFamily = PunlaDisplay, fontWeight = FontWeight.SemiBold))
+                    Text(c.code, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold))
                     Text(c.room ?: "Room TBA", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Text(
@@ -883,7 +883,7 @@ fun DeadlineItemCompact(d: Deadline) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text(d.title, style = MaterialTheme.typography.bodyLarge.copy(fontFamily = PunlaDisplay, fontWeight = FontWeight.SemiBold))
+                    Text(d.title, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold))
                     Text(d.course ?: d.type, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Tag(
