@@ -113,9 +113,9 @@ data class CourseContext(
 )
 
 /**
- * Reserved for the optional location-aware part of Phase 1. The context engine
- * exposes the slot now, but location collection remains opt-in and is not
- * started by this session.
+ * Optional, short-lived location context supplied by Punla's existing campus
+ * location surfaces. The Student Context Engine never starts GPS on its own;
+ * permission and collection remain explicitly user-driven.
  */
 data class LocationContext(
     val latitude: Double,

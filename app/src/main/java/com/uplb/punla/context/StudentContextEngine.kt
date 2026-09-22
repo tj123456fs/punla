@@ -36,6 +36,8 @@ class StudentContextEngine private constructor(context: Context) {
     private val repository = PunlaRepository(appContext)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val refreshRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    private val energy = MutableStateFlow(EnergyLevel.UNKNOWN)
+    private val location = MutableStateFlow<LocationContext?>(null)
 
     private val _state = MutableStateFlow(StudentState.empty())
     val state: StateFlow<StudentState> = _state.asStateFlow()
@@ -79,13 +81,19 @@ class StudentContextEngine private constructor(context: Context) {
                 minuteTicker(),
                 refreshRequests.map { System.currentTimeMillis() }
             )
+            val ambient = combine(energy, location) { level, fix ->
+                AmbientSources(level, fix)
+            }
+            val timing = combine(clock, ambient) { now, ambientSources ->
+                TimingSources(now, ambientSources)
+            }
 
-            combine(schedule, activity, learning, planning, clock) {
+            combine(schedule, activity, learning, planning, timing) {
                     scheduleSources,
                     activitySources,
                     learningSources,
                     planningSources,
-                    now ->
+                    timingSources ->
                 StudentContextReducer.Inputs(
                     classes = scheduleSources.classes,
                     deadlines = scheduleSources.deadlines,
@@ -99,8 +107,10 @@ class StudentContextEngine private constructor(context: Context) {
                     quizAttempts = learningSources.quizAttempts,
                     mistakes = learningSources.mistakes,
                     planItems = planningSources.planItems,
-                    reviewProgress = planningSources.reviewProgress
-                ) to now
+                    reviewProgress = planningSources.reviewProgress,
+                    energy = timingSources.ambient.energy,
+                    location = timingSources.ambient.location
+                ) to timingSources.now
             }.collect { (inputs, now) ->
                 runCatching {
                     StudentContextReducer.reduce(
@@ -121,6 +131,37 @@ class StudentContextEngine private constructor(context: Context) {
                 }
             }
         }
+    }
+
+    /** Current self-reported energy is intentionally ephemeral in Phase 1. */
+    fun updateEnergy(level: EnergyLevel) {
+        energy.value = level
+    }
+
+    /**
+     * Supplies an opt-in location fix from an existing location-aware screen.
+     * The engine never starts GPS itself; callers remain in control of Android
+     * permissions and battery usage. Invalid fixes are ignored.
+     */
+    fun updateLocation(
+        latitude: Double,
+        longitude: Double,
+        accuracyMeters: Float? = null,
+        capturedAtEpochMillis: Long = System.currentTimeMillis()
+    ) {
+        if (!latitude.isFinite() || latitude !in -90.0..90.0) return
+        if (!longitude.isFinite() || longitude !in -180.0..180.0) return
+        if (accuracyMeters != null && (!accuracyMeters.isFinite() || accuracyMeters < 0f)) return
+        location.value = LocationContext(
+            latitude = latitude,
+            longitude = longitude,
+            accuracyMeters = accuracyMeters,
+            capturedAtEpochMillis = capturedAtEpochMillis
+        )
+    }
+
+    fun clearLocation() {
+        location.value = null
     }
 
     /**
@@ -162,6 +203,16 @@ class StudentContextEngine private constructor(context: Context) {
     private data class PlanningSources(
         val planItems: List<com.uplb.punla.data.entity.StudyPlanItem>,
         val reviewProgress: List<com.uplb.punla.data.entity.StudyReviewProgress>
+    )
+
+    private data class AmbientSources(
+        val energy: EnergyLevel,
+        val location: LocationContext?
+    )
+
+    private data class TimingSources(
+        val now: Long,
+        val ambient: AmbientSources
     )
 
     companion object {

@@ -1,7 +1,10 @@
 package com.uplb.punla.context
 
 import com.uplb.punla.data.BudgetPeriod
+import com.uplb.punla.data.CampusDirectory
 import com.uplb.punla.data.PunlaRepository
+import com.uplb.punla.data.haversineMeters
+import com.uplb.punla.data.walkingEtaMinutes
 import com.uplb.punla.data.entity.AttendanceRecord
 import com.uplb.punla.data.entity.AttendanceStatus
 import com.uplb.punla.data.entity.ClassSession
@@ -53,7 +56,9 @@ internal object StudentContextReducer {
         val quizAttempts: List<QuizAttempt>,
         val mistakes: List<MistakeRecord>,
         val planItems: List<StudyPlanItem>,
-        val reviewProgress: List<StudyReviewProgress>
+        val reviewProgress: List<StudyReviewProgress>,
+        val energy: EnergyLevel = EnergyLevel.UNKNOWN,
+        val location: LocationContext? = null
     )
 
     fun reduce(
@@ -66,12 +71,18 @@ internal object StudentContextReducer {
         val today = now.toLocalDate()
         val current = findCurrentClass(inputs.classes, now, zoneId)
         val next = findNextClass(inputs.classes, now, zoneId)
-        val freeMinutes = next?.let {
-            Duration.between(now, Instant.ofEpochMilli(it.startsAtEpochMillis).atZone(zoneId).toLocalDateTime())
-                .toMinutes()
-                .coerceAtLeast(0L)
-                .coerceAtMost(Int.MAX_VALUE.toLong())
-                .toInt()
+        // A student who is currently in class does not have a free block right
+        // now, even if another class is several hours away. This keeps the
+        // shared context honest for downstream recommendation logic.
+        val freeMinutes = freeMinutesBeforeNextCommitment(current, next, now, zoneId)
+        val activeLocation = inputs.location?.takeIf { isLocationFresh(it, nowEpochMillis) }
+        val travelBuffer = if (current == null) {
+            estimatedTravelBufferMinutes(next, activeLocation, nowEpochMillis)
+        } else {
+            null
+        }
+        val usableFreeMinutes = freeMinutes?.let {
+            (it - (travelBuffer ?: 0)).coerceAtLeast(0)
         }
 
         val pendingDeadlines = inputs.deadlines
@@ -138,17 +149,17 @@ internal object StudentContextReducer {
             currentClass = current,
             nextClass = next,
             freeMinutesBeforeNextCommitment = freeMinutes,
-            travelBufferMinutes = null,
-            usableFreeMinutes = freeMinutes,
+            travelBufferMinutes = travelBuffer,
+            usableFreeMinutes = usableFreeMinutes,
             pendingTasks = pendingTasks,
             upcomingDeadlines = deadlineContexts.filter { it.daysUntil in 0..7 },
             overdueWork = pendingTasks.filter { it.overdue },
-            energy = EnergyLevel.UNKNOWN,
+            energy = inputs.energy,
             study = study,
             attendance = attendance,
             budget = budget,
             courses = courses,
-            location = null
+            location = activeLocation
         )
     }
 
@@ -156,14 +167,23 @@ internal object StudentContextReducer {
         classes: List<ClassSession>,
         now: LocalDateTime,
         zoneId: ZoneId = ZoneId.systemDefault()
-    ): ClassContext? = classes.asSequence()
-        .filter { it.day == dayNames[now.dayOfWeek] }
-        .mapNotNull { it.toOccurrence(now.toLocalDate(), zoneId) }
-        .filter { occurrence ->
-            nowEpoch(now, zoneId) >= occurrence.startsAtEpochMillis &&
-                nowEpoch(now, zoneId) < occurrence.endsAtEpochMillis
-        }
-        .minByOrNull { it.startsAtEpochMillis }
+    ): ClassContext? {
+        val nowMs = nowEpoch(now, zoneId)
+        // Include yesterday as a candidate because a class stored as e.g.
+        // Mon 22:00-01:00 is still current after midnight on Tuesday.
+        return sequenceOf(now.toLocalDate(), now.toLocalDate().minusDays(1))
+            .flatMap { date ->
+                val day = dayNames[date.dayOfWeek]
+                classes.asSequence()
+                    .filter { it.day == day }
+                    .mapNotNull { it.toOccurrence(date, zoneId) }
+            }
+            .filter { occurrence ->
+                nowMs >= occurrence.startsAtEpochMillis &&
+                    nowMs < occurrence.endsAtEpochMillis
+            }
+            .minByOrNull { it.startsAtEpochMillis }
+    }
 
     internal fun findNextClass(
         classes: List<ClassSession>,
@@ -284,10 +304,13 @@ internal object StudentContextReducer {
         val monthlySafe = if (monthlyBudget > 0.0) {
             repository.monthlySafeToSpendPerDayFromList(validExpenses, rules, today)
         } else null
-        val weeklySafe = if (repository.budgetPeriod != BudgetPeriod.MONTHLY) {
-            val daysRemaining = (ChronoUnit.DAYS.between(today, weekEnd) + 1L).coerceAtLeast(1L)
-            (weeklyBudget - spentWeek) / daysRemaining
-        } else null
+        val daysRemainingInWeek = (ChronoUnit.DAYS.between(today, weekEnd) + 1L).coerceAtLeast(1L)
+        val weeklySafe = weeklySafeToSpend(
+            weeklyBudget = weeklyBudget,
+            spentWeek = spentWeek,
+            daysRemaining = daysRemainingInWeek,
+            budgetPeriod = repository.budgetPeriod
+        )
         val safe = when (repository.budgetPeriod) {
             BudgetPeriod.MONTHLY -> monthlySafe ?: 0.0
             BudgetPeriod.WEEKLY -> weeklySafe ?: 0.0
@@ -312,18 +335,9 @@ internal object StudentContextReducer {
         zoneId: ZoneId
     ): List<CourseContext> {
         val sevenDayStart = today.minusDays(6)
-        val codes = buildSet {
-            inputs.classes.mapTo(this) { it.code.trim() }
-            inputs.deadlines.mapNotNullTo(this) { it.course?.trim()?.takeIf(String::isNotBlank) }
-            inputs.studySessions.mapNotNullTo(this) { it.courseCode?.trim()?.takeIf(String::isNotBlank) }
-            inputs.decks.mapNotNullTo(this) { it.courseCode?.trim()?.takeIf(String::isNotBlank) }
-            inputs.quizzes.mapNotNullTo(this) { it.courseCode?.trim()?.takeIf(String::isNotBlank) }
-            inputs.mistakes.mapNotNullTo(this) { it.courseCode?.trim()?.takeIf(String::isNotBlank) }
-            inputs.planItems.mapNotNullTo(this) { it.courseCode?.trim()?.takeIf(String::isNotBlank) }
-            inputs.reviewProgress.mapTo(this) { it.courseCode.trim() }
-        }.filter { it.isNotBlank() }
+        val codes = canonicalCourseCodes(inputs)
 
-        return codes.sortedWith(String.CASE_INSENSITIVE_ORDER).map { code ->
+        return codes.map { code ->
             val deadlines = inputs.deadlines.filter { !it.done && it.course.sameCode(code) }
             val studySeconds = inputs.studySessions.sumOf { session ->
                 if (!session.courseCode.sameCode(code)) return@sumOf 0
@@ -354,6 +368,86 @@ internal object StudentContextReducer {
             )
         }
     }
+
+
+    internal fun canonicalCourseCodes(inputs: Inputs): List<String> {
+        val codesByKey = linkedMapOf<String, String>()
+
+        fun add(raw: String?) {
+            val display = raw?.trim()?.takeIf { it.isNotBlank() } ?: return
+            val key = display.uppercase(java.util.Locale.ROOT)
+            codesByKey.putIfAbsent(key, display)
+        }
+
+        inputs.classes.forEach { add(it.code) }
+        inputs.deadlines.forEach { add(it.course) }
+        inputs.studySessions.forEach { add(it.courseCode) }
+        inputs.decks.forEach { add(it.courseCode) }
+        inputs.quizzes.forEach { add(it.courseCode) }
+        inputs.mistakes.forEach { add(it.courseCode) }
+        inputs.planItems.forEach { add(it.courseCode) }
+        inputs.reviewProgress.forEach { add(it.courseCode) }
+
+        return codesByKey.values.sortedWith(String.CASE_INSENSITIVE_ORDER)
+    }
+
+    internal fun weeklySafeToSpend(
+        weeklyBudget: Double,
+        spentWeek: Double,
+        daysRemaining: Long,
+        budgetPeriod: BudgetPeriod
+    ): Double? = if (weeklyBudget > 0.0 && budgetPeriod != BudgetPeriod.MONTHLY) {
+        (weeklyBudget - spentWeek) / daysRemaining.coerceAtLeast(1L)
+    } else {
+        null
+    }
+
+    internal fun freeMinutesBeforeNextCommitment(
+        currentClass: ClassContext?,
+        nextClass: ClassContext?,
+        now: LocalDateTime,
+        zoneId: ZoneId = ZoneId.systemDefault()
+    ): Int? {
+        if (currentClass != null) return 0
+        val next = nextClass ?: return null
+        return Duration.between(
+            now,
+            Instant.ofEpochMilli(next.startsAtEpochMillis).atZone(zoneId).toLocalDateTime()
+        ).toMinutes()
+            .coerceAtLeast(0L)
+            .coerceAtMost(Int.MAX_VALUE.toLong())
+            .toInt()
+    }
+
+    internal fun isLocationFresh(
+        location: LocationContext,
+        nowEpochMillis: Long
+    ): Boolean {
+        val age = nowEpochMillis - location.capturedAtEpochMillis
+        return age in 0..LOCATION_MAX_AGE_MILLIS
+    }
+
+    internal fun estimatedTravelBufferMinutes(
+        nextClass: ClassContext?,
+        location: LocationContext?,
+        nowEpochMillis: Long
+    ): Int? {
+        val freshLocation = location?.takeIf { isLocationFresh(it, nowEpochMillis) } ?: return null
+        val destination = CampusDirectory.findBuildingForRoom(nextClass?.room) ?: return null
+        val meters = haversineMeters(
+            freshLocation.latitude,
+            freshLocation.longitude,
+            destination.lat,
+            destination.lon
+        )
+        if (!meters.isFinite() || meters < 0.0) return null
+        // The context layer uses the same conservative campus walking estimate
+        // already used by Dashboard/Map. Network route fetching remains a UI
+        // concern; this local estimate is instant, offline, and deterministic.
+        return walkingEtaMinutes(meters)
+    }
+
+    private const val LOCATION_MAX_AGE_MILLIS = 15L * 60L * 1000L
 
     private fun nowEpoch(value: LocalDateTime, zoneId: ZoneId): Long =
         value.atZone(zoneId).toInstant().toEpochMilli()
