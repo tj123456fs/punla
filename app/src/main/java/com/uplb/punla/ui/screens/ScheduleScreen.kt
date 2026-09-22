@@ -39,7 +39,6 @@ import com.uplb.punla.data.entity.allowedAbsences
 import com.uplb.punla.ml.projectAttendanceRisk
 import com.uplb.punla.ui.PunlaViewModel
 import com.uplb.punla.ui.theme.LocalPunlaPalette
-import com.uplb.punla.ui.theme.PunlaDisplay
 import com.uplb.punla.ui.theme.PunlaMono
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -471,7 +470,7 @@ private fun ClassCard(
                         )
                         Text(
                             c.code,
-                            style = MaterialTheme.typography.titleLarge.copy(fontFamily = PunlaDisplay),
+                            style = MaterialTheme.typography.titleLarge,
                             modifier = Modifier.padding(top = 2.dp, bottom = 1.dp)
                         )
                     }

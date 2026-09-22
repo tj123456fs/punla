@@ -110,7 +110,7 @@ import com.uplb.punla.ui.screens.FlashcardsScreen
 import com.uplb.punla.ui.screens.QuizScreen
 import com.uplb.punla.ui.screens.StudyHubScreen
 import com.uplb.punla.ui.theme.appBackground
-import com.uplb.punla.ui.theme.PunlaDisplay
+import com.uplb.punla.ui.theme.punlaDisplayFamily
 import com.uplb.punla.ui.theme.PunlaMono
 import com.uplb.punla.ui.theme.PunlaTheme
 import com.uplb.punla.worker.ClassDayNotificationScheduler
@@ -608,10 +608,12 @@ fun PunlaApp(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Home, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text(
-                            "Punla",
-                            style = MaterialTheme.typography.headlineSmall.copy(fontFamily = PunlaDisplay)
-                        )
+                        Crossfade(targetState = vm.fontChoice, animationSpec = tween(180), label = "drawerFont") { choice ->
+                            Text(
+                                "Punla",
+                                style = MaterialTheme.typography.headlineSmall.copy(fontFamily = punlaDisplayFamily(choice))
+                            )
+                        }
                     }
                 }
                 HorizontalDivider()
@@ -688,10 +690,12 @@ fun PunlaApp(
             topBar = {
                 TopAppBar(
                     title = {
-                        Text(
-                            currentTitle,
-                            style = MaterialTheme.typography.headlineMedium.copy(fontFamily = PunlaDisplay)
-                        )
+                        Crossfade(targetState = vm.fontChoice, animationSpec = tween(180), label = "topbarFont") { choice ->
+                            Text(
+                                currentTitle,
+                                style = MaterialTheme.typography.headlineMedium.copy(fontFamily = punlaDisplayFamily(choice))
+                            )
+                        }
                     },
                     navigationIcon = {
                         if (showBackArrow) {

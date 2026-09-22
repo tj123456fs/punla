@@ -39,7 +39,6 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.uplb.punla.data.entity.Deadline
 import com.uplb.punla.ui.PunlaViewModel
-import com.uplb.punla.ui.theme.PunlaDisplay
 import com.uplb.punla.ui.theme.LocalPunlaPalette
 import java.time.LocalDate
 import java.time.YearMonth
@@ -195,7 +194,7 @@ fun DeadlineCalendarView(
         ) {
             Text(
                 text = "$monthLabel $yearLabel",
-                style = MaterialTheme.typography.titleLarge.copy(fontFamily = PunlaDisplay),
+                style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onBackground
             )
             Row {

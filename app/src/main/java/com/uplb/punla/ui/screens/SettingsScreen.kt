@@ -55,6 +55,8 @@ import com.uplb.punla.ui.theme.ThemeDescriptor
 import com.uplb.punla.ui.theme.PunlaBody
 import com.uplb.punla.ui.theme.PunlaDisplay
 import com.uplb.punla.ui.theme.PunlaMono
+import com.uplb.punla.ui.theme.PunlaPlayful
+import com.uplb.punla.ui.theme.punlaDisplayFamily
 import com.uplb.punla.ui.theme.LocalPunlaPalette
 import org.json.JSONArray
 import java.time.DayOfWeek
@@ -749,6 +751,30 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(Modifier.height(12.dp))
+                    androidx.compose.animation.Crossfade(
+                        targetState = vm.fontChoice,
+                        animationSpec = androidx.compose.animation.core.tween(220),
+                        label = "fontChoicePreview"
+                    ) { choice ->
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = MaterialTheme.shapes.small,
+                            color = MaterialTheme.colorScheme.surface
+                        ) {
+                            Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                                Text(
+                                    "Punla, but make it yours.",
+                                    style = MaterialTheme.typography.headlineSmall.copy(fontFamily = punlaDisplayFamily(choice))
+                                )
+                                Text(
+                                    "Headers change; long-form body text stays readable in the playful modes.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         FontOptionRow(
                             label = "Default",
@@ -777,6 +803,20 @@ fun SettingsScreen(
                             previewFamily = PunlaMono,
                             selected = vm.fontChoice == FontChoice.MONO,
                             onClick = { vm.updateFontChoice(FontChoice.MONO) }
+                        )
+                        FontOptionRow(
+                            label = "Playful",
+                            description = "Soft + wonky Fraunces headers with clean Inter body text.",
+                            previewFamily = PunlaPlayful,
+                            selected = vm.fontChoice == FontChoice.PLAYFUL,
+                            onClick = { vm.updateFontChoice(FontChoice.PLAYFUL) }
+                        )
+                        FontOptionRow(
+                            label = "Handwritten",
+                            description = "Cursive headers for a notebook feel, with readable Inter body text.",
+                            previewFamily = FontFamily.Cursive,
+                            selected = vm.fontChoice == FontChoice.HANDWRITTEN,
+                            onClick = { vm.updateFontChoice(FontChoice.HANDWRITTEN) }
                         )
                         FontOptionRow(
                             label = "System",

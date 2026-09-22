@@ -45,7 +45,6 @@ import com.uplb.punla.data.optimizeStopOrder
 import com.uplb.punla.data.optimizeStopOrderReal
 import com.uplb.punla.data.shouldShowLocationRationale
 import com.uplb.punla.ui.PunlaViewModel
-import com.uplb.punla.ui.theme.PunlaDisplay
 import com.uplb.punla.ui.theme.LocalPunlaPalette
 import kotlinx.coroutines.launch
 
@@ -356,7 +355,7 @@ fun CampusMapScreen(vm: PunlaViewModel, initialSearch: String = "", onOpenFullMa
                                 Column(Modifier.weight(1f)) {
                                     Text(
                                         b.name,
-                                        style = MaterialTheme.typography.titleLarge.copy(fontFamily = PunlaDisplay, fontSize = 16.sp),
+                                        style = MaterialTheme.typography.titleLarge.copy(fontSize = 16.sp),
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
                                     if (b.aka != null) {
@@ -449,7 +448,7 @@ fun CampusMapScreen(vm: PunlaViewModel, initialSearch: String = "", onOpenFullMa
                 ) {
                     Text(
                         activeBuilding.name,
-                        style = MaterialTheme.typography.titleLarge.copy(fontFamily = PunlaDisplay, fontSize = 16.sp),
+                        style = MaterialTheme.typography.titleLarge.copy(fontSize = 16.sp),
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.weight(1f)
                     )

@@ -96,7 +96,7 @@ fun BackgroundStyle.resolveForTheme(theme: ThemePreset): BackgroundStyle {
  * DEFAULT keeps the original look (Fraunces serif for headings, Inter sans
  * for body text); the rest pick a single family for both so the app reads
  * as more uniform. SYSTEM defers entirely to the device's default font. */
-enum class FontChoice { DEFAULT, SANS, SERIF, MONO, SYSTEM }
+enum class FontChoice { DEFAULT, SANS, SERIF, MONO, PLAYFUL, HANDWRITTEN, SYSTEM }
 
 /** Weekly Budgeting feature (WEEKLY_BUDGET_INSTRUCTIONS.md #2) — which
  * budget period(s) the Budget screen and widget show. MONTHLY is the
@@ -196,6 +196,8 @@ class PunlaRepository(context: Context) {
             "sans" -> FontChoice.SANS
             "serif" -> FontChoice.SERIF
             "mono" -> FontChoice.MONO
+            "playful" -> FontChoice.PLAYFUL
+            "handwritten" -> FontChoice.HANDWRITTEN
             "system" -> FontChoice.SYSTEM
             else -> FontChoice.DEFAULT
         }

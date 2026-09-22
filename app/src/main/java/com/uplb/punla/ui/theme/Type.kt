@@ -53,6 +53,45 @@ val PunlaDisplay = FontFamily(
     ),
 )
 
+/**
+ * A more expressive display cut made from the Fraunces variable font Punla
+ * already bundles. SOFT rounds the forms while WONK enables its playful
+ * alternates. Body copy intentionally stays Inter for long-reading comfort.
+ */
+@OptIn(ExperimentalTextApi::class)
+val PunlaPlayful = FontFamily(
+    Font(
+        R.font.fraunces_variable,
+        weight = FontWeight.Normal,
+        variationSettings = FontVariation.Settings(
+            FontVariation.weight(400),
+            FontVariation.opticalSizing(72.sp),
+            FontVariation.Setting("SOFT", 100f),
+            FontVariation.Setting("WONK", 1f),
+        )
+    ),
+    Font(
+        R.font.fraunces_variable,
+        weight = FontWeight.Medium,
+        variationSettings = FontVariation.Settings(
+            FontVariation.weight(500),
+            FontVariation.opticalSizing(72.sp),
+            FontVariation.Setting("SOFT", 100f),
+            FontVariation.Setting("WONK", 1f),
+        )
+    ),
+    Font(
+        R.font.fraunces_variable,
+        weight = FontWeight.SemiBold,
+        variationSettings = FontVariation.Settings(
+            FontVariation.weight(600),
+            FontVariation.opticalSizing(72.sp),
+            FontVariation.Setting("SOFT", 100f),
+            FontVariation.Setting("WONK", 1f),
+        )
+    ),
+)
+
 @OptIn(ExperimentalTextApi::class)
 val PunlaBody = FontFamily(
     Font(
@@ -84,11 +123,13 @@ val PunlaMono = FontFamily(
 )
 
 /** Display-slot family for each [FontChoice] — used for headlines/titles. */
-private fun displayFamilyFor(choice: FontChoice): FontFamily = when (choice) {
+fun punlaDisplayFamily(choice: FontChoice): FontFamily = when (choice) {
     FontChoice.DEFAULT -> PunlaDisplay
     FontChoice.SANS -> PunlaBody
     FontChoice.SERIF -> PunlaDisplay
     FontChoice.MONO -> PunlaMono
+    FontChoice.PLAYFUL -> PunlaPlayful
+    FontChoice.HANDWRITTEN -> FontFamily.Cursive
     FontChoice.SYSTEM -> FontFamily.Default
 }
 
@@ -98,6 +139,8 @@ private fun bodyFamilyFor(choice: FontChoice): FontFamily = when (choice) {
     FontChoice.SANS -> PunlaBody
     FontChoice.SERIF -> PunlaDisplay
     FontChoice.MONO -> PunlaMono
+    FontChoice.PLAYFUL -> PunlaBody
+    FontChoice.HANDWRITTEN -> PunlaBody
     FontChoice.SYSTEM -> FontFamily.Default
 }
 
@@ -112,7 +155,7 @@ private fun bodyFamilyFor(choice: FontChoice): FontFamily = when (choice) {
  * see recreate-punla-ui.md's changelog for the web selector each maps to.
  */
 fun punlaTypography(fontChoice: FontChoice = FontChoice.DEFAULT): Typography {
-    val Display = displayFamilyFor(fontChoice)
+    val Display = punlaDisplayFamily(fontChoice)
     val Body = bodyFamilyFor(fontChoice)
     return Typography(
     // .splash-name { font-family: Fraunces; font-size: 30px; font-weight: 600; line-height: 1.18 }

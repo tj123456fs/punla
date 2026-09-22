@@ -52,7 +52,6 @@ import com.uplb.punla.data.shouldShowLocationRationale
 import com.uplb.punla.data.walkingEtaMinutes
 import kotlin.math.roundToInt
 import com.uplb.punla.ui.PunlaViewModel
-import com.uplb.punla.ui.theme.PunlaDisplay
 import com.uplb.punla.ui.theme.PunlaMono
 import com.uplb.punla.ui.theme.LocalPunlaPalette
 import java.time.LocalDate
@@ -266,7 +265,7 @@ fun DashboardScreen(
                     Spacer(Modifier.height(4.dp))
                     Text(
                         displayGreeting,
-                        style = MaterialTheme.typography.headlineSmall.copy(fontFamily = PunlaDisplay),
+                        style = MaterialTheme.typography.headlineSmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                     Spacer(Modifier.height(8.dp))
@@ -277,6 +276,25 @@ fun DashboardScreen(
                     )
                 }
             }
+            Spacer(Modifier.height(10.dp))
+        }
+
+        // Phase 2A — Student Context Engine becomes a compact Today surface.
+        // Keep it as one card so Home answers Now / Next / Recommended / Later
+        // without turning into another giant dashboard.
+        item {
+            TodayOverviewCard(
+                state = studentState,
+                recommendationTitle = activeSuggestion?.let { "Focus on ${it.deadline.title}" },
+                recommendationDetail = activeSuggestion?.let { s ->
+                    "${s.course ?: "Study"} · ${s.dayLabel} ${fmtTime(s.slotStart)}–${fmtTime(s.slotEnd)}"
+                },
+                recommendationCourse = activeSuggestion?.course,
+                onOpenSchedule = onOpenSchedule,
+                onOpenDeadlines = onOpenDeadlines,
+                onOpenStudy = onOpenStudy,
+                onStartFocus = onOpenPomodoro
+            )
             Spacer(Modifier.height(10.dp))
         }
 

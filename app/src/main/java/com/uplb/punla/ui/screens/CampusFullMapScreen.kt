@@ -66,7 +66,6 @@ import com.uplb.punla.data.rememberLiveLocation
 import com.uplb.punla.data.shouldShowLocationRationale
 import com.uplb.punla.data.walkingEtaMinutes
 import com.uplb.punla.ui.PunlaViewModel
-import com.uplb.punla.ui.theme.PunlaDisplay
 import kotlin.math.roundToInt
 import com.uplb.punla.ui.theme.PunlaMono
 import org.maplibre.android.MapLibre
@@ -480,7 +479,7 @@ fun CampusFullMapScreen(vm: PunlaViewModel) {
                 ) {
                     Text(
                         building.name,
-                        style = MaterialTheme.typography.titleLarge.copy(fontFamily = PunlaDisplay, fontSize = 16.sp),
+                        style = MaterialTheme.typography.titleLarge.copy(fontSize = 16.sp),
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.weight(1f)
                     )

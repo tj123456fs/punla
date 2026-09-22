@@ -572,7 +572,7 @@ private fun ReviewReadingScreen(
                 IconButton(onClick = onExit) { Icon(Icons.Default.ArrowBack, contentDescription = "Back") }
                 Column(Modifier.weight(1f)) {
                     Text(target.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-                    Text("Read first, then use the module flashcards and quiz for active recall.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("${shownNotes.size} note${if (shownNotes.size == 1) "" else "s"} · ${shownFormulas.size} reference${if (shownFormulas.size == 1) "" else "s"}${if (completed) " · completed" else ""}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -584,7 +584,7 @@ private fun ReviewReadingScreen(
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(note.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     note.topicId?.let { id -> courseTopics.firstOrNull { it.id == id }?.let { Text(studyTopicPath(it, courseTopics), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary) } }
-                    Text(note.body, style = MaterialTheme.typography.bodyMedium)
+                    StudyRichText(note.body)
                 }
             }
         }
@@ -989,7 +989,7 @@ private fun NoteDialog(
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
-                item { OutlinedTextField(body, { body = it }, label = { Text("Reviewer / notes") }, modifier = Modifier.fillMaxWidth(), minLines = 6) }
+                item { OutlinedTextField(body, { body = it }, label = { Text("Reviewer / notes") }, modifier = Modifier.fillMaxWidth(), minLines = 6, supportingText = { Text("Formatting: # heading · - bullet · **bold** · > callout · pipe tables · ``` code") }) }
                 item { OutlinedTextField(tags, { tags = it }, label = { Text("Tags") }, modifier = Modifier.fillMaxWidth()) }
             }
         },

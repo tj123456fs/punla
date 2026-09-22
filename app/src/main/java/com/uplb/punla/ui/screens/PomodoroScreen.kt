@@ -25,7 +25,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.uplb.punla.ui.PunlaViewModel
 import com.uplb.punla.ui.pomodoro.PomodoroPhase
 import com.uplb.punla.ui.theme.LocalPunlaPalette
-import com.uplb.punla.ui.theme.PunlaDisplay
 import com.uplb.punla.ui.theme.PunlaMono
 
 /**
@@ -145,7 +144,7 @@ fun PomodoroScreen(vm: PunlaViewModel, preselectedCourse: String? = null, onOpen
                 Spacer(Modifier.height(4.dp))
                 Text(
                     phaseLabel,
-                    style = MaterialTheme.typography.titleMedium.copy(fontFamily = PunlaDisplay),
+                    style = MaterialTheme.typography.titleMedium,
                     color = phaseColor
                 )
             }

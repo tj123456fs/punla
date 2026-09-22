@@ -13,8 +13,8 @@ android {
         applicationId = "com.uplb.punla"
         minSdk = 26
         targetSdk = 34
-        versionCode = 34
-        versionName = "3.1.1"
+        versionCode = 35
+        versionName = "3.2.0"
     }
 
     buildTypes {
