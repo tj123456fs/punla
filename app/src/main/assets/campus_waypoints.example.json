@@ -1,0 +1,24 @@
+{
+  "_schema_note": "PLACEHOLDER ONLY. This demonstrates the schema with two building centroids joined by a straight line. It is NOT surveyed path data and should not be renamed to campus_waypoints.json until replaced with real traced campus paths.",
+  "bidirectional": true,
+  "nodes": [
+    {
+      "id": "amped_entrance",
+      "lat": 14.1618544675108,
+      "lon": 121.248874965752,
+      "label": "AMPED Building entrance (placeholder centroid)"
+    },
+    {
+      "id": "afbed_entrance",
+      "lat": 14.1615075087803,
+      "lon": 121.248975755868,
+      "label": "AFBED Building entrance (placeholder centroid)"
+    }
+  ],
+  "edges": [
+    {
+      "from": "amped_entrance",
+      "to": "afbed_entrance"
+    }
+  ]
+}

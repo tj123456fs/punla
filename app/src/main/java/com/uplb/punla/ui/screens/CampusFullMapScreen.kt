@@ -56,7 +56,7 @@ import com.uplb.punla.data.OpenFreeMap
 import com.uplb.punla.data.RoutePlan
 import com.uplb.punla.data.WalkingRoute
 import com.uplb.punla.data.fetchOneShotLocation
-import com.uplb.punla.data.fetchWalkingRoute
+import com.uplb.punla.data.resolveWalkingRoute
 import com.uplb.punla.data.fmtDistance
 import com.uplb.punla.data.hasLocationPermission
 import com.uplb.punla.data.hasFineLocationPermission
@@ -170,7 +170,7 @@ fun CampusFullMapScreen(vm: PunlaViewModel) {
             // On failure, deliberately leave `nextClassRoute` as whatever it
             // was before — a still-roughly-right real route beats reverting
             // to a straight line over one transient network hiccup.
-            fetchWalkingRoute(loc, dest.lat to dest.lon)?.let { nextClassRoute = it }
+            resolveWalkingRoute(context, loc, dest.lat to dest.lon)?.let { nextClassRoute = it }
         }
     }
 

@@ -2,6 +2,8 @@ package com.uplb.punla.context
 
 import com.uplb.punla.data.BudgetPeriod
 import com.uplb.punla.data.CampusDirectory
+import com.uplb.punla.data.CampusPathGraph
+import com.uplb.punla.data.findLocalCampusRoute
 import com.uplb.punla.data.PunlaRepository
 import com.uplb.punla.data.haversineMeters
 import com.uplb.punla.data.walkingEtaMinutes
@@ -58,7 +60,8 @@ internal object StudentContextReducer {
         val planItems: List<StudyPlanItem>,
         val reviewProgress: List<StudyReviewProgress>,
         val energy: EnergyLevel = EnergyLevel.UNKNOWN,
-        val location: LocationContext? = null
+        val location: LocationContext? = null,
+        val campusGraph: CampusPathGraph? = null
     )
 
     fun reduce(
@@ -77,7 +80,7 @@ internal object StudentContextReducer {
         val freeMinutes = freeMinutesBeforeNextCommitment(current, next, now, zoneId)
         val activeLocation = inputs.location?.takeIf { isLocationFresh(it, nowEpochMillis) }
         val travelBuffer = if (current == null) {
-            estimatedTravelBufferMinutes(next, activeLocation, nowEpochMillis)
+            estimatedTravelBufferMinutes(next, activeLocation, nowEpochMillis, inputs.campusGraph)
         } else {
             null
         }
@@ -430,16 +433,16 @@ internal object StudentContextReducer {
     internal fun estimatedTravelBufferMinutes(
         nextClass: ClassContext?,
         location: LocationContext?,
-        nowEpochMillis: Long
+        nowEpochMillis: Long,
+        campusGraph: CampusPathGraph? = null
     ): Int? {
         val freshLocation = location?.takeIf { isLocationFresh(it, nowEpochMillis) } ?: return null
         val destination = CampusDirectory.findBuildingForRoom(nextClass?.room) ?: return null
-        val meters = haversineMeters(
-            freshLocation.latitude,
-            freshLocation.longitude,
-            destination.lat,
-            destination.lon
-        )
+        val from = freshLocation.latitude to freshLocation.longitude
+        val to = destination.lat to destination.lon
+        val meters = campusGraph
+            ?.let { findLocalCampusRoute(it, from, to)?.distanceMeters }
+            ?: haversineMeters(from.first, from.second, to.first, to.second)
         if (!meters.isFinite() || meters < 0.0) return null
         // The context layer uses the same conservative campus walking estimate
         // already used by Dashboard/Map. Network route fetching remains a UI

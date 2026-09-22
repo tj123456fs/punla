@@ -42,7 +42,7 @@ import com.uplb.punla.data.entity.allowedAbsences
 import com.uplb.punla.data.LocationFailure
 import com.uplb.punla.data.WalkingRoute
 import com.uplb.punla.data.fetchOneShotLocation
-import com.uplb.punla.data.fetchWalkingRoute
+import com.uplb.punla.data.resolveWalkingRoute
 import com.uplb.punla.data.fmtDistance
 import com.uplb.punla.data.hasLocationPermission
 import com.uplb.punla.data.hasFineLocationPermission
@@ -122,7 +122,7 @@ fun DashboardScreen(
         } ?: true
         if (movedFarEnough) {
             lastRouteFetchLoc = loc
-            fetchWalkingRoute(loc, dest.lat to dest.lon)?.let { nextClassRoute = it }
+            resolveWalkingRoute(context, loc, dest.lat to dest.lon)?.let { nextClassRoute = it }
         }
     }
 
@@ -150,6 +150,7 @@ fun DashboardScreen(
     }
 
     var viewMode by remember { mutableStateOf(0) } // 0 = Today, 1 = This Week
+    var showMore by remember { mutableStateOf(false) }
 
     val budget = vm.monthlyBudget
     val now = LocalDate.now()
@@ -293,11 +294,57 @@ fun DashboardScreen(
                 onOpenSchedule = onOpenSchedule,
                 onOpenDeadlines = onOpenDeadlines,
                 onOpenStudy = onOpenStudy,
-                onStartFocus = onOpenPomodoro
+                onOpenMap = onOpenNextClassOnMap,
+                onStartFocus = { course ->
+                    activeSuggestion?.let(vm::acceptStudySuggestion)
+                    onOpenPomodoro(course)
+                }
             )
             Spacer(Modifier.height(10.dp))
         }
 
+        // Phase 2B — Today-first Home: keep the decision surface primary.
+        // The detailed legacy dashboard remains available behind More at a glance.
+        item {
+            HomeQuickActions(
+                onFocus = {
+                    activeSuggestion?.let(vm::acceptStudySuggestion)
+                    onOpenPomodoro(activeSuggestion?.course)
+                },
+                onStudy = onOpenStudy,
+                onSchedule = onOpenSchedule,
+                onBudget = onOpenBudget
+            )
+            Spacer(Modifier.height(10.dp))
+        }
+
+        item {
+            val todayMinutes by vm.todayStudyMinutes.collectAsStateWithLifecycle()
+            val dueCards = flashcards.count { it.isDue() }
+            val dueMistakes = mistakes.count { !it.resolved && it.retryAt <= System.currentTimeMillis() }
+            val duePlan = studyPlan.count { !it.completed && it.plannedDate <= LocalDate.now().toString() }
+            val readyCount = dueCards + dueMistakes + duePlan
+            HomeStudyPulse(
+                todayMinutes = todayMinutes,
+                dailyGoalMinutes = vm.dailyStudyGoalMinutes,
+                streak = studyStreak,
+                readyStudyItems = readyCount,
+                onOpenStudy = onOpenStudy
+            )
+            Spacer(Modifier.height(10.dp))
+        }
+
+        item {
+            HomeMoreToggle(
+                expanded = showMore,
+                classesToday = classesToday.size,
+                dueThisWeek = deadlinesThisWeek.size,
+                onToggle = { showMore = !showMore }
+            )
+            Spacer(Modifier.height(8.dp))
+        }
+
+        if (showMore) {
         // Roadmap Pomodoro 1.6 — compact entry point into the focus timer,
         // same Card/shadow/border treatment as the other dashboard cards.
         // Extended by Study Habits 2.4 with a thin, optional habit strip
@@ -816,7 +863,132 @@ fun DashboardScreen(
             }
         }
 
+        }
+
+        // Phase 2B detail drawer end.
         item { Spacer(Modifier.height(80.dp)) }
+    }
+}
+
+@Composable
+private fun HomeQuickActions(
+    onFocus: () -> Unit,
+    onStudy: () -> Unit,
+    onSchedule: () -> Unit,
+    onBudget: () -> Unit
+) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        HomeQuickAction("Focus", Icons.Default.Timer, onFocus, Modifier.weight(1f))
+        HomeQuickAction("Study", Icons.Default.School, onStudy, Modifier.weight(1f))
+        HomeQuickAction("Schedule", Icons.Default.CalendarMonth, onSchedule, Modifier.weight(1f))
+        HomeQuickAction("Budget", Icons.Default.AttachMoney, onBudget, Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun HomeQuickAction(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .heightIn(min = 68.dp)
+            .clickable(onClick = onClick),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        tonalElevation = 1.dp
+    ) {
+        Column(
+            Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.height(5.dp))
+            Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+        }
+    }
+}
+
+@Composable
+private fun HomeStudyPulse(
+    todayMinutes: Int,
+    dailyGoalMinutes: Int,
+    streak: Int,
+    readyStudyItems: Int,
+    onOpenStudy: () -> Unit
+) {
+    val goal = dailyGoalMinutes.coerceAtLeast(1)
+    val progress = (todayMinutes.toFloat() / goal).coerceIn(0f, 1f)
+    Surface(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenStudy),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = .94f),
+        tonalElevation = 1.dp
+    ) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.School, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(19.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Study pulse", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.weight(1f))
+                if (streak > 0) {
+                    Text("🔥 $streak-day", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier.fillMaxWidth().height(5.dp),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.outlineVariant
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                buildString {
+                    append(todayMinutes).append(" / ").append(dailyGoalMinutes).append(" min today")
+                    if (readyStudyItems > 0) append(" · ").append(readyStudyItems).append(" ready to review")
+                    else append(" · queue clear")
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun HomeMoreToggle(
+    expanded: Boolean,
+    classesToday: Int,
+    dueThisWeek: Int,
+    onToggle: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .7f)
+    ) {
+        Row(
+            Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    if (expanded) "Hide extra dashboard" else "More at a glance",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    "$classesToday classes today · $dueThisWeek due this week",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text(if (expanded) "▲" else "▼", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        }
     }
 }
 

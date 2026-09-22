@@ -35,7 +35,7 @@ import com.uplb.punla.data.RoutePlanLeg
 import com.uplb.punla.data.RouteStop
 import com.uplb.punla.data.fetchOneShotLocation
 import com.uplb.punla.data.fetchWalkingMatrix
-import com.uplb.punla.data.fetchWalkingRoute
+import com.uplb.punla.data.resolveWalkingRoute
 import com.uplb.punla.data.fmtDistance
 import com.uplb.punla.data.hasLocationPermission
 import com.uplb.punla.data.hasFineLocationPermission
@@ -147,7 +147,7 @@ fun CampusMapScreen(vm: PunlaViewModel, initialSearch: String = "", onOpenFullMa
             val legs = mutableListOf<RoutePlanLeg>()
             var fromPoint: Pair<Double, Double> = loc
             for (stop in ordered) {
-                val route = fetchWalkingRoute(fromPoint, stop.lat to stop.lon)
+                val route = resolveWalkingRoute(context, fromPoint, stop.lat to stop.lon)
                 legs.add(RoutePlanLeg(fromPoint, stop, route))
                 fromPoint = stop.lat to stop.lon
             }

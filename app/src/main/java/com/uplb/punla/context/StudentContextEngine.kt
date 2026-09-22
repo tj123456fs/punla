@@ -1,6 +1,7 @@
 package com.uplb.punla.context
 
 import android.content.Context
+import com.uplb.punla.data.CampusRoutingResolver
 import com.uplb.punla.data.PunlaDatabase
 import com.uplb.punla.data.PunlaRepository
 import com.uplb.punla.diagnostics.PunlaDiagnostics
@@ -108,6 +109,7 @@ class StudentContextEngine private constructor(context: Context) {
                     mistakes = learningSources.mistakes,
                     planItems = planningSources.planItems,
                     reviewProgress = planningSources.reviewProgress,
+                    campusGraph = CampusRoutingResolver.graph(appContext),
                     energy = timingSources.ambient.energy,
                     location = timingSources.ambient.location
                 ) to timingSources.now
