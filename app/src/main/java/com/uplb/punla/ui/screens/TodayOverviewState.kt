@@ -11,7 +11,8 @@ internal enum class TodayNowKind {
     FREE_TIME,
     LEAVE_SOON,
     NEXT_SOON,
-    DAY_COMPLETE
+    DAY_COMPLETE,
+    COMMITMENT
 }
 
 internal enum class TodayAction {
@@ -56,6 +57,11 @@ internal fun deriveTodayNowPresentation(state: StudentState): TodayNowPresentati
             detail = "Until ${formatTodayClock(current.endTime)}$room",
             action = TodayAction.SCHEDULE
         )
+    }
+
+    state.currentCommitmentTitle?.let {
+        return TodayNowPresentation(TodayNowKind.COMMITMENT, "RESERVED TIME", it,
+            "Your plan protects this time. Open Plan to change the commitment.", TodayAction.NONE)
     }
 
     val next = state.nextClass
@@ -115,15 +121,6 @@ internal fun deriveTodayRecommendationPresentation(
     recommendationTitle: String?,
     recommendationDetail: String?
 ): TodayRecommendationPresentation {
-    if (!recommendationTitle.isNullOrBlank()) {
-        return TodayRecommendationPresentation(
-            title = recommendationTitle,
-            detail = recommendationDetail?.takeIf(String::isNotBlank)
-                ?: "A real free slot matches your current workload.",
-            action = TodayAction.FOCUS
-        )
-    }
-
     val now = deriveTodayNowPresentation(state)
     val next = state.nextClass
     if (now.kind == TodayNowKind.LEAVE_SOON && next != null) {
@@ -143,6 +140,25 @@ internal fun deriveTodayRecommendationPresentation(
             action = TodayAction.NONE
         )
     }
+
+    if (now.kind == TodayNowKind.COMMITMENT) {
+        return TodayRecommendationPresentation("Keep time for ${state.currentCommitmentTitle}",
+            "Your study plan resumes in your next available opening.", TodayAction.NONE)
+    }
+
+    if (state.usableFreeMinutes != null && state.usableFreeMinutes < 5) {
+        return TodayRecommendationPresentation("No study block fits right now", "Open Plan to choose a later opening.", TodayAction.NONE)
+    }
+
+    if (!recommendationTitle.isNullOrBlank()) {
+        return TodayRecommendationPresentation(
+            title = recommendationTitle,
+            detail = recommendationDetail?.takeIf(String::isNotBlank)
+                ?: "A real free slot matches your current workload.",
+            action = TodayAction.FOCUS
+        )
+    }
+
 
     val overdue = state.overdueWork.firstOrNull()
     if (overdue != null) {

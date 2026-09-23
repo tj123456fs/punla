@@ -101,7 +101,8 @@ object FlashcardReviewScheduler {
 }
 
 object ClozeText {
-    private val pattern = Regex("\\{\\{([^{}]+)}}")
+    // Escape both closing braces for Android's ICU regex engine.
+    private val pattern = Regex("\\{\\{([^{}]+)\\}\\}")
 
     fun hasCloze(text: String): Boolean = pattern.containsMatchIn(text)
 

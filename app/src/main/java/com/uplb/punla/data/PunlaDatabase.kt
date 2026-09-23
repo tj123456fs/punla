@@ -1,5 +1,6 @@
 package com.uplb.punla.data
 
+import com.uplb.punla.planning.*
 import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
@@ -50,6 +51,7 @@ import com.uplb.punla.data.entity.QuestionBankItem
 
 @Database(
     entities = [
+        TaskPreferences::class, InboxCapture::class, DayPlanBlock::class, LifeCommitment::class, OsSetting::class,
         ClassSession::class,
         Expense::class,
         ExpenseRule::class,
@@ -82,10 +84,11 @@ import com.uplb.punla.data.entity.QuestionBankItem
     ],
     // v7 -> v8: per-occurrence attendance history used by the ongoing
     // class notification and the schedule/dashboard attendance controls.
-    version = 12,
+    version = 13,
     exportSchema = false
 )
 abstract class PunlaDatabase : RoomDatabase() {
+    abstract fun studentOsDao(): StudentOsDao
     abstract fun classSessionDao(): ClassSessionDao
     abstract fun attendanceDao(): AttendanceDao
     abstract fun expenseDao(): ExpenseDao
@@ -386,6 +389,16 @@ abstract class PunlaDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `task_preferences` (`id` TEXT NOT NULL, `estimatedMinutes` INTEGER NOT NULL, `progress` INTEGER NOT NULL, `importance` INTEGER NOT NULL, `effort` INTEGER NOT NULL, `dueTime` TEXT NOT NULL, `pinned` INTEGER NOT NULL, `dismissedUntil` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `inbox_captures` (`id` TEXT NOT NULL, `text` TEXT NOT NULL, `attachment` TEXT, `createdAt` INTEGER NOT NULL, `processed` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `day_plan_blocks` (`id` TEXT NOT NULL, `taskId` TEXT NOT NULL, `title` TEXT NOT NULL, `startAt` INTEGER NOT NULL, `endAt` INTEGER NOT NULL, `status` TEXT NOT NULL, `locked` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `life_commitments` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `startTime` TEXT NOT NULL, `endTime` TEXT NOT NULL, `days` TEXT NOT NULL, `category` TEXT NOT NULL, `enabled` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+                db.execSQL("CREATE TABLE IF NOT EXISTS `os_settings` (`key` TEXT NOT NULL, `value` TEXT NOT NULL, PRIMARY KEY(`key`))")
+            }
+        }
+
         fun get(context: Context): PunlaDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -393,7 +406,7 @@ abstract class PunlaDatabase : RoomDatabase() {
                     PunlaDatabase::class.java,
                     "punla.db"
                 )
-                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
+                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
                     // Very old development installs never had migration specs.
                     // Preserve current v6+ personal data; only pre-v6 schemas
                     // may still be recreated rather than crashing at launch.

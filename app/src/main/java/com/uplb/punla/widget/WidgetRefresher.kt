@@ -22,6 +22,7 @@ object WidgetRefresher {
             NextClassWidget().updateAll(context.applicationContext)
             BudgetWidget().updateAll(context.applicationContext)
             NextDeadlineWidget().updateAll(context.applicationContext)
+            TodayWidget().updateAll(context.applicationContext)
         }
     }
 }

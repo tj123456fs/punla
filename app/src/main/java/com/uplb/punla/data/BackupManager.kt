@@ -55,8 +55,8 @@ import kotlinx.coroutines.withContext
  */
 object BackupManager {
 
-    const val CURRENT_VERSION = 9
-    private const val MAX_BACKUP_FILE_CHARS = 20_000_000
+    const val CURRENT_VERSION = 10
+    private const val MAX_BACKUP_FILE_CHARS = 100_000_000
 
     /** Suggested filename, mirrors the web app's punla-backup-YYYY-MM-DD.json. */
     fun suggestedFileName(): String {
@@ -68,7 +68,7 @@ object BackupManager {
 
     // ---- Export ----
 
-    suspend fun buildBackupJson(context: Context): String {
+    suspend fun buildBackupJson(context: Context): String = withContext(Dispatchers.IO) {
         val db = PunlaDatabase.get(context)
         val repo = PunlaRepository(context)
 
@@ -101,7 +101,9 @@ object BackupManager {
         val quizAnswerResults = db.studyMaterialDao().getAnswerResults()
         val questionBank = db.studyMaterialDao().getQuestionBank()
 
+        val studentOs = com.uplb.punla.planning.StudentOsBackup.export(context, db.studentOsDao())
         val root = JSONObject().apply {
+            put("studentOs", studentOs)
             put("punlaFileId", PunlaJsonFileIds.BACKUP)
             put("schemaVersion", 1)
             put("contentId", UUID.randomUUID().toString())
@@ -182,10 +184,10 @@ object BackupManager {
             put("pomodoroWorkSoundUri", repo.pomodoroWorkSoundUri)
             put("pomodoroBreakSoundUri", repo.pomodoroBreakSoundUri)
         }
-        return root.toString(2)
+        root.toString(2)
     }
 
-    suspend fun exportTo(context: Context, uri: Uri) {
+    suspend fun exportTo(context: Context, uri: Uri): Unit = withContext(Dispatchers.IO) {
         val json = buildBackupJson(context)
         context.contentResolver.openOutputStream(uri)?.use { out ->
             out.write(json.toByteArray(Charsets.UTF_8))
@@ -211,7 +213,7 @@ object BackupManager {
 
     // ---- Import ----
 
-    suspend fun importFrom(context: Context, uri: Uri) {
+    suspend fun importFrom(context: Context, uri: Uri): Unit = withContext(Dispatchers.IO) {
         val root = withContext(Dispatchers.IO) {
             val text = try {
                 PunlaJsonImportReader.readText(context, uri, MAX_BACKUP_FILE_CHARS)
@@ -244,6 +246,10 @@ object BackupManager {
         val db = PunlaDatabase.get(context)
         val repo = PunlaRepository(context)
 
+        val planningJson = root.optJSONObject("studentOs")
+        if ((backupVersion >= 10 || root.has("studentOs")) && planningJson == null)
+            throw InvalidBackupException("Planning data is missing or invalid in this backup.")
+        val studentOs = com.uplb.punla.planning.StudentOsBackup.parse(planningJson)
         val schedule = root.getJSONArray("schedule").mapObjects(::classSessionFromJson)
         val expenses = root.getJSONArray("expenses").mapObjects(::expenseFromJson)
         val expenseRules = root.optJSONArray("expenseRules")?.mapObjects(::expenseRuleFromJson) ?: emptyList()
@@ -613,7 +619,10 @@ object BackupManager {
         }
         val restoredCustomSeedColor = if (!root.has("customSeedColor") || root.isNull("customSeedColor")) null else root.optInt("customSeedColor")
 
+        val stagedOs = com.uplb.punla.planning.StudentOsBackup.stageAttachments(context, studentOs)
+        try {
         db.withTransaction {
+            com.uplb.punla.planning.StudentOsBackup.restore(db.studentOsDao(), stagedOs)
             // Study System 3.1 tables are cleared first so foreign-key children never
             // reference quiz/question rows that are about to be replaced.
             db.studyMaterialDao().clearAnswerResults()
@@ -696,6 +705,11 @@ object BackupManager {
             requireBackup(quickCheck.equals("ok", ignoreCase = true), "Restore verification failed SQLite quick_check.")
             val hasForeignKeyViolation = sqlite.query("PRAGMA foreign_key_check").use { cursor -> cursor.moveToFirst() }
             requireBackup(!hasForeignKeyViolation, "Restore verification found broken database references.")
+        }
+
+        } catch (error: Throwable) {
+            stagedOs.attachments.keys.forEach { com.uplb.punla.planning.CaptureAttachments.file(context, it).delete() }
+            throw error
         }
 
         // Prefs live outside Room, so they're written after the DB transaction commits.

@@ -61,7 +61,8 @@ internal object StudentContextReducer {
         val reviewProgress: List<StudyReviewProgress>,
         val energy: EnergyLevel = EnergyLevel.UNKNOWN,
         val location: LocationContext? = null,
-        val campusGraph: CampusPathGraph? = null
+        val campusGraph: CampusPathGraph? = null,
+        val travelRoute: TravelRouteContext? = null
     )
 
     fun reduce(
@@ -72,15 +73,15 @@ internal object StudentContextReducer {
     ): StudentState {
         val now = Instant.ofEpochMilli(nowEpochMillis).atZone(zoneId).toLocalDateTime()
         val today = now.toLocalDate()
-        val current = findCurrentClass(inputs.classes, now, zoneId)
-        val next = findNextClass(inputs.classes, now, zoneId)
+        val current = findCurrentClass(inputs.classes, now, zoneId, repository.termStartDate, repository.termEndDate)
+        val next = findNextClass(inputs.classes, now, zoneId, repository.termStartDate, repository.termEndDate)
         // A student who is currently in class does not have a free block right
         // now, even if another class is several hours away. This keeps the
         // shared context honest for downstream recommendation logic.
         val freeMinutes = freeMinutesBeforeNextCommitment(current, next, now, zoneId)
         val activeLocation = inputs.location?.takeIf { isLocationFresh(it, nowEpochMillis) }
         val travelBuffer = if (current == null) {
-            estimatedTravelBufferMinutes(next, activeLocation, nowEpochMillis, inputs.campusGraph)
+            estimatedTravelBufferMinutes(next, activeLocation, nowEpochMillis, inputs.campusGraph, inputs.travelRoute)
         } else {
             null
         }
@@ -153,6 +154,7 @@ internal object StudentContextReducer {
             nextClass = next,
             freeMinutesBeforeNextCommitment = freeMinutes,
             travelBufferMinutes = travelBuffer,
+            travelRouteSource = travelSource(next, activeLocation, nowEpochMillis, inputs.campusGraph, inputs.travelRoute),
             usableFreeMinutes = usableFreeMinutes,
             pendingTasks = pendingTasks,
             upcomingDeadlines = deadlineContexts.filter { it.daysUntil in 0..7 },
@@ -169,12 +171,15 @@ internal object StudentContextReducer {
     internal fun findCurrentClass(
         classes: List<ClassSession>,
         now: LocalDateTime,
-        zoneId: ZoneId = ZoneId.systemDefault()
+        zoneId: ZoneId = ZoneId.systemDefault(),
+        termStart: LocalDate = LocalDate.MIN,
+        termEnd: LocalDate = LocalDate.MAX
     ): ClassContext? {
         val nowMs = nowEpoch(now, zoneId)
         // Include yesterday as a candidate because a class stored as e.g.
         // Mon 22:00-01:00 is still current after midnight on Tuesday.
         return sequenceOf(now.toLocalDate(), now.toLocalDate().minusDays(1))
+            .filter { !it.isBefore(termStart) && !it.isAfter(termEnd) }
             .flatMap { date ->
                 val day = dayNames[date.dayOfWeek]
                 classes.asSequence()
@@ -191,7 +196,9 @@ internal object StudentContextReducer {
     internal fun findNextClass(
         classes: List<ClassSession>,
         now: LocalDateTime,
-        zoneId: ZoneId = ZoneId.systemDefault()
+        zoneId: ZoneId = ZoneId.systemDefault(),
+        termStart: LocalDate = LocalDate.MIN,
+        termEnd: LocalDate = LocalDate.MAX
     ): ClassContext? {
         val nowMs = nowEpoch(now, zoneId)
         return (0L..7L).asSequence()
@@ -199,6 +206,7 @@ internal object StudentContextReducer {
                 val date = now.toLocalDate().plusDays(offset)
                 val day = dayNames[date.dayOfWeek]
                 classes.asSequence()
+                    .filter { !date.isBefore(termStart) && !date.isAfter(termEnd) }
                     .filter { it.day == day }
                     .mapNotNull { it.toOccurrence(date, zoneId) }
             }
@@ -434,20 +442,32 @@ internal object StudentContextReducer {
         nextClass: ClassContext?,
         location: LocationContext?,
         nowEpochMillis: Long,
-        campusGraph: CampusPathGraph? = null
+        campusGraph: CampusPathGraph? = null,
+        travelRoute: TravelRouteContext? = null
     ): Int? {
         val freshLocation = location?.takeIf { isLocationFresh(it, nowEpochMillis) } ?: return null
         val destination = CampusDirectory.findBuildingForRoom(nextClass?.room) ?: return null
         val from = freshLocation.latitude to freshLocation.longitude
         val to = destination.lat to destination.lon
-        val meters = campusGraph
+        val cached = travelRoute?.takeIf { it.matches(from, to, nowEpochMillis) }
+        val meters = cached?.distanceMeters
+            ?: campusGraph
             ?.let { findLocalCampusRoute(it, from, to)?.distanceMeters }
             ?: haversineMeters(from.first, from.second, to.first, to.second)
         if (!meters.isFinite() || meters < 0.0) return null
         // The context layer uses the same conservative campus walking estimate
         // already used by Dashboard/Map. Network route fetching remains a UI
         // concern; this local estimate is instant, offline, and deterministic.
-        return walkingEtaMinutes(meters)
+        return walkingEtaMinutes(meters, cached?.durationSeconds)
+    }
+
+    private fun travelSource(next: ClassContext?, location: LocationContext?, now: Long,
+                             graph: CampusPathGraph?, route: TravelRouteContext?): String {
+        val fix = location?.takeIf { isLocationFresh(it, now) } ?: return "Estimate"
+        val to = CampusDirectory.findBuildingForRoom(next?.room)?.let { it.lat to it.lon } ?: return "Estimate"
+        val from = fix.latitude to fix.longitude
+        route?.takeIf { it.matches(from, to, now) }?.let { return it.source }
+        return if (graph?.let { findLocalCampusRoute(it, from, to) } != null) "Offline campus" else "Estimate"
     }
 
     private const val LOCATION_MAX_AGE_MILLIS = 15L * 60L * 1000L

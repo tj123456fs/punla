@@ -10,6 +10,8 @@ import android.content.Context
  * 3) null, preserving each caller's existing straight-line fallback.
  */
 object CampusRoutingResolver {
+    @Volatile var recentRoute: com.uplb.punla.context.TravelRouteContext? = null
+        private set
     @Volatile private var graphLoaded = false
     @Volatile private var cachedGraph: CampusPathGraph? = null
 
@@ -39,14 +41,15 @@ object CampusRoutingResolver {
         from: Pair<Double, Double>,
         to: Pair<Double, Double>
     ): WalkingRoute? {
-        localRoute(context, from, to)?.let { local ->
-            return WalkingRoute(
-                points = local.points,
-                distanceMeters = local.distanceMeters,
-                durationSeconds = local.durationSeconds
-            )
+        val local = localRoute(context, from, to)
+        val route = local?.let { WalkingRoute(it.points, it.distanceMeters, it.durationSeconds, "Offline campus") }
+            ?: fetchWalkingRoute(from, to)
+        if (route != null) {
+            recentRoute = com.uplb.punla.context.TravelRouteContext(from.first, from.second, to.first, to.second,
+                route.distanceMeters, route.source, System.currentTimeMillis(), route.durationSeconds)
+            com.uplb.punla.context.StudentContextEngine.get(context).refreshNow()
         }
-        return fetchWalkingRoute(from, to)
+        return route
     }
 
     /** Reset only exists for deterministic tests; normal app code never calls this. */
@@ -54,6 +57,7 @@ object CampusRoutingResolver {
         synchronized(this) {
             cachedGraph = null
             graphLoaded = false
+            recentRoute = null
         }
     }
 }

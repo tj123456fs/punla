@@ -12,9 +12,11 @@ data class StudentState(
     val localTime: String,
     val day: String,
     val currentClass: ClassContext? = null,
+    val currentCommitmentTitle: String? = null,
     val nextClass: ClassContext? = null,
     val freeMinutesBeforeNextCommitment: Int? = null,
     val travelBufferMinutes: Int? = null,
+    val travelRouteSource: String = "Estimate",
     val usableFreeMinutes: Int? = freeMinutesBeforeNextCommitment,
     val pendingTasks: List<TaskContext> = emptyList(),
     val upcomingDeadlines: List<DeadlineContext> = emptyList(),
@@ -127,4 +129,17 @@ data class LocationContext(
 object TaskKinds {
     const val DEADLINE = "DEADLINE"
     const val STUDY_PLAN = "STUDY_PLAN"
+}
+
+/** Last on-demand route; a different destination, moved origin, or stale fix invalidates it. */
+data class TravelRouteContext(
+    val fromLatitude: Double, val fromLongitude: Double,
+    val toLatitude: Double, val toLongitude: Double,
+    val distanceMeters: Double, val source: String, val capturedAt: Long,
+    val durationSeconds: Double? = null
+) {
+    fun matches(from: Pair<Double, Double>, to: Pair<Double, Double>, now: Long): Boolean =
+        now - capturedAt in 0..300000L && distanceMeters.isFinite() && distanceMeters >= 0 &&
+            com.uplb.punla.data.haversineMeters(fromLatitude, fromLongitude, from.first, from.second) <= 30 &&
+            com.uplb.punla.data.haversineMeters(toLatitude, toLongitude, to.first, to.second) <= 2
 }

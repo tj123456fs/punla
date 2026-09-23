@@ -305,6 +305,12 @@ object StudyEngine {
 
 /** Tiny dependency-free formatter for the most common study math markup. */
 object StudyMathText {
+    // Android uses ICU regex, which requires literal closing braces to be escaped.
+    // Keep these compiled once instead of rebuilding them for every rendered line.
+    private val squareRoot = Regex("\\\\sqrt\\{([^{}]+)\\}")
+    private val fraction = Regex("\\\\frac\\{([^{}]+)\\}\\{([^{}]+)\\}")
+    private val superscript = Regex("\\^\\{([^{}]+)\\}")
+    private val subscript = Regex("_\\{([^{}]+)\\}")
     private val superscripts = mapOf('0' to '⁰','1' to '¹','2' to '²','3' to '³','4' to '⁴','5' to '⁵','6' to '⁶','7' to '⁷','8' to '⁸','9' to '⁹','+' to '⁺','-' to '⁻','=' to '⁼','(' to '⁽',')' to '⁾')
     private val subscripts = mapOf('0' to '₀','1' to '₁','2' to '₂','3' to '₃','4' to '₄','5' to '₅','6' to '₆','7' to '₇','8' to '₈','9' to '₉','+' to '₊','-' to '₋','=' to '₌','(' to '₍',')' to '₎')
 
@@ -312,10 +318,10 @@ object StudyMathText {
     fun render(source: String): String {
         var out = source
             .replace("\\times", "×").replace("\\cdot", "·").replace("\\pm", "±")
-            .replace(Regex("\\\\sqrt\\{([^{}]+)}")) { "√(${it.groupValues[1]})" }
-            .replace(Regex("\\\\frac\\{([^{}]+)}\\{([^{}]+)}")) { "${it.groupValues[1]}⁄${it.groupValues[2]}" }
-        out = Regex("\\^\\{([^{}]+)}").replace(out) { it.groupValues[1].map { c -> superscripts[c] ?: c }.joinToString("") }
-        out = Regex("_\\{([^{}]+)}").replace(out) { it.groupValues[1].map { c -> subscripts[c] ?: c }.joinToString("") }
+            .replace(squareRoot) { "√(${it.groupValues[1]})" }
+            .replace(fraction) { "${it.groupValues[1]}⁄${it.groupValues[2]}" }
+        out = superscript.replace(out) { it.groupValues[1].map { c -> superscripts[c] ?: c }.joinToString("") }
+        out = subscript.replace(out) { it.groupValues[1].map { c -> subscripts[c] ?: c }.joinToString("") }
         return out
     }
 }

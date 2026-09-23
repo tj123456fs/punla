@@ -50,6 +50,25 @@
             android:excludeFromRecents="true"
             android:launchMode="singleTask" />
 
+        <activity android:name=".planning.CaptureActivity" android:exported="true" android:theme="@style/Theme.Punla.QuickAdd">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/*" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="application/json" />
+            </intent-filter>
+        </activity>
+        <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.inbox" android:exported="false" android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/inbox_paths" />
+        </provider>
+
+        <receiver android:name=".widget.TodayWidgetReceiver" android:label="Punla Today" android:exported="false">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/today_widget_info" />
+        </receiver>
+
         <!-- Next Class widget -->
         <receiver
             android:name=".widget.NextClassWidgetReceiver"

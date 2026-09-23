@@ -14,6 +14,24 @@ class StudentContextReducerTest {
     private val zone = ZoneId.of("Asia/Manila")
 
     @Test
+    fun classesOutsideTheTermAreNotCurrentOrNext() {
+        val cls = ClassSession(id = "math", code = "MATH 27", day = "Tue", type = "lec", start = "10:00", end = "11:00")
+        val start = java.time.LocalDate.of(2026, 9, 1)
+        val end = java.time.LocalDate.of(2026, 9, 21)
+        assertNull(StudentContextReducer.findCurrentClass(listOf(cls), LocalDateTime.of(2026, 9, 22, 10, 30), zone, start, end))
+        assertNull(StudentContextReducer.findNextClass(listOf(cls), LocalDateTime.of(2026, 9, 22, 9, 0), zone, start, end))
+    }
+
+    @Test
+    fun travelRouteExpiresAndDoesNotFollowADifferentOrigin() {
+        val route = TravelRouteContext(14.16, 121.24, 14.17, 121.25, 500.0, "OSRM foot", 1000, 601.0)
+        assertTrue(route.matches(14.16 to 121.24, 14.17 to 121.25, 2000))
+        assertTrue(!route.matches(14.16 to 121.24, 14.17 to 121.25, 301001))
+        assertTrue(!route.matches(14.18 to 121.24, 14.17 to 121.25, 2000))
+        assertEquals(11, com.uplb.punla.data.walkingEtaMinutes(500.0, route.durationSeconds))
+    }
+
+    @Test
     fun currentClass_isDetectedInsideItsWindow() {
         val classes = listOf(
             ClassSession(
