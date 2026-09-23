@@ -91,6 +91,7 @@ import org.json.JSONObject
 class PunlaViewModel(app: Application) : AndroidViewModel(app) {
     private val db = PunlaDatabase.get(app)
     val repo = PunlaRepository(app)
+    val studentOs = com.uplb.punla.planning.StudentOsRepository.get(app)
 
     private val studentContextEngine = StudentContextEngine.get(app)
     val studentState: StateFlow<StudentState> = studentContextEngine.state

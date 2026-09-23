@@ -109,6 +109,7 @@ import com.uplb.punla.ui.screens.AssistantScreen
 import com.uplb.punla.ui.screens.FlashcardsScreen
 import com.uplb.punla.ui.screens.QuizScreen
 import com.uplb.punla.ui.screens.StudyHubScreen
+import androidx.compose.material.icons.filled.AutoAwesome
 import com.uplb.punla.ui.theme.appBackground
 import com.uplb.punla.ui.theme.punlaDisplayFamily
 import com.uplb.punla.ui.theme.PunlaMono
@@ -445,6 +446,7 @@ private val BOTTOM_TABS = listOf(
 // and Focus (already has a Dashboard shortcut card, so it doesn't need
 // bottom-bar-level prominence either).
 private val DRAWER_ITEMS = listOf(
+    Tab("student-os", "Plan & Inbox", Icons.Default.AutoAwesome),
     Tab("campus", "Campus", Icons.Default.Map),
     Tab("checklist", "Before Classes Start", Icons.Default.Checklist),
     Tab("pomodoro", "Focus", Icons.Default.Timer),
@@ -475,6 +477,7 @@ private data class QuickAddAction(
 )
 
 private val QUICK_ADD_ACTIONS = listOf(
+    QuickAddAction("capture", "Task, note or material", Icons.Default.Add, "student-os"),
     QuickAddAction("class", "Add class", Icons.Default.CalendarMonth, "schedule"),
     QuickAddAction("expense", "Add expense", Icons.Default.AttachMoney, "budget"),
     QuickAddAction("deadline", "Add deadline", Icons.Default.Flag, "deadlines"),
@@ -519,6 +522,7 @@ fun PunlaApp(
             "study" -> "Study Hub"
             "flashcards" -> "Flashcards"
             "quizzes" -> "Quizzes"
+            "student-os" -> "Plan & Inbox"
             "assistant" -> "Assistant"
             else -> "Punla"
         }
@@ -574,6 +578,7 @@ fun PunlaApp(
     // which jumps straight to a given tab's create form from anywhere.
     fun quickAddTo(route: String) {
         quickAddOpen = false
+        if (route == "student-os") { navController.navigate("student-os?tab=1"); return }
         val quickAddToken = "${System.currentTimeMillis()}-${System.nanoTime()}"
         navController.navigate("$route?quickAdd=true&quickAddToken=$quickAddToken") {
             popUpTo(navController.graph.startDestinationId) { saveState = true }
@@ -584,7 +589,7 @@ fun PunlaApp(
     // One-shot jump to whatever tab a widget tap asked for (e.g. tapping the
     // Budget widget's body opens straight to "budget" instead of dashboard).
     LaunchedEffect(startRoute, startRouteRequestId) {
-        if (startRoute != null && ALL_DESTINATIONS.any { it.route == startRoute }) {
+        if (startRoute != null && (ALL_DESTINATIONS.any { it.route == startRoute } || startRoute == "student-os?tab=1")) {
             navigateTo(startRoute)
         }
     }
@@ -866,6 +871,14 @@ fun PunlaApp(
                     }
                 }
             ) {
+                composable("student-os?tab={tab}", arguments = listOf(navArgument("tab") { type = NavType.IntType; defaultValue = 0 })) { entry ->
+                    com.uplb.punla.ui.screens.StudentOsScreen(vm, entry.arguments?.getInt("tab") ?: 0) { route, course ->
+                        val separator = if ('?' in route) "&" else "?"
+                        val target = if (course != null && route.substringBefore('?') in listOf("pomodoro", "study", "flashcards", "quizzes"))
+                            "${route}${separator}course=${android.net.Uri.encode(course)}" else route
+                        navController.navigate(target)
+                    }
+                }
                 composable("dashboard") {
                     DashboardScreen(
                         vm,
@@ -874,6 +887,7 @@ fun PunlaApp(
                         onOpenBudget = { navigateTo("budget") },
                         onOpenDeadlines = { navigateTo("deadlines") },
                         onOpenChecklist = { navController.navigate("checklist") },
+                        onOpenPlan = { navController.navigate("student-os") },
                         onOpenStudy = { navigateTo("study") },
                         onOpenPomodoro = { course ->
                             if (course != null) {
@@ -965,9 +979,14 @@ fun PunlaApp(
                     )
                 }
                 composable("study-analysis") { StudyAnalysisScreen(vm) }
-                composable("study") {
+                composable("study?course={course}&section={section}", arguments = listOf(
+                    navArgument("course") { type = NavType.StringType; defaultValue = "" },
+                    navArgument("section") { type = NavType.StringType; defaultValue = "Overview" }
+                )) { entry ->
                     StudyHubScreen(
                         vm = vm,
+                        initialCourse = entry.arguments?.getString("course")?.takeIf { it.isNotBlank() },
+                        initialSection = entry.arguments?.getString("section"),
                         onOpenFlashcards = { course, topicId, overall ->
                             val c = course?.let { android.net.Uri.encode(it) }.orEmpty()
                             val t = topicId?.let { android.net.Uri.encode(it) }.orEmpty()
@@ -1017,6 +1036,7 @@ fun PunlaApp(
                 composable("assistant") {
                     AssistantScreen(
                         vm = vm,
+                        onOpenPlanningAssistant = { navController.navigate("student-os?tab=5") },
                         onOpenPomodoro = { course ->
                             if (course != null) navController.navigate("pomodoro?course=${android.net.Uri.encode(course)}")
                             else navController.navigate("pomodoro")

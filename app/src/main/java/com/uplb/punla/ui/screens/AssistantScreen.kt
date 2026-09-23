@@ -41,6 +41,7 @@ private data class AssistantChatMessage(
 @Composable
 fun AssistantScreen(
     vm: PunlaViewModel,
+    onOpenPlanningAssistant: () -> Unit = {},
     onOpenPomodoro: (String?) -> Unit = {}
 ) {
     val classes by vm.classes.collectAsStateWithLifecycle()
@@ -109,6 +110,10 @@ fun AssistantScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(12.dp))
+
+        OutlinedButton(onClick = onOpenPlanningAssistant, modifier = Modifier.fillMaxWidth()) {
+            Text("Plan with my tasks, energy, and free time")
+        }
 
         LazyColumn(
             state = listState,

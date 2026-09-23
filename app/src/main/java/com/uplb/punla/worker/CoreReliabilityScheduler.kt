@@ -41,6 +41,8 @@ object CoreReliabilityScheduler {
             }
         }
 
+        safe("evening recap") { StudentOsWorker.schedule(app) }
+
         safe("daily reminders") {
             ReminderScheduler.scheduleDaily(app, updateExisting = updateExisting)
         }

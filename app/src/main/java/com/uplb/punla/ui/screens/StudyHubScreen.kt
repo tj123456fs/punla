@@ -45,6 +45,8 @@ private val STUDY_TABS = listOf("Overview", "Queue", "Mistakes", "Notes", "Plan"
 @Composable
 fun StudyHubScreen(
     vm: PunlaViewModel,
+    initialCourse: String? = null,
+    initialSection: String? = null,
     onOpenFlashcards: (String?, String?, Boolean) -> Unit,
     onOpenQuizzes: (String?, String?, Boolean) -> Unit,
     onOpenFocus: (String?) -> Unit
@@ -69,8 +71,8 @@ fun StudyHubScreen(
     val classes by vm.classes.collectAsStateWithLifecycle()
     val loadError by vm.studyHubLoadError.collectAsStateWithLifecycle()
 
-    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
-    var selectedCourse by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedTab by rememberSaveable(initialSection) { mutableIntStateOf(STUDY_TABS.indexOf(initialSection).coerceAtLeast(0)) }
+    var selectedCourse by rememberSaveable(initialCourse) { mutableStateOf<String?>(initialCourse) }
     var smartSession by remember { mutableStateOf<List<StudyEngine.QueueItem>?>(null) }
     var activeReview by remember { mutableStateOf<StudyReviewTarget?>(null) }
     val courseCodes = remember(decks, quizzes, classes, deadlines, topics, notes, formulas, goals, planItems, bank) {

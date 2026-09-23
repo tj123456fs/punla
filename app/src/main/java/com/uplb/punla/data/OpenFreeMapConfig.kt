@@ -24,4 +24,7 @@ object OpenFreeMap {
  * rounds up to at least 1 minute so "you're basically there" doesn't
  * confusingly read as "0 min".
  */
-fun walkingEtaMinutes(meters: Double): Int = maxOf(1, (meters / 75.0).roundToInt())
+fun walkingEtaMinutes(meters: Double, durationSeconds: Double? = null): Int {
+    val minutes = durationSeconds?.takeIf { it.isFinite() && it >= 0 }?.div(60.0) ?: (meters / 75.0)
+    return maxOf(1, kotlin.math.ceil(minutes).toInt())
+}

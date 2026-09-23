@@ -16,15 +16,19 @@ import com.uplb.punla.R
 import com.uplb.punla.data.PunlaRepository
 import com.uplb.punla.notification.TrackedNotification
 import com.uplb.punla.notification.PunlaNotifications
+import com.uplb.punla.notification.LeaveByPolicy
+import com.uplb.punla.planning.StudentOsRepository
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.ZoneId
+import java.time.Instant
 import java.time.format.DateTimeFormatter
 
 /**
- * Sibling to [DeadlineWorker]: checks for classes starting within the next
- * 15 minutes, mirrors the web app's checkReminders() class-start branch
- * (index.html ~line 783), including its notifiedKeys-style dedupe so the
- * same class doesn't re-notify twice in one day.
+ * One travel-aware alert per occurrence, using shared context when available
+ * and the student's minimum travel buffer otherwise.
  */
 class ClassReminderWorker(
     private val context: Context,
@@ -35,6 +39,9 @@ class ClassReminderWorker(
         val repo = PunlaRepository(context)
 
         if (!repo.notificationsEnabled) return Result.success()
+        if (PunlaNotifications.isRoutineQuietHours(repo.quietHoursEnabled)) return Result.success()
+        val date = LocalDate.now()
+        if (date.isBefore(repo.termStartDate) || date.isAfter(repo.termEndDate)) return Result.success()
 
         // The ongoing class-day card is intentionally silent. This worker is
         // the single attention-grabbing alert before class, so it remains
@@ -47,10 +54,14 @@ class ClassReminderWorker(
         }
 
         val classes = repo.allClasses()
-        val soon = repo.classesStartingSoon(classes)
+        val soon = repo.classesStartingSoon(classes, windowMinutes = 135)
         if (soon.isEmpty()) return Result.success()
+        val snapshot = withTimeoutOrNull(5000) { StudentOsRepository.get(context).state.first { it.ready } }
+        val minimumTravel = snapshot?.settings?.get("travelMinutes")?.toIntOrNull()?.coerceIn(0, 120) ?: 10
+        val now = System.currentTimeMillis()
+        val zone = ZoneId.systemDefault()
 
-        val today = LocalDate.now().toString()
+        val today = date.toString()
         val prefs = context.getSharedPreferences("punla_prefs", Context.MODE_PRIVATE)
         val notifiedKeys = (prefs.getStringSet("class_notified_keys", null) ?: emptySet()).toMutableSet()
 
@@ -59,9 +70,17 @@ class ClassReminderWorker(
             val key = "class:${c.id}:$today:${c.start}"
             if (key in notifiedKeys) continue
 
-            showNotification(c.id, c.code, formatBody(c), c.room)
-            notifiedKeys += key
-            didNotify = true
+            val startsAt = runCatching { date.atTime(LocalTime.parse(c.start)).atZone(zone).toInstant().toEpochMilli() }.getOrNull() ?: continue
+            val travel = if (snapshot?.context?.nextClass?.sessionId == c.id)
+                maxOf(minimumTravel, snapshot.context.travelBufferMinutes ?: minimumTravel) else minimumTravel
+            val reminder = LeaveByPolicy.reminder(startsAt, now, travel) ?: continue
+            val leave = Instant.ofEpochMilli(reminder.leaveAt).atZone(zone).format(DateTimeFormatter.ofPattern("h:mm a"))
+            val title = if (reminder.leaveAt <= now) "Leave now for ${c.code}" else "${c.code} · leave by $leave"
+            val body = "${formatBody(c)} · Starts in ${reminder.startsInMinutes} min · ${reminder.travelMinutes} min travel buffer"
+            if (showNotification(c.id, title, body, c.room)) {
+                notifiedKeys += key
+                didNotify = true
+            }
         }
 
         if (didNotify) {
@@ -83,7 +102,7 @@ class ClassReminderWorker(
         return "$time \u00B7 ${c.room ?: "TBA"}"
     }
 
-    private suspend fun showNotification(sessionId: String, code: String, body: String, room: String?) {
+    private suspend fun showNotification(sessionId: String, title: String, body: String, room: String?): Boolean {
         PunlaNotifications.ensureChannels(context)
         val channelId = PunlaNotifications.CHANNEL_CLASS
         val notificationManager = NotificationManagerCompat.from(context)
@@ -91,16 +110,16 @@ class ClassReminderWorker(
         // minSdk is 26 (O), so notification channels always exist here — no SDK_INT guard needed.
         val builder = PunlaNotifications.academic(NotificationCompat.Builder(context, channelId))
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("$code starts in 15 min")
+            .setContentTitle(title)
             .setContentText(body)
             .setCategory(NotificationCompat.CATEGORY_EVENT)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .setTimeoutAfter(20L * 60L * 1000L)
-            .addAction(R.mipmap.ic_launcher, "Schedule", activityIntent("schedule", null, "$code:schedule"))
+            .addAction(R.mipmap.ic_launcher, "Schedule", activityIntent("schedule", null, "$sessionId:schedule"))
 
         room?.takeIf { it.isNotBlank() }?.let {
-            builder.addAction(R.mipmap.ic_launcher, "Navigate", activityIntent("campus", it, "$code:navigate"))
+            builder.addAction(R.mipmap.ic_launcher, "Navigate", activityIntent("campus", it, "$sessionId:navigate"))
         }
 
         try {
@@ -113,8 +132,9 @@ class ClassReminderWorker(
                 notificationType = "class",
                 route = "schedule"
             )
+            return true
         } catch (e: SecurityException) {
-            // Permission wasn't granted
+            return false
         }
     }
     private fun activityIntent(route: String, mapQuery: String?, key: String): PendingIntent {

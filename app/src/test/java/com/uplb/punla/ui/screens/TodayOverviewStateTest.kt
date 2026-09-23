@@ -71,6 +71,19 @@ class TodayOverviewStateTest {
         assertEquals(TodayAction.STUDY, shown.action)
     }
 
+    @Test fun taskNeverOverridesCurrentClassOrTravel() {
+        val inClass = base().copy(currentClass = nextToday)
+        assertEquals(TodayAction.NONE, deriveTodayRecommendationPresentation(inClass, "Study Math", "Urgent").action)
+        val travel = base().copy(nextClass = nextToday, freeMinutesBeforeNextCommitment = 8, travelBufferMinutes = 10, usableFreeMinutes = 0)
+        assertEquals(TodayAction.MAP, deriveTodayRecommendationPresentation(travel, "Study Math", "Urgent").action)
+    }
+
+    @Test fun personalCommitmentProtectsReservedTime() {
+        val state = base().copy(currentCommitmentTitle = "Lunch", usableFreeMinutes = 0)
+        assertEquals(TodayNowKind.COMMITMENT, deriveTodayNowPresentation(state).kind)
+        assertEquals(TodayAction.NONE, deriveTodayRecommendationPresentation(state, "Study Math", "Due today").action)
+    }
+
     private fun base() = StudentState(
         generatedAtEpochMillis = 0L,
         localDate = "2026-09-22",

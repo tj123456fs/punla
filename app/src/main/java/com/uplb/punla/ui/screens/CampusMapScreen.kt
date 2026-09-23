@@ -198,6 +198,7 @@ fun CampusMapScreen(vm: PunlaViewModel, initialSearch: String = "", onOpenFullMa
             .padding(horizontal = screenGutter, vertical = 12.dp)
     ) {
 
+        RoutingAttribution()
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
                 value = searchQuery,

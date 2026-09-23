@@ -5,6 +5,15 @@ plugins {
     id("com.google.gms.google-services")
 }
 
+// KSP 1.x keeps per-round copies beside its canonical generated Java output.
+// Compile the canonical files once; a fresh AGP build must not compile both.
+tasks.withType<org.gradle.api.tasks.compile.JavaCompile>().configureEach {
+    exclude { element ->
+        val path = element.file.invariantSeparatorsPath
+        path.contains("/build/generated/ksp/") && path.contains("/byRounds/")
+    }
+}
+
 android {
     namespace = "com.uplb.punla"
     compileSdk = 34
@@ -13,8 +22,9 @@ android {
         applicationId = "com.uplb.punla"
         minSdk = 26
         targetSdk = 34
-        versionCode = 39
-        versionName = "3.4.1"
+        versionCode = 41
+        versionName = "3.5.1"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -102,6 +112,9 @@ dependencies {
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    testImplementation("org.json:json:20240303")
 
     // Firebase Cloud Messaging (background push for imminent deadlines/classes).
     // Pinned to 33.1.2 deliberately: newer BOMs (34.x) pull in play-services-measurement

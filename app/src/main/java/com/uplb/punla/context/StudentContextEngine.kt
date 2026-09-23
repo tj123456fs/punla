@@ -110,6 +110,7 @@ class StudentContextEngine private constructor(context: Context) {
                     planItems = planningSources.planItems,
                     reviewProgress = planningSources.reviewProgress,
                     campusGraph = CampusRoutingResolver.graph(appContext),
+                    travelRoute = CampusRoutingResolver.recentRoute,
                     energy = timingSources.ambient.energy,
                     location = timingSources.ambient.location
                 ) to timingSources.now

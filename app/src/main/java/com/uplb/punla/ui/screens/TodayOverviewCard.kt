@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -53,6 +54,12 @@ internal fun TodayOverviewCard(
     onStartFocus: (String?) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    if (state.localDate.isBlank()) {
+        Surface(modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large) {
+            Text("Loading your day…", Modifier.padding(24.dp), style = MaterialTheme.typography.bodyLarge)
+        }
+        return
+    }
     val now = deriveTodayNowPresentation(state)
     val recommendation = deriveTodayRecommendationPresentation(state, recommendationTitle, recommendationDetail)
     val next = state.nextClass
@@ -92,8 +99,9 @@ internal fun TodayOverviewCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                TodayStatusChip(now.kind, now.statusLabel)
             }
+            Spacer(Modifier.height(6.dp))
+            TodayStatusChip(now.kind, now.statusLabel)
             Spacer(Modifier.height(10.dp))
 
             Crossfade(
@@ -117,7 +125,7 @@ internal fun TodayOverviewCard(
             val nextTitle = next?.let { "${it.code} · ${formatTodayClock(it.startTime)}" } ?: "No upcoming class"
             val nextDetail = next?.let {
                 val day = relativeDayLabel(state.localDate, it.occurrenceDate)
-                listOfNotNull(day, it.room?.takeIf(String::isNotBlank)).joinToString(" · ")
+                listOfNotNull(day, it.room?.takeIf(String::isNotBlank), state.travelBufferMinutes?.let { minutes -> "$minutes min travel · ${state.travelRouteSource}" }).joinToString(" · ")
             } ?: "Nothing else is scheduled in the current look-ahead."
             TodayContextRow(
                 label = "NEXT",
@@ -199,7 +207,7 @@ private fun TodayStatusChip(kind: TodayNowKind, label: String) {
             container = MaterialTheme.colorScheme.primaryContainer
             content = MaterialTheme.colorScheme.onPrimaryContainer
         }
-        TodayNowKind.DAY_COMPLETE -> {
+        TodayNowKind.DAY_COMPLETE, TodayNowKind.COMMITMENT -> {
             container = MaterialTheme.colorScheme.surfaceVariant
             content = MaterialTheme.colorScheme.onSurfaceVariant
         }
@@ -226,6 +234,7 @@ private fun TodayContextRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = 48.dp)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(vertical = 11.dp),
         horizontalArrangement = Arrangement.spacedBy(11.dp),
@@ -266,6 +275,7 @@ private fun nowIcon(kind: TodayNowKind): ImageVector = when (kind) {
     TodayNowKind.FREE_TIME -> Icons.Default.Timer
     TodayNowKind.LEAVE_SOON -> Icons.Default.NearMe
     TodayNowKind.NEXT_SOON -> Icons.Default.Schedule
+    TodayNowKind.COMMITMENT -> Icons.Default.Schedule
     TodayNowKind.DAY_COMPLETE -> Icons.Default.CheckCircle
 }
 

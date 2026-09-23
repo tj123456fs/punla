@@ -59,6 +59,7 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DashboardScreen(
     vm: PunlaViewModel,
@@ -68,8 +69,11 @@ fun DashboardScreen(
     onOpenDeadlines: () -> Unit = {},
     onOpenChecklist: () -> Unit = {},
     onOpenPomodoro: (String?) -> Unit = {},
+    onOpenPlan: () -> Unit = {},
     onOpenStudy: () -> Unit = {}
 ) {
+    val osSnapshot by vm.studentOs.state.collectAsStateWithLifecycle()
+    val primaryWork = osSnapshot.ranked.firstOrNull()
     val classes by vm.classes.collectAsStateWithLifecycle()
     val deadlines by vm.deadlines.collectAsStateWithLifecycle()
     val attendanceRecords by vm.attendanceRecords.collectAsStateWithLifecycle()
@@ -154,10 +158,7 @@ fun DashboardScreen(
 
     val budget = vm.monthlyBudget
     val now = LocalDate.now()
-    val spent = expenses.filter {
-        val d = runCatching { LocalDate.parse(it.date) }.getOrNull()
-        d != null && d.year == now.year && d.monthValue == now.monthValue
-    }.sumOf { it.amount }
+    val spent = studentState.budget.spentThisMonth
     val remaining = budget - spent
     val progress = if (budget > 0) (spent / budget).coerceIn(0.0, 1.0).toFloat() else 0f
 
@@ -185,7 +186,7 @@ fun DashboardScreen(
             java.time.DayOfWeek.SUNDAY to "Sun"
         )
     }
-    val classesToday = remember(classes) {
+    val classesToday = remember(classes, studentState.localDate) {
         val todayAbbrev = dayAbbrevMap[LocalDate.now().dayOfWeek]
         classes.filter { it.day == todayAbbrev }
     }
@@ -285,22 +286,33 @@ fun DashboardScreen(
         // without turning into another giant dashboard.
         item {
             TodayOverviewCard(
-                state = studentState,
-                recommendationTitle = activeSuggestion?.let { "Focus on ${it.deadline.title}" },
-                recommendationDetail = activeSuggestion?.let { s ->
-                    "${s.course ?: "Study"} · ${s.dayLabel} ${fmtTime(s.slotStart)}–${fmtTime(s.slotEnd)}"
+                state = (if (osSnapshot.ready) osSnapshot.context else studentState).let { shared ->
+                    if (vm.pomodoroState.isRunning) shared.copy(currentCommitmentTitle = "Focus timer · ${vm.pomodoroState.remainingSeconds / 60} min left") else shared
                 },
-                recommendationCourse = activeSuggestion?.course,
+                recommendationTitle = primaryWork?.task?.title,
+                recommendationDetail = primaryWork?.reasons?.joinToString(" · "),
+                recommendationCourse = primaryWork?.task?.course,
                 onOpenSchedule = onOpenSchedule,
                 onOpenDeadlines = onOpenDeadlines,
                 onOpenStudy = onOpenStudy,
                 onOpenMap = onOpenNextClassOnMap,
                 onStartFocus = { course ->
-                    activeSuggestion?.let(vm::acceptStudySuggestion)
                     onOpenPomodoro(course)
                 }
             )
             Spacer(Modifier.height(10.dp))
+        }
+
+        item {
+            if (osSnapshot.ready) {
+                EnergyCheckIn(osSnapshot.context.energy) { vm.studentOs.checkIn(it) }
+                FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    TextButton(onClick = onOpenPlan) { Text("Plan & Inbox") }
+                    primaryWork?.let { ranked ->
+                        TextButton(onClick = { vm.studentOs.irrelevant(ranked.task) }) { Text("Not relevant today") }
+                    }
+                }
+            }
         }
 
         // Phase 2B — Today-first Home: keep the decision surface primary.
@@ -569,7 +581,7 @@ fun DashboardScreen(
                                     if (loc != null) {
                                         val meters = nextClassRoute?.distanceMeters
                                             ?: haversineMeters(loc.first, loc.second, nextClassBuilding.lat, nextClassBuilding.lon)
-                                        val etaMinutes = nextClassRoute?.let { (it.durationSeconds / 60.0).roundToInt() }
+                                        val etaMinutes = nextClassRoute?.let { walkingEtaMinutes(it.distanceMeters, it.durationSeconds) }
                                             ?: walkingEtaMinutes(meters)
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Icon(

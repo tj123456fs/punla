@@ -18,47 +18,38 @@ private const val TAG = "RoutingApi"
 data class WalkingRoute(
     val points: List<Pair<Double, Double>>,
     val distanceMeters: Double,
-    val durationSeconds: Double
+    val durationSeconds: Double,
+    val source: String = "OSRM foot"
 )
 
-/**
- * Real walking directions along actual paths/roads, via the public OSRM demo
- * server's "foot" profile (https://router.project-osrm.org) — genuinely free
- * and keyless, no account or dependency needed. It routes against
- * OpenStreetMap's own pedestrian path data, and UPLB's campus has decent
- * footway/road coverage in OSM (per OSM's own wiki page documenting the
- * university's mapping), so this should produce real, sensible routes rather
- * than the straight "as the crow flies" line the map used to draw.
- *
- * This is the app's first outbound network call it makes itself (everything
- * else — Firebase, map tiles — is a library doing its own networking
- * internally), so it's held to a higher bar for graceful failure: this
- * returns `null` on absolutely any problem (no connectivity, demo server
- * down/rate-limited, no route found, malformed response) rather than
- * throwing, so every caller can fall back to the existing straight-line
- * distance/indicator instead of leaving the user with nothing or a crash.
- *
- * Demo server usage note (from its own docs): "restricted to reasonable,
- * non-commercial use... do not exceed 1 request per second... no guarantees
- * wrt. uptime, latency, or data updates." Fine for how this app calls it —
- * on demand, one destination at a time, never in a tight loop — but worth
- * knowing if usage patterns change later. If this server ever becomes
- * unreliable in practice, the natural swap is to self-host the same OSRM
- * `foot.lua` profile, or move to a keyed alternative like OpenRouteService's
- * foot-walking profile — the [WalkingRoute] return shape here wouldn't need
- * to change, just this function's internals.
+/** Public FOSSGIS foot-profile routing, with bounded timeouts and a shared rate limit.
+ * The transport profile is selected by the server, not the final URL segment.
+ * https://routing.openstreetmap.de/about.html
  */
+private val routeRequestMutex = kotlinx.coroutines.sync.Mutex()
+private var lastRouteRequestNanos = 0L
+private suspend fun awaitRoutePermit() {
+    routeRequestMutex.lock()
+    try {
+        val elapsed = (System.nanoTime() - lastRouteRequestNanos) / 1_000_000
+        if (elapsed < 1100) kotlinx.coroutines.delay(1100 - elapsed)
+        lastRouteRequestNanos = System.nanoTime()
+    } finally { routeRequestMutex.unlock() }
+}
+
 suspend fun fetchWalkingRoute(from: Pair<Double, Double>, to: Pair<Double, Double>): WalkingRoute? =
     withContext(Dispatchers.IO) {
         try {
             val (fromLat, fromLon) = from
             val (toLat, toLon) = to
             val url = URL(
-                "https://router.project-osrm.org/route/v1/foot/" +
+                "https://routing.openstreetmap.de/routed-foot/route/v1/foot/" +
                     "$fromLon,$fromLat;$toLon,$toLat" +
                     "?overview=full&geometries=geojson"
             )
+            awaitRoutePermit()
             val connection = (url.openConnection() as HttpURLConnection).apply {
+                setRequestProperty("User-Agent", "Punla/3.5 (https://github.com/tj123456fs/punla)")
                 connectTimeout = 8_000
                 readTimeout = 8_000
                 requestMethod = "GET"
@@ -131,7 +122,7 @@ const val UNREACHABLE_COST = 999_999.0
 /**
  * A real walking-time/distance matrix between every pair in [points], via
  * OSRM's Table service (same demo server and `foot` profile as
- * [fetchWalkingRoute] — https://router.project-osrm.org/table/v1/foot/...).
+ * [fetchWalkingRoute] — https://routing.openstreetmap.de/routed-foot/table/v1/foot/...).
  * Returns null on any failure — the same "never throws, caller falls back"
  * contract as [fetchWalkingRoute].
  *
@@ -158,10 +149,12 @@ suspend fun fetchWalkingMatrix(points: List<Pair<Double, Double>>): WalkingMatri
         try {
             val coords = points.joinToString(";") { (lat, lon) -> "$lon,$lat" }
             val url = URL(
-                "https://router.project-osrm.org/table/v1/foot/$coords" +
+                "https://routing.openstreetmap.de/routed-foot/table/v1/foot/$coords" +
                     "?annotations=distance,duration"
             )
+            awaitRoutePermit()
             val connection = (url.openConnection() as HttpURLConnection).apply {
+                setRequestProperty("User-Agent", "Punla/3.5 (https://github.com/tj123456fs/punla)")
                 connectTimeout = 8_000
                 readTimeout = 8_000
                 requestMethod = "GET"

@@ -279,7 +279,8 @@ fun CampusFullMapScreen(vm: PunlaViewModel) {
         }
     }
 
-    Box(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize()) {
+    Box(Modifier.weight(1f).fillMaxWidth()) {
         CampusFullMapView(
             hasLocationPermission = hasPermission,
             userLoc = userLoc,
@@ -404,7 +405,7 @@ fun CampusFullMapScreen(vm: PunlaViewModel) {
                         }
                     }
                     Text(
-                        "${fmtDistance(plan.totalDistanceMeters)} total · ~${(plan.totalDurationSeconds / 60.0).roundToInt()} min walk",
+                        "${fmtDistance(plan.totalDistanceMeters)} total · ~${(plan.totalDurationSeconds / 60.0).roundToInt()} min walk · ${plan.legs.map { it.route?.source ?: "Estimate" }.distinct().joinToString()}",
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = PunlaMono),
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
@@ -429,7 +430,7 @@ fun CampusFullMapScreen(vm: PunlaViewModel) {
                     upcomingBuilding.lat, upcomingBuilding.lon
                 )
             }
-            val etaMinutes = nextClassRoute?.let { (it.durationSeconds / 60.0).roundToInt() }
+            val etaMinutes = nextClassRoute?.let { walkingEtaMinutes(it.distanceMeters, it.durationSeconds) }
                 ?: walkingEtaMinutes(meters)
             Card(
                 modifier = Modifier
@@ -458,7 +459,7 @@ fun CampusFullMapScreen(vm: PunlaViewModel) {
                         )
                         Text(
                             "${fmtDistance(meters)} away · ~$etaMinutes min walk" +
-                                if (nextClassRoute == null) " (straight-line estimate)" else "",
+                                if (nextClassRoute == null) " (straight-line estimate)" else " · ${nextClassRoute?.source}",
                             style = MaterialTheme.typography.bodySmall.copy(fontFamily = PunlaMono),
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
@@ -466,6 +467,9 @@ fun CampusFullMapScreen(vm: PunlaViewModel) {
                 }
             }
         }
+    }
+
+    RoutingAttribution(Modifier.fillMaxWidth())
     }
 
     val building = selectedBuilding
