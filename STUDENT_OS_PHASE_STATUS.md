@@ -73,7 +73,7 @@ The debug APK uses this workspace's signing key. If Android reports a signature 
 
 ## Publishing and next session
 
-Local branch: `codex/roadmap-student-os`. Automatic approval review rejected the public GitHub push because publication had not been explicitly authorized. No continuation changes were pushed and no PR was opened. The update package is available for review; its installer does not commit, push or install the app.
+Updated 2026-09-23: the user explicitly authorized GitHub publication. The saved continuation and the 3.5.1 study-rendering fix are now merged into `tj123456fs/punla` on `main` through [PR #2](https://github.com/tj123456fs/punla/pull/2). See `SESSION41_STUDY_RENDERING_FIX.md` for current validation and signing details. The original 3.5.0 delivery had not been pushed; that historical limitation is resolved.
 
 Next work should collect the device evidence and surveyed campus paths. Phase 19 remains gated by local reliability.
 
