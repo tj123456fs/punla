@@ -100,16 +100,20 @@ fun StudentOsScreen(vm: PunlaViewModel, initialTab: Int = 0, onOpen: (String, St
             TextButton(onClick = { tab = 0 }) { Text("Back to agenda") }
             Text(when(tab) { 2 -> "Academic Pulse"; 4 -> "Life & planning"; else -> "Planning assistant" }, style = MaterialTheme.typography.titleSmall)
         }
+        // Each destination owns its lazy composition and scroll state. Reusing a
+        // single list across unlike tab contents can remeasure recycled nodes
+        // while Inbox conversion removes rows on Compose 1.6.
+        key(tab) {
         if (!snap.ready) {
             Column(Modifier.padding(24.dp)) { CircularProgressIndicator(); Text("Loading your day…") }
         } else LazyColumn(Modifier.fillMaxWidth().widthIn(max = 840.dp).testTag("planner-list").align(Alignment.CenterHorizontally),
             contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            message?.let { text -> item { OsCard("Update", text) { TextButton(onClick = os::clearMessage) { Text("Dismiss") } } } }
+            message?.let { text -> item(key = "status-message", contentType = "message") { OsCard("Update", text) { TextButton(onClick = os::clearMessage) { Text("Dismiss") } } } }
             when (tab) {
                 0 -> {
                     val selectedDate = LocalDate.parse(selectedDateRaw)
-                    item { PlannerDates(today, selectedDate) { selectedDateRaw = it.toString() } }
-                    item { OsCard(selectedDate.format(DateTimeFormatter.ofPattern("EEEE, MMMM d")),
+                    item(key = "agenda-dates", contentType = "dates") { PlannerDates(today, selectedDate) { selectedDateRaw = it.toString() } }
+                    item(key = "agenda-summary", contentType = "summary") { OsCard(selectedDate.format(DateTimeFormatter.ofPattern("EEEE, MMMM d")),
                         "Your classes, commitments and study time.") {
                         OsActions {
                             Button(onClick = { os.generatePlan(); selectedDateRaw = today.toString() }) { Text("Plan today") }
@@ -118,15 +122,15 @@ fun StudentOsScreen(vm: PunlaViewModel, initialTab: Int = 0, onOpen: (String, St
                     } }
                     val agenda = agendaForDate(snap.agenda, snap.blocks, snap.windows, selectedDate, zone)
                     if (agenda.isEmpty()) item { Text("Nothing scheduled for this date. Capture a task in Inbox, or adjust your planning hours.") }
-                    items(agenda, key = { it.id }) { entry ->
+                    items(agenda, key = { it.id }, contentType = { "agenda:${it.kind}" }) { entry ->
                         PlannerAgendaRow(entry, selectedDate, snap.context.generatedAtEpochMillis) {
                             if (entry.blockId != null) selectedBlockId = entry.blockId
                             else if (entry.route == "student-os?tab=4") tab = 4
                             else if (entry.route.isNotBlank()) onOpen(entry.route, null)
                         }
                     }
-                    item { EnergyCheckIn(snap.context.energy) { os.checkIn(it) } }
-                    item { OutlinedButton(onClick = { showTasks = !showTasks }, modifier = Modifier.fillMaxWidth()) {
+                    item(key = "agenda-energy", contentType = "energy") { EnergyCheckIn(snap.context.energy) { os.checkIn(it) } }
+                    item(key = "agenda-task-toggle", contentType = "toggle") { OutlinedButton(onClick = { showTasks = !showTasks }, modifier = Modifier.fillMaxWidth()) {
                         Text(if (showTasks) "Hide tasks & workload" else "Tasks & workload (${snap.tasks.size})")
                     } }
                     if (showTasks) {
@@ -156,15 +160,15 @@ fun StudentOsScreen(vm: PunlaViewModel, initialTab: Int = 0, onOpen: (String, St
                 }
                 1 -> {
                     val inbox = snap.captures.filter { !it.processed }
-                    item {
+                    item(key = "inbox-summary", contentType = "summary") {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text("${inbox.size} to review", style = MaterialTheme.typography.titleLarge)
                             Text("Turn a thought into a task, deadline or note. You confirm the details.",
                                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
-                    if (inbox.isEmpty()) item { Text("Inbox is clear. You can also choose Punla from Android's Share menu.") }
-                    items(inbox, key = { it.id }) { capture ->
+                    if (inbox.isEmpty()) item(key = "inbox-empty", contentType = "empty") { Text("Inbox is clear. You can also choose Punla from Android's Share menu.") }
+                    items(inbox, key = { "capture:${it.id}" }, contentType = { "capture" }) { capture ->
                         OsCard(capture.text.take(180) + if (capture.text.length > 180) "…" else "", capture.attachment?.let { "Attachment: $it" } ?: clock(capture.createdAt)) {
                             OsActions {
                                 TextButton(onClick = { convert = capture }) { Text("Review & convert") }
@@ -178,7 +182,7 @@ fun StudentOsScreen(vm: PunlaViewModel, initialTab: Int = 0, onOpen: (String, St
                     }
                     val attached = snap.captures.filter { it.processed && it.attachment != null }
                     if (attached.isNotEmpty()) item { Text("Saved attachments", style = MaterialTheme.typography.titleMedium) }
-                    items(attached, key = { "attachment:${it.id}" }) { capture ->
+                    items(attached, key = { "attachment:${it.id}" }, contentType = { "attachment" }) { capture ->
                         val ctx = androidx.compose.ui.platform.LocalContext.current
                         TextButton(onClick = { com.uplb.punla.planning.CaptureAttachments.open(ctx, capture.attachment!!) }) { Text(capture.text.take(80)) }
                     }
@@ -334,7 +338,8 @@ fun StudentOsScreen(vm: PunlaViewModel, initialTab: Int = 0, onOpen: (String, St
                     } }
                 }
             }
-            item { Spacer(Modifier.height(80.dp)) }
+            item(key = "footer:$tab", contentType = "spacer") { Spacer(Modifier.height(80.dp)) }
+        }
         }
     }
     snap.blocks.firstOrNull { it.id == selectedBlockId }?.let { block ->

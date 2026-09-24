@@ -59,6 +59,10 @@ class UiFoundationTest {
         screenshot("capture-review")
         compose.onNodeWithText("Confirm & save").performClick()
         compose.waitUntil(10000) { vm.studentOs.state.value.tasks.any { it.title.contains("Review MATH 27") } }
+        repeat(3) {
+            compose.onNodeWithText("Agenda").performClick()
+            compose.onNodeWithText("Inbox").performClick()
+        }
         compose.onNodeWithText("Agenda").performClick()
         compose.onNodeWithTag("planner-list").performScrollToNode(hasText("Plan today"))
         compose.onNodeWithText("Plan today").assertIsDisplayed().performClick()
