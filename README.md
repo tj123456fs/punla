@@ -4,7 +4,7 @@
 
 The canonical source is [tj123456fs/punla](https://github.com/tj123456fs/punla), branch `main`.
 The saved Student OS continuation and Android study-rendering crash fix are merged in [PR #2](https://github.com/tj123456fs/punla/pull/2).
-Start with [SESSION41_STUDY_RENDERING_FIX.md](SESSION41_STUDY_RENDERING_FIX.md) for the latest validation and continuation instructions, [STUDENT_OS_PHASE_STATUS.md](STUDENT_OS_PHASE_STATUS.md) for roadmap gates, and [UI_UX_IMPROVEMENT_PLAN.md](UI_UX_IMPROVEMENT_PLAN.md) for the proposed design work.
+Start with [SESSION41_STUDY_RENDERING_FIX.md](docs/sessions/SESSION41_STUDY_RENDERING_FIX.md) for the latest validation and continuation instructions, [STUDENT_OS_PHASE_STATUS.md](STUDENT_OS_PHASE_STATUS.md) for roadmap gates, and [UI_UX_IMPROVEMENT_PLAN.md](UI_UX_IMPROVEMENT_PLAN.md) for the proposed design work.
 Clone or pull this repository to continue development; the older session ZIPs are historical patches.
 
 > **UI pass (this update):** theme, typography, and every screen were reworked to
@@ -25,7 +25,7 @@ Punla now includes a complete offline study loop. JSON imports are crash-safe in
 - A Quiz Maker with multiple-choice, true/false, and identification questions, score/history tracking, retry mistakes, flashcard-to-quiz generation, and mistake-to-flashcard conversion.
 - Type-safe Punla JSON envelopes keep flashcard, quiz, and backup files separated: `punla.flashcards.deck`, `punla.quiz`, and `punla.backup`. UUID `contentId` values also let Punla warn when the same generated content is imported twice.
 
-See `FLASHCARD_JSON_IMPORT.md`, `QUIZ_JSON_IMPORT.md`, and `STUDY_SYSTEM_2_0.md`.
+See `FLASHCARD_JSON_IMPORT.md`, `QUIZ_JSON_IMPORT.md`, and `docs/sessions/STUDY_SYSTEM_2_0.md`.
 
 ## Opening the project
 
@@ -54,7 +54,7 @@ See `FLASHCARD_JSON_IMPORT.md`, `QUIZ_JSON_IMPORT.md`, and `STUDY_SYSTEM_2_0.md`
   `Enable precise` upgrade action for better walking-route origins.
 - **Reviewed campus room directory** — 52 canonical UPLB building markers, explicit room-to-building overrides for known upstream contradictions, and conservative unresolved handling instead of risky prefix guesses.
 
-- **Atmospheric background engine 2.0** — twelve selectable native Canvas styles share one renderer across the app, Settings thumbnails, and frozen widget frames. Rain is now gravity-first with stable depth layers instead of camera-like lateral travel; Aurora uses broad filled gradient curtains instead of stroked squiggles. Ocean, fireflies, sakura, snow, bubbles, and starfield motion were also softened for a more stationary, atmospheric feel. Theme Match still pairs every curated theme with a signature effect. See `BACKGROUND_ENGINE_2_0.md`.
+- **Atmospheric background engine 2.0** — twelve selectable native Canvas styles share one renderer across the app, Settings thumbnails, and frozen widget frames. Rain is now gravity-first with stable depth layers instead of camera-like lateral travel; Aurora uses broad filled gradient curtains instead of stroked squiggles. Ocean, fireflies, sakura, snow, bubbles, and starfield motion were also softened for a more stationary, atmospheric feel. Theme Match still pairs every curated theme with a signature effect. See `docs/sessions/BACKGROUND_ENGINE_2_0.md`.
 
 - **Ongoing class-day notification** — one silent card evolves from leave-soon to current class, free time, and end-of-day. Android's chronometer supplies live start/end countdowns, while Attended/Absent check-in, Navigate, Schedule, Start focus, and Hide today actions keep the notification useful without stacking alerts.
 
