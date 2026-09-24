@@ -30,7 +30,9 @@ class UiFoundationTest {
     private fun screenshot(name: String) {
         compose.waitForIdle()
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val file = File(context.getExternalFilesDir(null), "ui-qa/$name.png")
+        val outputDir = InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")
+            ?: File(context.externalMediaDirs.first(), "additional_test_output").absolutePath
+        val file = File(outputDir, "$name.png")
         file.parentFile!!.mkdirs()
         val bitmap = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
         file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
@@ -52,11 +54,14 @@ class UiFoundationTest {
         compose.onNodeWithText("Save to Inbox").performScrollTo().performClick()
         compose.waitUntil(10000) { vm.studentOs.state.value.captures.any { it.text == "Review MATH 27 tomorrow" } }
         compose.onNodeWithText("Review", useUnmergedTree = true).performClick()
-        compose.onNodeWithText("Review & convert").performClick()
+        compose.onNodeWithTag("planner-list").performScrollToNode(hasText("Review & convert"))
+        compose.onNodeWithText("Review & convert").assertIsDisplayed().performClick()
+        screenshot("capture-review")
         compose.onNodeWithText("Confirm & save").performClick()
         compose.waitUntil(10000) { vm.studentOs.state.value.tasks.any { it.title.contains("Review MATH 27") } }
         compose.onNodeWithText("Agenda").performClick()
-        compose.onNodeWithText("Plan today").performClick()
+        compose.onNodeWithTag("planner-list").performScrollToNode(hasText("Plan today"))
+        compose.onNodeWithText("Plan today").assertIsDisplayed().performClick()
         compose.waitUntil(10000) { vm.studentOs.state.value.blocks.any { it.status == "PLANNED" } }
         val block = vm.studentOs.state.value.blocks.first { it.status == "PLANNED" }
         screenshot("plan-app")

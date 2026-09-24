@@ -1,10 +1,20 @@
 #!/usr/bin/env bash
-# Preserve test failure while collecting the screenshots needed to diagnose it.
+# AGP collects additionalTestOutputDir before removing the test app.
 set -uo pipefail
 gradle connectedDebugAndroidTest --no-daemon
 test_status=$?
-mkdir -p app/build/ui-qa
-adb pull /sdcard/Android/data/com.uplb.punla/files/ui-qa/. app/build/ui-qa/
+python3 - <<'PY'
+from pathlib import Path
+import shutil
+source = Path('app/build/outputs/connected_android_test_additional_output')
+target = Path('app/build/ui-qa')
+target.mkdir(parents=True, exist_ok=True)
+images = list(source.rglob('*.png'))
+for image in images:
+    shutil.copyfile(image, target / image.name)
+print(f'Collected {len(images)} UI screenshots')
+raise SystemExit(0 if images else 1)
+PY
 screenshot_status=$?
 if [ "$test_status" -ne 0 ]; then
   exit "$test_status"

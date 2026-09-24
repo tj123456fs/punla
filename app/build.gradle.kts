@@ -25,6 +25,7 @@ android {
         versionCode = 42
         versionName = "3.6.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunnerArguments["additionalTestOutputDir"] = "/sdcard/Android/media/com.uplb.punla/additional_test_output"
     }
 
     buildTypes {
