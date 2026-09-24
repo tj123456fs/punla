@@ -24,6 +24,7 @@ import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 import java.io.File
+import java.time.LocalDate
 
 class UiFoundationTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
@@ -48,6 +49,9 @@ class UiFoundationTest {
         compose.setContent { PunlaTheme(darkTheme = false) { PunlaApp(vm) } }
         compose.onNodeWithTag("nav:dashboard").assertIsSelected()
         screenshot("today-app")
+        compose.runOnIdle { vm.updateBackgroundStyle(com.uplb.punla.data.BackgroundStyle.AMBIENT) }
+        screenshot("today-ambient-chrome")
+        compose.runOnIdle { vm.updateBackgroundStyle(com.uplb.punla.data.BackgroundStyle.MINIMAL) }
         compose.onNodeWithTag("quick-capture").performClick()
         compose.onNodeWithTag("capture-input").performTextInput("Review MATH 27 tomorrow")
         screenshot("capture-app")
@@ -69,6 +73,8 @@ class UiFoundationTest {
         compose.waitUntil(10000) { vm.studentOs.state.value.blocks.any { it.status == "PLANNED" } }
         val block = vm.studentOs.state.value.blocks.first { it.status == "PLANNED" }
         screenshot("plan-app")
+        compose.onNodeWithTag("date:${LocalDate.now().plusDays(7)}").performScrollTo().assertIsDisplayed()
+        screenshot("plan-dates-end")
         compose.onNodeWithTag("planner-list").performScrollToNode(hasTestTag("agenda:block:${block.id}"))
         compose.onNodeWithTag("agenda:block:${block.id}").performClick()
         compose.onNodeWithText("Lock block").performClick()
@@ -80,6 +86,8 @@ class UiFoundationTest {
         compose.onNodeWithTag("nav:study").performClick()
         compose.onNodeWithTag("nav:study").assertIsSelected()
         screenshot("study-app")
+        compose.onNodeWithText("Bank").performScrollTo().assertIsDisplayed()
+        screenshot("study-tabs-bank")
         compose.onNodeWithTag("nav:more").performClick()
         screenshot("more-app")
         compose.onNodeWithTag("more:schedule").performClick()
