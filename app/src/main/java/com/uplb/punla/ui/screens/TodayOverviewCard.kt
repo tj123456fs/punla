@@ -1,15 +1,46 @@
 package com.uplb.punla.ui.screens
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.NearMe
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.uplb.punla.context.StudentState
 
-/** One decision first; the surrounding day remains available at a glance. */
+/**
+ * Phase 2C Today surface. StudentState remains the source of truth; this layer
+ * only turns that shared context into readable, actionable presentation states.
+ */
 @Composable
 internal fun TodayOverviewCard(
     state: StudentState,
@@ -21,20 +52,20 @@ internal fun TodayOverviewCard(
     onOpenStudy: () -> Unit,
     onOpenMap: () -> Unit,
     onStartFocus: (String?) -> Unit,
-    modifier: Modifier = Modifier,
-    focusRunning: Boolean = false
+    modifier: Modifier = Modifier
 ) {
     if (state.localDate.isBlank()) {
         Surface(modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large) {
-            Text("Loading your day…", Modifier.padding(24.dp))
+            Text("Loading your day…", Modifier.padding(24.dp), style = MaterialTheme.typography.bodyLarge)
         }
         return
     }
     val now = deriveTodayNowPresentation(state)
-    val primary = if (focusRunning && now.kind == TodayNowKind.COMMITMENT)
-        TodayRecommendationPresentation("Your focus is in progress", now.title, TodayAction.FOCUS)
-        else deriveTodayPrimaryPresentation(state, recommendationTitle, recommendationDetail)
-    fun act(action: TodayAction) {
+    val recommendation = deriveTodayRecommendationPresentation(state, recommendationTitle, recommendationDetail)
+    val next = state.nextClass
+    val later = state.upcomingDeadlines.firstOrNull()
+
+    fun runAction(action: TodayAction) {
         when (action) {
             TodayAction.NONE -> Unit
             TodayAction.SCHEDULE -> onOpenSchedule()
@@ -44,42 +75,224 @@ internal fun TodayOverviewCard(
             TodayAction.DEADLINES -> onOpenDeadlines()
         }
     }
-    Surface(modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surface) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(now.statusLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-            Text(primary.title, style = MaterialTheme.typography.headlineSmall)
-            Text(primary.detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (primary.action != TodayAction.NONE) {
-                Button(onClick = { act(primary.action) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("today-primary")) {
-                    Text(when (primary.action) {
-                        TodayAction.MAP -> "Open campus map"
-                        TodayAction.FOCUS -> if (focusRunning) "Return to focus" else "Start focus"
-                        TodayAction.STUDY -> "Open study"
-                        TodayAction.DEADLINES -> "Review deadlines"
-                        else -> "View schedule"
-                    })
+
+    Surface(
+        modifier = modifier.fillMaxWidth().animateContentSize(),
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp
+    ) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 15.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.AutoAwesome,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.size(9.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Today", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "One glance at what matters right now.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
-            HorizontalDivider()
-            val next = state.nextClass
-            TodayBrief("NEXT", next?.let { "${it.code} · ${formatTodayClock(it.startTime)}" } ?: "No upcoming class",
-                next?.let { listOfNotNull(relativeDayLabel(state.localDate, it.occurrenceDate), it.room?.takeIf(String::isNotBlank)).joinToString(" · ") }.orEmpty(),
-                next != null, onOpenSchedule)
-            val later = state.upcomingDeadlines.firstOrNull()
-            TodayBrief("LATER", later?.title ?: "Nothing due in the next 7 days",
-                later?.let { listOfNotNull(it.courseCode, when(it.daysUntil) { 0L -> "Due today"; 1L -> "Due tomorrow"; else -> "Due in ${it.daysUntil} days" }).joinToString(" · ") }.orEmpty(),
-                later != null, onOpenDeadlines)
+            Spacer(Modifier.height(6.dp))
+            TodayStatusChip(now.kind, now.statusLabel)
+            Spacer(Modifier.height(10.dp))
+
+            Crossfade(
+                targetState = now,
+                animationSpec = tween(durationMillis = 220),
+                label = "today_now_state"
+            ) { shown ->
+                TodayContextRow(
+                    label = "NOW",
+                    icon = nowIcon(shown.kind),
+                    title = shown.title,
+                    detail = shown.detail,
+                    actionLabel = actionLabel(shown.action),
+                    enabled = shown.action != TodayAction.NONE,
+                    onClick = { runAction(shown.action) }
+                )
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+            val nextTitle = next?.let { "${it.code} · ${formatTodayClock(it.startTime)}" } ?: "No upcoming class"
+            val nextDetail = next?.let {
+                val day = relativeDayLabel(state.localDate, it.occurrenceDate)
+                listOfNotNull(day, it.room?.takeIf(String::isNotBlank), state.travelBufferMinutes?.let { minutes -> "$minutes min travel · ${state.travelRouteSource}" }).joinToString(" · ")
+            } ?: "Nothing else is scheduled in the current look-ahead."
+            TodayContextRow(
+                label = "NEXT",
+                icon = Icons.Default.School,
+                title = nextTitle,
+                detail = nextDetail,
+                actionLabel = if (next != null) "Schedule" else null,
+                enabled = next != null,
+                onClick = onOpenSchedule
+            )
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+            Crossfade(
+                targetState = recommendation,
+                animationSpec = tween(durationMillis = 220),
+                label = "today_recommendation"
+            ) { shown ->
+                TodayContextRow(
+                    label = "RECOMMENDED",
+                    icon = recommendationIcon(shown.action),
+                    title = shown.title,
+                    detail = shown.detail,
+                    actionLabel = actionLabel(shown.action),
+                    enabled = shown.action != TodayAction.NONE,
+                    onClick = { runAction(shown.action) }
+                )
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+            val laterTitle = later?.let { deadline ->
+                listOfNotNull(deadline.courseCode?.takeIf(String::isNotBlank), deadline.title).joinToString(" · ")
+            } ?: "Nothing due in the next 7 days"
+            val laterDetail = later?.let {
+                val dueText = when (it.daysUntil) {
+                    0L -> "Due today"
+                    1L -> "Due tomorrow"
+                    else -> "Due in ${it.daysUntil} days"
+                }
+                val more = (state.upcomingDeadlines.size - 1).coerceAtLeast(0)
+                if (more > 0) "$dueText · +$more more this week" else dueText
+            } ?: "Your near-term deadline window is clear."
+            TodayContextRow(
+                label = "LATER",
+                icon = Icons.Default.Flag,
+                title = laterTitle,
+                detail = laterDetail,
+                actionLabel = if (later != null) "Deadlines" else null,
+                enabled = later != null,
+                onClick = onOpenDeadlines
+            )
         }
     }
 }
 
 @Composable
-private fun TodayBrief(label: String, title: String, detail: String, enabled: Boolean, onClick: () -> Unit) {
-    Surface(onClick = onClick, enabled = enabled, color = MaterialTheme.colorScheme.surface, shape = MaterialTheme.shapes.medium) {
-        Column(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(title, style = MaterialTheme.typography.titleSmall)
-            if (detail.isNotBlank()) Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun TodayStatusChip(kind: TodayNowKind, label: String) {
+    val container: Color
+    val content: Color
+    when (kind) {
+        TodayNowKind.LOADING -> {
+            container = MaterialTheme.colorScheme.surfaceVariant
+            content = MaterialTheme.colorScheme.onSurfaceVariant
+        }
+        TodayNowKind.IN_CLASS -> {
+            container = MaterialTheme.colorScheme.primaryContainer
+            content = MaterialTheme.colorScheme.onPrimaryContainer
+        }
+        TodayNowKind.FREE_TIME -> {
+            container = MaterialTheme.colorScheme.tertiaryContainer
+            content = MaterialTheme.colorScheme.onTertiaryContainer
+        }
+        TodayNowKind.LEAVE_SOON -> {
+            container = MaterialTheme.colorScheme.secondaryContainer
+            content = MaterialTheme.colorScheme.onSecondaryContainer
+        }
+        TodayNowKind.NEXT_SOON -> {
+            container = MaterialTheme.colorScheme.primaryContainer
+            content = MaterialTheme.colorScheme.onPrimaryContainer
+        }
+        TodayNowKind.DAY_COMPLETE, TodayNowKind.COMMITMENT -> {
+            container = MaterialTheme.colorScheme.surfaceVariant
+            content = MaterialTheme.colorScheme.onSurfaceVariant
         }
     }
+    Surface(shape = RoundedCornerShape(999.dp), color = container, contentColor = content) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+        )
+    }
+}
+
+@Composable
+private fun TodayContextRow(
+    label: String,
+    icon: ImageVector,
+    title: String,
+    detail: String,
+    actionLabel: String?,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(vertical = 11.dp),
+        horizontalArrangement = Arrangement.spacedBy(11.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+        ) {
+            Icon(icon, contentDescription = null, modifier = Modifier.padding(8.dp).size(18.dp))
+        }
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.height(2.dp))
+            Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(2.dp))
+            Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (enabled && actionLabel != null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(actionLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.size(3.dp))
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(14.dp)
+                )
+            }
+        }
+    }
+}
+
+private fun nowIcon(kind: TodayNowKind): ImageVector = when (kind) {
+    TodayNowKind.LOADING -> Icons.Default.Schedule
+    TodayNowKind.IN_CLASS -> Icons.Default.School
+    TodayNowKind.FREE_TIME -> Icons.Default.Timer
+    TodayNowKind.LEAVE_SOON -> Icons.Default.NearMe
+    TodayNowKind.NEXT_SOON -> Icons.Default.Schedule
+    TodayNowKind.COMMITMENT -> Icons.Default.Schedule
+    TodayNowKind.DAY_COMPLETE -> Icons.Default.CheckCircle
+}
+
+private fun recommendationIcon(action: TodayAction): ImageVector = when (action) {
+    TodayAction.MAP -> Icons.Default.NearMe
+    TodayAction.FOCUS -> Icons.Default.Timer
+    TodayAction.STUDY -> Icons.Default.School
+    TodayAction.DEADLINES -> Icons.Default.Flag
+    TodayAction.SCHEDULE -> Icons.Default.Schedule
+    TodayAction.NONE -> Icons.Default.AutoAwesome
+}
+
+private fun actionLabel(action: TodayAction): String? = when (action) {
+    TodayAction.NONE -> null
+    TodayAction.SCHEDULE -> "Schedule"
+    TodayAction.MAP -> "Map"
+    TodayAction.FOCUS -> "Focus"
+    TodayAction.STUDY -> "Study"
+    TodayAction.DEADLINES -> "Deadlines"
 }
