@@ -11,18 +11,30 @@ TABLES = {"walk_sessions", "walk_points"}
 
 
 def quoted_sql_statements(text):
-    return [json.loads('"' + raw + '"') for raw in re.findall(r'db\.execSQL\("((?:[^"\\]|\\.)*)"\)', text)]
-
-
-def triple_sql_statements(text):
     return [
-        raw.strip()
-        for raw in re.findall(
-            r'db\.execSQL\(\s*"""(.*?)"""\.trimIndent\(\)\s*\)',
-            text,
-            flags=re.S,
-        )
+        json.loads('"' + raw + '"')
+        for raw in re.findall(r'db\.execSQL\("((?:[^"\\]|\\.)*)"\)', text)
     ]
+
+
+def migration_sql_statements(text):
+    """Return quoted and Kotlin triple-quoted execSQL calls in source order."""
+    statements = []
+
+    quoted = re.compile(r'db\.execSQL\("((?:[^"\\]|\\.)*)"\)')
+    for match in quoted.finditer(text):
+        statements.append(
+            (match.start(), json.loads('"' + match.group(1) + '"'))
+        )
+
+    triple = re.compile(
+        r'db\.execSQL\(\s*"""(.*?)"""\.trimIndent\(\)\s*\)',
+        flags=re.S,
+    )
+    for match in triple.finditer(text):
+        statements.append((match.start(), match.group(1).strip()))
+
+    return [sql for _, sql in sorted(statements, key=lambda item: item[0])]
 
 
 def main():
@@ -33,7 +45,9 @@ def main():
     migration_source = source.split("val MIGRATION_13_14 =", 1)[1].split("fun get(context:", 1)[0]
     migration_sql = migration_sql_statements(migration_source)
 
-    assert len(migration_sql) == 5, f"Expected 5 walk migration statements, found {len(migration_sql)}"
+    assert len(migration_sql) == 5, (
+        f"Expected 5 walk migration statements, found {len(migration_sql)}"
+    )
 
     full = sqlite3.connect(":memory:")
     upgraded = sqlite3.connect(":memory:")
@@ -64,13 +78,26 @@ def main():
         assert full.execute(f"PRAGMA foreign_key_list(`{table}`)").fetchall() == upgraded.execute(
             f"PRAGMA foreign_key_list(`{table}`)"
         ).fetchall(), table
-        assert full.execute(f"PRAGMA index_list(`{table}`)").fetchall() == upgraded.execute(
-            f"PRAGMA index_list(`{table}`)"
-        ).fetchall(), table
 
-    assert upgraded.execute("SELECT title FROM deadlines WHERE id='existing'").fetchone() == ("Keep this",)
+        expected_indexes = {
+            row[1]
+            for row in full.execute(f"PRAGMA index_list(`{table}`)").fetchall()
+        }
+        upgraded_indexes = {
+            row[1]
+            for row in upgraded.execute(f"PRAGMA index_list(`{table}`)").fetchall()
+        }
+        assert expected_indexes == upgraded_indexes, table
+
+    assert upgraded.execute(
+        "SELECT title FROM deadlines WHERE id='existing'"
+    ).fetchone() == ("Keep this",)
     assert upgraded.execute("PRAGMA quick_check").fetchone() == ("ok",)
-    print("PASS: walk migration matches Room; existing data preserved; SQLite quick_check=ok")
+
+    print(
+        "PASS: walk migration matches Room; existing data preserved; "
+        "SQLite quick_check=ok"
+    )
 
 
 if __name__ == "__main__":
