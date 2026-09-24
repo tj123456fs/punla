@@ -1,6 +1,6 @@
-# Punla Student OS continuation — 3.6.0
+# Punla Student OS continuation — 3.5.0
 
-Current version code: **42**. The underlying Student OS continuation began at 3.5.0 / code 40. Starting repository commit: `42c187c645db118b9c211ebf0573a769ed17a694`.
+Version code: **40**. Starting repository commit: `42c187c645db118b9c211ebf0573a769ed17a694`.
 
 The supplied Student OS roadmap and Session 40 summary were read before implementation. The cumulative Session 39/40 changes were applied to the full repository first. This report separates implemented local behavior from release gates; the entire roadmap is not declared production complete.
 
@@ -41,10 +41,6 @@ Backup v10 includes planning tables and attachments. Legacy backups restore with
 
 ## Validation
 
-Current 3.6.0 evidence: **119 JVM tests, 8 Android API 34 tests, 3 GPX tests and the migration/schema check pass**. The UI/UX foundation is merged in [PR #3](https://github.com/tj123456fs/punla/pull/3). See [SESSION42_UI_UX_FOUNDATION.md](SESSION42_UI_UX_FOUNDATION.md) for the exact source, build, screenshots and signing details. Today, primary navigation, dated agenda, capture and Inbox presentation are updated. The phase gates in the table remain; this does not complete physical-device reliability, surveyed campus paths, accounts/sync or the remaining Study/reader redesign.
-
-### Historical 3.5.0 validation
-
 The exact final results are included in the update package's `verification.json` and `unit-test-report/index.html`.
 
 The first complete local run passed **111 JVM tests across 19 suites**, **3 Python GPX tests**, the SQLite migration/schema check and APK signature verification. A workspace reset occurred before delivery; the recorded source patches were restored and the final package was rebuilt successfully and passed the same 111 JVM tests, 3 GPX tests, migration/schema check and APK signature verification.
@@ -73,11 +69,11 @@ The existing schedule tests were corrected to use the configured JUnit imports w
 7. Export planning data with attachments, restore to a separate test installation and compare records. Malformed backup rejection must preserve existing data.
 8. Exercise morning brief, departure alert, Pomodoro completion, recap, widgets, app closure, reboot and battery saver through the full-week reliability gate.
 
-Current CI debug APKs use ephemeral signing keys; the delivered 3.6.0 signer differs from 3.5.1. If Android reports a signature mismatch, build the reviewed source with the existing signing setup. Do not remove an existing installation without a verified backup.
+The debug APK uses this workspace's signing key. If Android reports a signature mismatch, build the reviewed source with the existing signing setup. Do not remove an existing installation without a verified backup.
 
 ## Publishing and next session
 
-Historical publication note, 2026-09-23: the user explicitly authorized GitHub publication. The saved continuation and the 3.5.1 study-rendering fix are now merged into `tj123456fs/punla` on `main` through [PR #2](https://github.com/tj123456fs/punla/pull/2). See `SESSION41_STUDY_RENDERING_FIX.md` for that release's validation and signing details. The current 3.6.0 continuation and remaining UI/UX work are recorded in `SESSION42_UI_UX_FOUNDATION.md`. The original 3.5.0 delivery had not been pushed; that historical limitation is resolved.
+Updated 2026-09-23: the user explicitly authorized GitHub publication. The saved continuation and the 3.5.1 study-rendering fix are now merged into `tj123456fs/punla` on `main` through [PR #2](https://github.com/tj123456fs/punla/pull/2). See `SESSION41_STUDY_RENDERING_FIX.md` for current validation and signing details. The original 3.5.0 delivery had not been pushed; that historical limitation is resolved.
 
 Next work should collect the device evidence and surveyed campus paths. Phase 19 remains gated by local reliability.
 
