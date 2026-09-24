@@ -28,6 +28,13 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.material.icons.filled.Inbox
+import androidx.compose.material.icons.filled.MoreHoriz
+import com.uplb.punla.ui.screens.MoreScreen
+import com.uplb.punla.ui.screens.QuickCaptureSheet
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -75,6 +82,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -426,31 +434,21 @@ private fun PomodoroPictureInPictureContent(vm: PunlaViewModel) {
 
 private data class Tab(val route: String, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
 
-// UX polish plan (nav section) — hybrid drawer/bottom-bar switch. Bottom
-// bar caps at 5 items before losing label space, so the 6 former "TABS"
-// split: the 5 daily-use destinations move to a bottom bar, Campus (visited
-// far less often — once per class-hunt, not multiple times a day) moves to
-// the drawer. Campus still has a one-tap path off the Dashboard's existing
-// "next class on map" shortcut card, so it isn't losing quick access, just
-// losing bottom-bar-level prominence.
+// Daily destinations. Existing routes stay available through More and deep links.
 private val BOTTOM_TABS = listOf(
-    Tab("dashboard", "Home", Icons.Default.Home),
+    Tab("dashboard", "Today", Icons.Default.Home),
+    Tab("student-os", "Plan", Icons.Default.CalendarMonth),
+    Tab("study", "Study", Icons.Default.School),
+    Tab("more", "More", Icons.Default.MoreHoriz)
+)
+private val DRAWER_ITEMS = listOf(
     Tab("schedule", "Schedule", Icons.Default.CalendarMonth),
     Tab("deadlines", "Deadlines", Icons.Default.Flag),
     Tab("budget", "Budget", Icons.Default.AttachMoney),
-    Tab("grades", "Grades", Icons.Default.Grade)
-)
-
-// Drawer now holds only lower-frequency destinations: Campus (moved out of
-// the bottom bar above), Checklist and Settings (inherently low-frequency),
-// and Focus (already has a Dashboard shortcut card, so it doesn't need
-// bottom-bar-level prominence either).
-private val DRAWER_ITEMS = listOf(
-    Tab("student-os", "Plan & Inbox", Icons.Default.AutoAwesome),
+    Tab("grades", "Grades", Icons.Default.Grade),
     Tab("campus", "Campus", Icons.Default.Map),
     Tab("checklist", "Before Classes Start", Icons.Default.Checklist),
     Tab("pomodoro", "Focus", Icons.Default.Timer),
-    Tab("study", "Study Hub", Icons.Default.School),
     Tab("flashcards", "Flashcards", Icons.Default.Style),
     Tab("quizzes", "Quizzes", Icons.Default.Help),
     Tab("assistant", "Assistant", Icons.Default.SmartToy),
@@ -468,21 +466,6 @@ private val ALL_DESTINATIONS = BOTTOM_TABS + DRAWER_ITEMS
 // has no add-form of its own — its FAB slot doesn't apply, so it's hidden
 // here too rather than showing an unrelated speed dial over the timer.
 private val ROUTES_WITH_OWN_FAB = setOf("budget", "deadlines", "grades", "checklist", "campus/fullmap", "pomodoro", "study", "flashcards", "quizzes", "assistant", "system-health")
-
-private data class QuickAddAction(
-    val kind: String,
-    val label: String,
-    val icon: androidx.compose.ui.graphics.vector.ImageVector,
-    val route: String
-)
-
-private val QUICK_ADD_ACTIONS = listOf(
-    QuickAddAction("capture", "Task, note or material", Icons.Default.Add, "student-os"),
-    QuickAddAction("class", "Add class", Icons.Default.CalendarMonth, "schedule"),
-    QuickAddAction("expense", "Add expense", Icons.Default.AttachMoney, "budget"),
-    QuickAddAction("deadline", "Add deadline", Icons.Default.Flag, "deadlines"),
-    QuickAddAction("grade", "Add grade", Icons.Default.Grade, "grades")
-)
 
 /** Extracts the route template's base segment, ignoring query args, e.g.
  * "schedule?quickAdd=true" -> "schedule". Used to match against TABS/DRAWER_ITEMS. */
@@ -511,6 +494,7 @@ fun PunlaApp(
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry.baseRoute()
     val currentTitle = BOTTOM_TABS.firstOrNull { it.route == currentRoute }?.label
+        ?: DRAWER_ITEMS.firstOrNull { it.route == currentRoute }?.label
         ?: when (currentRoute) {
             "settings" -> "Settings"
             "system-health" -> "System Health"
@@ -542,6 +526,12 @@ fun PunlaApp(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var quickAddOpen by rememberSaveable { mutableStateOf(false) }
+    var captureText by rememberSaveable { mutableStateOf("") }
+    var captureSaving by remember { mutableStateOf(false) }
+    var captureError by remember { mutableStateOf<String?>(null) }
+    val osSnapshot by vm.studentOs.state.collectAsStateWithLifecycle()
+    val inboxCount = osSnapshot.captures.count { !it.processed }
+    val snackbar = remember { SnackbarHostState() }
     val useNavigationRail = LocalConfiguration.current.screenWidthDp >= 600
 
     // Decorative atmosphere yields to content motion. LazyColumn/LazyRow scrolls
@@ -606,7 +596,7 @@ fun PunlaApp(
         drawerState = drawerState,
         gesturesEnabled = drawerGesturesEnabled,
         drawerContent = {
-            ModalDrawerSheet(drawerContainerColor = MaterialTheme.colorScheme.surface) {
+            ModalDrawerSheet(modifier = Modifier.verticalScroll(rememberScrollState()), drawerContainerColor = MaterialTheme.colorScheme.surface) {
                 Column(
                     modifier = Modifier.padding(start = 18.dp, top = 20.dp, bottom = 14.dp)
                 ) {
@@ -676,6 +666,7 @@ fun PunlaApp(
                 ) {
                     BOTTOM_TABS.forEach { tab ->
                         NavigationRailItem(
+                            modifier = Modifier.testTag("nav:${tab.route}"),
                             selected = currentRoute == tab.route,
                             onClick = { navigateTo(tab.route) },
                             icon = { Icon(tab.icon, contentDescription = tab.label) },
@@ -692,6 +683,7 @@ fun PunlaApp(
 
             Scaffold(
             modifier = Modifier.weight(1f),
+            snackbarHost = { SnackbarHost(snackbar) },
             topBar = {
                 TopAppBar(
                     title = {
@@ -723,12 +715,13 @@ fun PunlaApp(
                     },
                     actions = {
                         if (!onSettings) {
-                            IconButton(onClick = { navigateTo("settings") }) {
-                                Icon(
-                                    Icons.Default.Settings,
-                                    contentDescription = "Settings",
-                                    tint = MaterialTheme.colorScheme.onBackground
-                                )
+                            IconButton(onClick = { navController.navigate("student-os?tab=1") }) {
+                                BadgedBox(badge = { if (inboxCount > 0) Badge { Text(if (inboxCount > 99) "99+" else inboxCount.toString()) } }) {
+                                    Icon(Icons.Default.Inbox, contentDescription = "Inbox, $inboxCount to review")
+                                }
+                            }
+                            if (currentRoute in ROUTES_WITH_OWN_FAB) IconButton(onClick = { quickAddOpen = true }) {
+                                Icon(Icons.Default.Add, contentDescription = "Quick capture")
                             }
                             IconButton(onClick = { vm.updateThemeMode(nextThemeMode(vm.themeMode)) }) {
                                 Icon(
@@ -782,7 +775,8 @@ fun PunlaApp(
                         ) {
                             BOTTOM_TABS.forEach { tab ->
                                 NavigationBarItem(
-                                    selected = currentRoute == tab.route,
+                                    modifier = Modifier.testTag("nav:${tab.route}"),
+                            selected = currentRoute == tab.route,
                                     onClick = { navigateTo(tab.route) },
                                     icon = { Icon(tab.icon, contentDescription = null) },
                                     label = { Text(tab.label) },
@@ -803,11 +797,8 @@ fun PunlaApp(
             // bottom-bar-aware padding math.
             floatingActionButton = {
                 if (currentRoute !in ROUTES_WITH_OWN_FAB) {
-                    QuickAddFab(
-                        open = quickAddOpen,
-                        onToggle = { quickAddOpen = !quickAddOpen },
-                        onAction = { action -> quickAddTo(action.route) }
-                    )
+                    ExtendedFloatingActionButton(onClick = { quickAddOpen = true },
+                        icon = { Icon(Icons.Default.Add, contentDescription = null) }, text = { Text("Capture") })
                 }
             },
             containerColor = Color.Transparent
@@ -879,6 +870,7 @@ fun PunlaApp(
                         navController.navigate(target)
                     }
                 }
+                composable("more") { MoreScreen { navigateTo(it) } }
                 composable("dashboard") {
                     DashboardScreen(
                         vm,
@@ -1058,120 +1050,31 @@ fun PunlaApp(
         }
         }
 
-        // Scrim behind the open quick-add speed dial — tapping anywhere
-        // outside the action bubbles dismisses the menu.
-        AnimatedVisibility(
-            visible = quickAddOpen,
-            enter = fadeIn(tween(200)),
-            exit = fadeOut(tween(150)),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.45f))
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) { quickAddOpen = false }
-            )
-        }
+        if (quickAddOpen) QuickCaptureSheet(
+            text = captureText, onTextChange = { captureText = it; captureError = null },
+            saving = captureSaving, error = captureError, courses = osSnapshot.context.courses.map { it.code },
+            onDismiss = { quickAddOpen = false }, onStructuredAdd = { quickAddTo(it) },
+            onSave = {
+                captureSaving = true
+                vm.studentOs.capture(captureText) { error ->
+                    captureSaving = false
+                    captureError = error
+                    if (error == null) {
+                        captureText = ""
+                        quickAddOpen = false
+                        scope.launch {
+                            if (snackbar.showSnackbar("Saved to Inbox", actionLabel = "Review") == SnackbarResult.ActionPerformed)
+                                navController.navigate("student-os?tab=1")
+                        }
+                    }
+                }
+            }
+        )
 
       }
     }
 }
 
-/**
- * Bottom-right speed-dial FAB: tapping the main "+" fans out one small
- * labeled FAB per quick-add destination (mirrors the web app's arc of
- * quick-add bubbles), each of which jumps straight to that tab's add form.
- */
-@Composable
-private fun QuickAddFab(
-    open: Boolean,
-    onToggle: () -> Unit,
-    onAction: (QuickAddAction) -> Unit
-) {
-    val haptics = LocalHapticFeedback.current
-    // The lone "+" glyph doubles as a close affordance: rotating it 45°
-    // reads as an "×" without needing a second icon asset or swap-flicker.
-    val fabRotation by animateFloatAsState(
-        targetValue = if (open) 45f else 0f,
-        animationSpec = tween(220, easing = FastOutSlowInEasing),
-        label = "quickAddFabRotation"
-    )
-
-    Column(horizontalAlignment = Alignment.End) {
-        QUICK_ADD_ACTIONS.asReversed().forEachIndexed { index, action ->
-            // Item nearest the FAB opens first; each subsequent bubble is
-            // staggered slightly behind it for a cascading fan-out.
-            val stagger = index * 40
-            AnimatedVisibility(
-                visible = open,
-                enter = fadeIn(tween(180, delayMillis = stagger)) +
-                    slideInVertically(tween(220, delayMillis = stagger), initialOffsetY = { it / 2 }) +
-                    scaleIn(tween(220, delayMillis = stagger), initialScale = 0.6f),
-                exit = fadeOut(tween(120)) +
-                    slideOutVertically(tween(150), targetOffsetY = { it / 2 }) +
-                    scaleOut(tween(150), targetScale = 0.6f)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(bottom = 14.dp)
-                ) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        contentColor = MaterialTheme.colorScheme.onSurface,
-                        shape = MaterialTheme.shapes.small,
-                        shadowElevation = 3.dp,
-                        tonalElevation = 2.dp,
-                        modifier = Modifier.padding(end = 10.dp)
-                    ) {
-                        Text(
-                            action.label,
-                            style = MaterialTheme.typography.labelMedium.copy(fontFamily = PunlaMono, fontWeight = FontWeight.Medium),
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                        )
-                    }
-                    SmallFloatingActionButton(
-                        onClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            onAction(action)
-                        },
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                        elevation = FloatingActionButtonDefaults.elevation(
-                            defaultElevation = 3.dp,
-                            pressedElevation = 5.dp
-                        )
-                    ) {
-                        Icon(action.icon, contentDescription = action.label)
-                    }
-                }
-            }
-        }
-        FloatingActionButton(
-            onClick = {
-                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                onToggle()
-            },
-            containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-            elevation = FloatingActionButtonDefaults.elevation(
-                defaultElevation = 6.dp,
-                pressedElevation = 8.dp
-            )
-        ) {
-            Icon(
-                Icons.Default.Add,
-                contentDescription = if (open) "Close quick add" else "Quick add",
-                modifier = Modifier.graphicsLayer { rotationZ = fabRotation }
-            )
-        }
-    }
-}
-
-/** System -> Light -> Dark -> System, tapped via the top bar icon. */
 private fun nextThemeMode(current: ThemeMode): ThemeMode = when (current) {
     ThemeMode.SYSTEM -> ThemeMode.LIGHT
     ThemeMode.LIGHT -> ThemeMode.DARK

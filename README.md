@@ -1,11 +1,9 @@
 # Punla — Native Android Rewrite
 
-## Current continuation: 3.5.1
+## Current continuation: 3.6.0
 
-The canonical source is [tj123456fs/punla](https://github.com/tj123456fs/punla), branch `main`.
-The saved Student OS continuation and Android study-rendering crash fix are merged in [PR #2](https://github.com/tj123456fs/punla/pull/2).
-Start with [SESSION41_STUDY_RENDERING_FIX.md](SESSION41_STUDY_RENDERING_FIX.md) for the latest validation and continuation instructions, [STUDENT_OS_PHASE_STATUS.md](STUDENT_OS_PHASE_STATUS.md) for roadmap gates, and [UI_UX_IMPROVEMENT_PLAN.md](UI_UX_IMPROVEMENT_PLAN.md) for the proposed design work.
-Clone or pull this repository to continue development; the older session ZIPs are historical patches.
+The UI/UX foundation continues the existing app with Today, Plan, Study and More navigation, text-first capture, and a dated agenda. Start with [SESSION42_UI_UX_FOUNDATION.md](SESSION42_UI_UX_FOUNDATION.md), [STUDENT_OS_PHASE_STATUS.md](STUDENT_OS_PHASE_STATUS.md) for roadmap gates, and [UI_UX_IMPROVEMENT_PLAN.md](UI_UX_IMPROVEMENT_PLAN.md) for design priorities. The Android study-rendering crash fix from 3.5.1 is retained.
+Clone or pull this repository to continue development; older session ZIPs are historical patches.
 
 > **UI pass (this update):** theme, typography, and every screen were reworked to
 > match the web app's field-notebook look (cream paper, crop green, UP maroon,

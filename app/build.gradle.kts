@@ -22,8 +22,8 @@ android {
         applicationId = "com.uplb.punla"
         minSdk = 26
         targetSdk = 34
-        versionCode = 41
-        versionName = "3.5.1"
+        versionCode = 42
+        versionName = "3.6.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -114,6 +114,9 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation(platform("androidx.compose:compose-bom:2024.06.00"))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
     testImplementation("org.json:json:20240303")
 
     // Firebase Cloud Messaging (background push for imminent deadlines/classes).
