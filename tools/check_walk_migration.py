@@ -31,7 +31,7 @@ def main():
 
     source = (ROOT / "app/src/main/java/com/uplb/punla/data/PunlaDatabase.kt").read_text()
     migration_source = source.split("val MIGRATION_13_14 =", 1)[1].split("fun get(context:", 1)[0]
-    migration_sql = quoted_sql_statements(migration_source) + triple_sql_statements(migration_source)
+    migration_sql = migration_sql_statements(migration_source)
 
     assert len(migration_sql) == 5, f"Expected 5 walk migration statements, found {len(migration_sql)}"
 
