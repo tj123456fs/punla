@@ -20,7 +20,7 @@ def sql_statements(text):
 def main():
     generated = ROOT / "app/build/generated/ksp/debug/java/com/uplb/punla/data/PunlaDatabase_Impl.java"
     expected = sql_statements(generated.read_text())
-    migration_source = (ROOT / "app/src/main/java/com/uplb/punla/data/PunlaDatabase.kt").read_text().split("val MIGRATION_12_13 =", 1)[1].split("fun get(context:", 1)[0]
+    migration_source = (ROOT / "app/src/main/java/com/uplb/punla/data/PunlaDatabase.kt").read_text().split("val MIGRATION_12_13 =", 1)[1].split("val MIGRATION_13_14 =", 1)[0]
     migration = sql_statements(migration_source)
     assert len(migration) == len(TABLES), "Missing planning migration statements"
     full, upgraded = sqlite3.connect(":memory:"), sqlite3.connect(":memory:")
