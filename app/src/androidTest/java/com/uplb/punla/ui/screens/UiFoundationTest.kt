@@ -1,0 +1,125 @@
+package com.uplb.punla.ui.screens
+
+import android.app.Application
+import android.graphics.Bitmap
+import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.lifecycle.ViewModelProvider
+import androidx.test.platform.app.InstrumentationRegistry
+import com.uplb.punla.PunlaApp
+import com.uplb.punla.context.*
+import com.uplb.punla.ui.PunlaViewModel
+import com.uplb.punla.ui.theme.PunlaTheme
+import org.junit.Assert.*
+import org.junit.Rule
+import org.junit.Test
+import java.io.File
+
+class UiFoundationTest {
+    @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    private fun screenshot(name: String) {
+        compose.waitForIdle()
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val outputDir = InstrumentationRegistry.getArguments().getString("additionalTestOutputDir")
+            ?: File(context.externalMediaDirs.first(), "additional_test_output").absolutePath
+        val file = File(outputDir, "$name.png")
+        file.parentFile!!.mkdirs()
+        val bitmap = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+        file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        bitmap.recycle()
+    }
+
+    @Test fun primaryNavigationAndCaptureReachExistingDestinations() {
+        lateinit var vm: PunlaViewModel
+        compose.activityRule.scenario.onActivity { activity ->
+            vm = ViewModelProvider(activity, ViewModelProvider.AndroidViewModelFactory.getInstance(activity.application))[PunlaViewModel::class.java]
+            vm.updateBackgroundStyle(com.uplb.punla.data.BackgroundStyle.MINIMAL)
+        }
+        compose.setContent { PunlaTheme(darkTheme = false) { PunlaApp(vm) } }
+        compose.onNodeWithTag("nav:dashboard").assertIsSelected()
+        screenshot("today-app")
+        compose.onNodeWithTag("quick-capture").performClick()
+        compose.onNodeWithTag("capture-input").performTextInput("Review MATH 27 tomorrow")
+        screenshot("capture-app")
+        compose.onNodeWithText("Save to Inbox").performScrollTo().performClick()
+        compose.waitUntil(10000) { vm.studentOs.state.value.captures.any { it.text == "Review MATH 27 tomorrow" } }
+        compose.onNodeWithText("Review", useUnmergedTree = true).performClick()
+        compose.onNodeWithTag("planner-list").performScrollToNode(hasText("Review & convert"))
+        compose.onNodeWithText("Review & convert").assertIsDisplayed().performClick()
+        screenshot("capture-review")
+        compose.onNodeWithText("Confirm & save").performClick()
+        compose.waitUntil(10000) { vm.studentOs.state.value.tasks.any { it.title.contains("Review MATH 27") } }
+        repeat(3) {
+            compose.onNodeWithText("Agenda").performClick()
+            compose.onNodeWithText("Inbox").performClick()
+        }
+        compose.onNodeWithText("Agenda").performClick()
+        compose.onNodeWithTag("planner-list").performScrollToNode(hasText("Plan today"))
+        compose.onNodeWithText("Plan today").assertIsDisplayed().performClick()
+        compose.waitUntil(10000) { vm.studentOs.state.value.blocks.any { it.status == "PLANNED" } }
+        val block = vm.studentOs.state.value.blocks.first { it.status == "PLANNED" }
+        screenshot("plan-app")
+        compose.onNodeWithTag("planner-list").performScrollToNode(hasTestTag("agenda:block:${block.id}"))
+        compose.onNodeWithTag("agenda:block:${block.id}").performClick()
+        compose.onNodeWithText("Lock block").performClick()
+        compose.waitUntil(10000) { vm.studentOs.state.value.blocks.any { it.id == block.id && it.locked } }
+        compose.onNodeWithText("Unlock block").assertExists()
+        screenshot("block-details")
+        compose.onNodeWithText("Mark done").performClick()
+        compose.waitUntil(10000) { vm.studentOs.state.value.blocks.any { it.id == block.id && it.status == "DONE" } }
+        compose.onNodeWithTag("nav:study").performClick()
+        compose.onNodeWithTag("nav:study").assertIsSelected()
+        screenshot("study-app")
+        compose.onNodeWithTag("nav:more").performClick()
+        screenshot("more-app")
+        compose.onNodeWithTag("more:schedule").performClick()
+        compose.onNodeWithTag("destination-title").assertTextEquals("Schedule")
+    }
+
+    @Test fun capturePreservesDraftOnFailureAndDisablesDuplicateSave() {
+        var saving by mutableStateOf(false)
+        var error by mutableStateOf<String?>(null)
+        var draft by mutableStateOf("")
+        var saves = 0
+        compose.setContent { PunlaTheme(darkTheme = false) {
+            QuickCaptureSheet(draft, { draft = it }, saving, error, listOf("MATH 27"),
+                onSave = { saves++; saving = true }, onDismiss = {}, onStructuredAdd = {})
+        } }
+        compose.onNodeWithText("Save to Inbox").assertIsNotEnabled()
+        compose.onNodeWithTag("capture-input").performTextInput("Read notes")
+        compose.onNodeWithText("Save to Inbox").performScrollTo().performClick()
+        compose.onNodeWithText("Saving…").assertIsNotEnabled()
+        compose.runOnIdle { saving = false; error = "Could not save. Try again." }
+        compose.onNodeWithTag("capture-input").assertTextContains("Read notes")
+        compose.onNodeWithTag("capture-error").assertExists()
+        assertEquals(1, saves)
+    }
+
+    @Test fun departureActionRemainsReadableAtLargeTextInDarkMode() {
+        var openedMap = false
+        val next = ClassContext("class1", "PHYS 51", "Physics", "A", "lec", "PH A-1", "2026-09-24", "11:00", "12:00", 0L, 0L)
+        val state = StudentState(generatedAtEpochMillis = 0L, localDate = "2026-09-24", localTime = "10:50", day = "Thu",
+            nextClass = next, freeMinutesBeforeNextCommitment = 10, travelBufferMinutes = 10, usableFreeMinutes = 0)
+        compose.setContent { PunlaTheme(darkTheme = true) {
+            CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 1.5f)) {
+                Surface { Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+                    TodayOverviewCard(state, "Study calculus", "Due today", "MATH 27", {}, {}, {}, { openedMap = true }, {})
+                } }
+            }
+        } }
+        compose.onNodeWithTag("today-primary").assertIsDisplayed().performClick()
+        assertTrue(openedMap)
+        compose.onNodeWithText("Start focus").assertDoesNotExist()
+        screenshot("today-dark-large-text")
+    }
+}

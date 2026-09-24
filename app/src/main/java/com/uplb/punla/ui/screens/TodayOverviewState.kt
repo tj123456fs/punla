@@ -222,3 +222,12 @@ internal fun formatTodayDuration(minutes: Int): String {
         else -> "${hours}h ${remainder}m"
     }
 }
+
+/** Immediate commitments outrank optional study recommendations. */
+internal fun deriveTodayPrimaryPresentation(state: StudentState, title: String?, detail: String?): TodayRecommendationPresentation {
+    val now = deriveTodayNowPresentation(state)
+    if (now.kind in setOf(TodayNowKind.IN_CLASS, TodayNowKind.LEAVE_SOON, TodayNowKind.NEXT_SOON, TodayNowKind.COMMITMENT)) {
+        return TodayRecommendationPresentation(now.title, now.detail, now.action)
+    }
+    return deriveTodayRecommendationPresentation(state, title, detail)
+}

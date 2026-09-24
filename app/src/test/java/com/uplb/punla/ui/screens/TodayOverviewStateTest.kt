@@ -84,6 +84,16 @@ class TodayOverviewStateTest {
         assertEquals(TodayAction.NONE, deriveTodayRecommendationPresentation(state, "Study Math", "Due today").action)
     }
 
+    @Test fun imminentClassOverridesOptionalFocusOnPrimaryButton() {
+        val state = base().copy(nextClass = nextToday, freeMinutesBeforeNextCommitment = 10, usableFreeMinutes = 10)
+        assertEquals(TodayAction.SCHEDULE, deriveTodayPrimaryPresentation(state, "Study Math", "Due today").action)
+    }
+
+    @Test fun reservedTimeDoesNotOfferFocusOnPrimaryButton() {
+        val state = base().copy(currentCommitmentTitle = "Lunch")
+        assertEquals(TodayAction.NONE, deriveTodayPrimaryPresentation(state, "Study Math", "Due today").action)
+    }
+
     private fun base() = StudentState(
         generatedAtEpochMillis = 0L,
         localDate = "2026-09-22",

@@ -10,6 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.uplb.punla.context.EnergyLevel
@@ -46,7 +47,10 @@ fun StudentOsScreen(vm: PunlaViewModel, initialTab: Int = 0, onOpen: (String, St
     var tab by rememberSaveable(initialTab) { mutableIntStateOf(initialTab.coerceIn(0, 5)) }
     var form by remember { mutableStateOf<OsForm?>(null) }
     var convert by remember { mutableStateOf<InboxCapture?>(null) }
-    var captureText by rememberSaveable { mutableStateOf("") }
+    var selectedDateRaw by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
+    var selectedBlockId by rememberSaveable { mutableStateOf<String?>(null) }
+    var showTasks by rememberSaveable { mutableStateOf(false) }
+    var recovery by remember { mutableStateOf<Pair<DayPlanBlock, Boolean>?>(null) }
     var week by rememberSaveable { mutableStateOf(false) }
     var assistantInput by rememberSaveable { mutableStateOf("") }
     var assistantAnswer by rememberSaveable { mutableStateOf("Ask about your day, study time, or tonight. You can also draft an expense or move a planned session.") }
@@ -87,40 +91,49 @@ fun StudentOsScreen(vm: PunlaViewModel, initialTab: Int = 0, onOpen: (String, St
     }
 
     Column(Modifier.fillMaxSize()) {
-        ScrollableTabRow(selectedTabIndex = tab, edgePadding = 12.dp) {
-            listOf("Plan", "Inbox", "Pulse", "Timeline", "Life", "Assistant").forEachIndexed { index, label ->
+        val primaryTabs = listOf(0 to "Agenda", 1 to "Inbox", 3 to "Activity")
+        if (tab in listOf(0, 1, 3)) TabRow(selectedTabIndex = primaryTabs.indexOfFirst { it.first == tab }) {
+            primaryTabs.forEach { (index, label) ->
                 Tab(selected = tab == index, onClick = { tab = index }, text = { Text(label) })
             }
+        } else Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = { tab = 0 }) { Text("Back to agenda") }
+            Text(when(tab) { 2 -> "Academic Pulse"; 4 -> "Life & planning"; else -> "Planning assistant" }, style = MaterialTheme.typography.titleSmall)
         }
+        // Each destination owns its lazy composition and scroll state. Reusing a
+        // single list across unlike tab contents can remeasure recycled nodes
+        // while Inbox conversion removes rows on Compose 1.6.
+        key(tab) {
         if (!snap.ready) {
             Column(Modifier.padding(24.dp)) { CircularProgressIndicator(); Text("Loading your day…") }
-        } else LazyColumn(Modifier.fillMaxWidth().widthIn(max = 840.dp).align(Alignment.CenterHorizontally),
+        } else LazyColumn(Modifier.fillMaxWidth().widthIn(max = 840.dp).testTag("planner-list").align(Alignment.CenterHorizontally),
             contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            message?.let { text -> item { OsCard("Update", text) { TextButton(onClick = os::clearMessage) { Text("Dismiss") } } } }
+            message?.let { text -> item(key = "status-message", contentType = "message") { OsCard("Update", text) { TextButton(onClick = os::clearMessage) { Text("Dismiss") } } } }
             when (tab) {
                 0 -> {
-                    item { EnergyCheckIn(snap.context.energy) { os.checkIn(it) } }
-                    item { OsCard("Today's plan", "Blocks reserve travel and personal commitments. Regenerating keeps locked blocks.") {
-                        Button(onClick = { os.generatePlan() }) { Text("Generate today's plan") }
+                    val selectedDate = LocalDate.parse(selectedDateRaw)
+                    item(key = "agenda-dates", contentType = "dates") { PlannerDates(today, selectedDate) { selectedDateRaw = it.toString() } }
+                    item(key = "agenda-summary", contentType = "summary") { OsCard(selectedDate.format(DateTimeFormatter.ofPattern("EEEE, MMMM d")),
+                        "Your classes, commitments and study time.") {
+                        OsActions {
+                            Button(onClick = { os.generatePlan(); selectedDateRaw = today.toString() }) { Text("Plan today") }
+                            TextButton(onClick = { tab = 4 }) { Text("Edit hours") }
+                        }
                     } }
-                    val blocks = snap.blocks.filter { Instant.ofEpochMilli(it.startAt).atZone(zone).toLocalDate() >= today.minusDays(1) &&
-                        Instant.ofEpochMilli(it.startAt).atZone(zone).toLocalDate() <= today.plusDays(7) }
-                    if (blocks.isEmpty()) item { Text("No blocks yet. Add a task in Inbox, then generate a plan.") }
-                    items(blocks, key = { "block:${it.id}" }) { block ->
-                        OsCard(block.title, "${clock(block.startAt)} · ${block.window().minutes} min · ${block.status.lowercase()}${if (block.locked) " · locked" else ""}") {
-                            if (block.status == "PLANNED") OsActions {
-                                TextButton(onClick = { onOpen("pomodoro", snap.tasks.firstOrNull { it.id == block.taskId }?.course) }) { Text("Focus") }
-                                TextButton(onClick = { os.changeBlock(block, status = "DONE") }) { Text("Done") }
-                                TextButton(onClick = { editBlock(block) }) { Text("Move / resize") }
-                                TextButton(onClick = { os.changeBlock(block, locked = !block.locked) }) { Text(if (block.locked) "Unlock" else "Lock") }
-                                TextButton(onClick = { os.changeBlock(block, status = "SKIPPED") }) { Text("Skip") }
-                                if (block.endAt < System.currentTimeMillis()) {
-                                    TextButton(onClick = { os.recover(block, false) }) { Text("Next opening") }
-                                    TextButton(onClick = { os.recover(block, true) }) { Text("Split & move") }
-                                }
-                            }
+                    val agenda = agendaForDate(snap.agenda, snap.blocks, snap.windows, selectedDate, zone)
+                    if (agenda.isEmpty()) item { Text("Nothing scheduled for this date. Capture a task in Inbox, or adjust your planning hours.") }
+                    items(agenda, key = { it.id }, contentType = { "agenda:${it.kind}" }) { entry ->
+                        PlannerAgendaRow(entry, selectedDate, snap.context.generatedAtEpochMillis) {
+                            if (entry.blockId != null) selectedBlockId = entry.blockId
+                            else if (entry.route == "student-os?tab=4") tab = 4
+                            else if (entry.route.isNotBlank()) onOpen(entry.route, null)
                         }
                     }
+                    item(key = "agenda-energy", contentType = "energy") { EnergyCheckIn(snap.context.energy) { os.checkIn(it) } }
+                    item(key = "agenda-task-toggle", contentType = "toggle") { OutlinedButton(onClick = { showTasks = !showTasks }, modifier = Modifier.fillMaxWidth()) {
+                        Text(if (showTasks) "Hide tasks & workload" else "Tasks & workload (${snap.tasks.size})")
+                    } }
+                    if (showTasks) {
                     item { Text("Choose your next task", style = MaterialTheme.typography.titleLarge) }
                     if (snap.tasks.isEmpty()) item { Text("Your task list is clear. Capture something in Inbox when you're ready.") }
                     items(snap.ranked, key = { "task:${it.task.id}" }) { ranked ->
@@ -143,21 +156,20 @@ fun StudentOsScreen(vm: PunlaViewModel, initialTab: Int = 0, onOpen: (String, St
                             TextButton(onClick = { editTask(load.task) }) { Text("Adjust estimate") }
                         }
                     }
+                    }
                 }
                 1 -> {
-                    item { OsCard("Capture something", "Save a rough task, note, link, or shared material. Confirm details before converting.") {
-                        OutlinedTextField(captureText, { captureText = it }, label = { Text("e.g. MATH 27 exercise due Friday 11:59 PM") }, modifier = Modifier.fillMaxWidth())
-                        Button(onClick = { os.capture(captureText); captureText = "" }, enabled = captureText.isNotBlank()) { Text("Save to Inbox") }
-                        OsActions {
-                            TextButton(onClick = { onOpen("schedule?quickAdd=true&quickAddToken=${System.currentTimeMillis()}", null) }) { Text("Add class") }
-                            TextButton(onClick = { onOpen("budget?quickAdd=true&quickAddToken=${System.currentTimeMillis()}", null) }) { Text("Add expense") }
-                            TextButton(onClick = { onOpen("study", null) }) { Text("Import study material") }
-                        }
-                    } }
                     val inbox = snap.captures.filter { !it.processed }
-                    if (inbox.isEmpty()) item { Text("Inbox is clear. You can also choose Punla from Android's Share menu.") }
-                    items(inbox, key = { it.id }) { capture ->
-                        OsCard(capture.text.take(500), capture.attachment?.let { "Attachment: $it" } ?: clock(capture.createdAt)) {
+                    item(key = "inbox-summary", contentType = "summary") {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("${inbox.size} to review", style = MaterialTheme.typography.titleLarge)
+                            Text("Turn a thought into a task, deadline or note. You confirm the details.",
+                                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    if (inbox.isEmpty()) item(key = "inbox-empty", contentType = "empty") { Text("Inbox is clear. You can also choose Punla from Android's Share menu.") }
+                    items(inbox, key = { "capture:${it.id}" }, contentType = { "capture" }) { capture ->
+                        OsCard(capture.text.take(180) + if (capture.text.length > 180) "…" else "", capture.attachment?.let { "Attachment: $it" } ?: clock(capture.createdAt)) {
                             OsActions {
                                 TextButton(onClick = { convert = capture }) { Text("Review & convert") }
                                 TextButton(onClick = { os.discard(capture) }) { Text("Archive") }
@@ -170,7 +182,7 @@ fun StudentOsScreen(vm: PunlaViewModel, initialTab: Int = 0, onOpen: (String, St
                     }
                     val attached = snap.captures.filter { it.processed && it.attachment != null }
                     if (attached.isNotEmpty()) item { Text("Saved attachments", style = MaterialTheme.typography.titleMedium) }
-                    items(attached, key = { "attachment:${it.id}" }) { capture ->
+                    items(attached, key = { "attachment:${it.id}" }, contentType = { "attachment" }) { capture ->
                         val ctx = androidx.compose.ui.platform.LocalContext.current
                         TextButton(onClick = { com.uplb.punla.planning.CaptureAttachments.open(ctx, capture.attachment!!) }) { Text(capture.text.take(80)) }
                     }
@@ -326,8 +338,43 @@ fun StudentOsScreen(vm: PunlaViewModel, initialTab: Int = 0, onOpen: (String, St
                     } }
                 }
             }
-            item { Spacer(Modifier.height(80.dp)) }
+            item(key = "footer:$tab", contentType = "spacer") { Spacer(Modifier.height(80.dp)) }
         }
+        }
+    }
+    snap.blocks.firstOrNull { it.id == selectedBlockId }?.let { block ->
+        ModalBottomSheet(onDismissRequest = { selectedBlockId = null }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(block.title, style = MaterialTheme.typography.headlineSmall)
+                Text("${clock(block.startAt)} · ${block.window().minutes} min · ${block.status.lowercase()}")
+                if (block.status == "PLANNED") {
+                    Button(onClick = {
+                        selectedBlockId = null
+                        onOpen("pomodoro", snap.tasks.firstOrNull { it.id == block.taskId }?.course)
+                    }, modifier = Modifier.fillMaxWidth()) { Text("Open focus timer") }
+                    OutlinedButton(onClick = { os.changeBlock(block, status = "DONE"); selectedBlockId = null }, modifier = Modifier.fillMaxWidth()) { Text("Mark done") }
+                    HorizontalDivider()
+                    OsActions {
+                        TextButton(onClick = { selectedBlockId = null; editBlock(block) }) { Text("Move / resize") }
+                        TextButton(onClick = { os.changeBlock(block, locked = !block.locked) }) { Text(if (block.locked) "Unlock block" else "Lock block") }
+                        TextButton(onClick = { os.changeBlock(block, status = "SKIPPED"); selectedBlockId = null }) { Text("Skip block") }
+                    }
+                    if (block.endAt < System.currentTimeMillis()) {
+                        Text("Missed this session? Make room in a future opening.", style = MaterialTheme.typography.bodyMedium)
+                        OsActions {
+                            TextButton(onClick = { selectedBlockId = null; recovery = block to false }) { Text("Next opening") }
+                            TextButton(onClick = { selectedBlockId = null; recovery = block to true }) { Text("Split & move") }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    recovery?.let { (block, split) ->
+        AlertDialog(onDismissRequest = { recovery = null }, title = { Text(if (split) "Split this session?" else "Find the next opening?") },
+            text = { Text("${block.title} · ${block.window().minutes} minutes. Punla will replace this missed block with ${if (split) "smaller blocks" else "one block"} in available future time, before its deadline. If the work doesn't fit, the original stays unchanged.") },
+            confirmButton = { TextButton(onClick = { os.recover(block, split); recovery = null }) { Text("Confirm") } },
+            dismissButton = { TextButton(onClick = { recovery = null }) { Text("Cancel") } })
     }
     form?.let { data -> OsFormDialog(data) { form = null } }
     convert?.let { capture -> CaptureConvertDialog(capture, snap.context.courses.map { it.code }, { convert = null }) { kind, title, course, date, time, minutes ->

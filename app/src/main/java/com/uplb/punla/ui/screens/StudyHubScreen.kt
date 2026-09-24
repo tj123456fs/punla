@@ -49,7 +49,8 @@ fun StudyHubScreen(
     initialSection: String? = null,
     onOpenFlashcards: (String?, String?, Boolean) -> Unit,
     onOpenQuizzes: (String?, String?, Boolean) -> Unit,
-    onOpenFocus: (String?) -> Unit
+    onOpenFocus: (String?) -> Unit,
+    onOpenPulse: () -> Unit = {}
 ) {
     val topics by vm.studyTopics.collectAsStateWithLifecycle()
     val notes by vm.studyNotes.collectAsStateWithLifecycle()
@@ -236,6 +237,7 @@ fun StudyHubScreen(
                 onOpenFlashcards = onOpenFlashcards,
                 onOpenQuizzes = onOpenQuizzes,
                 onOpenFocus = onOpenFocus,
+                onOpenPulse = onOpenPulse,
                 onAddTopic = { showTopicEditor = true },
                 onImportStudy = { studyPicker.launch(arrayOf("application/json", "text/json", "text/plain", "application/octet-stream")) },
                 onOpenReview = { activeReview = it },
@@ -277,7 +279,7 @@ fun StudyHubScreen(
 private fun OverviewTab(
     courseCodes: List<String>, selectedCourse: String?, onSelectCourse: (String?) -> Unit,
     queue: List<StudyEngine.QueueItem>, weak: List<StudyEngine.WeakTopic>, decks: List<FlashcardDeck>, cards: List<Flashcard>, quizzes: List<Quiz>, questions: List<QuizQuestion>, attempts: List<QuizAttempt>, notes: List<StudyNote>, formulas: List<FormulaReference>, topics: List<StudyTopic>, mistakes: List<MistakeRecord>, planItems: List<StudyPlanItem>, goals: List<StudyGoal>, reviewProgress: List<StudyReviewProgress>, examDates: Map<String, LocalDate>, streak: Int,
-    onStudyNow: () -> Unit, onOpenFlashcards: (String?, String?, Boolean) -> Unit, onOpenQuizzes: (String?, String?, Boolean) -> Unit, onOpenFocus: (String?) -> Unit, onAddTopic: () -> Unit, onImportStudy: () -> Unit, onOpenReview: (StudyReviewTarget) -> Unit, vm: PunlaViewModel
+    onStudyNow: () -> Unit, onOpenFlashcards: (String?, String?, Boolean) -> Unit, onOpenQuizzes: (String?, String?, Boolean) -> Unit, onOpenFocus: (String?) -> Unit, onAddTopic: () -> Unit, onImportStudy: () -> Unit, onOpenReview: (StudyReviewTarget) -> Unit, vm: PunlaViewModel, onOpenPulse: () -> Unit
 ) {
     val hp = punlaScreenHorizontalPadding()
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = hp, end = hp, top = 8.dp, bottom = 110.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -289,6 +291,7 @@ private fun OverviewTab(
                     Text("One place for your queue, exam prep, mistakes, notes, formulas, practice tests and readiness.")
                     Spacer(Modifier.height(14.dp))
                     Button(onClick = onStudyNow, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.PlayArrow, null); Spacer(Modifier.width(8.dp)); Text(if (queue.isEmpty()) "Plan study" else "Study now · ${queue.size} items") }
+                    TextButton(onClick = onOpenPulse, modifier = Modifier.fillMaxWidth()) { Text("Academic Pulse · what needs attention") }
                 }
             }
         }
