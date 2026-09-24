@@ -712,8 +712,14 @@ fun PunlaApp(
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color.Transparent,
-                        titleContentColor = MaterialTheme.colorScheme.onBackground
+                        // Keep navigation chrome stable over Punla's animated
+                        // atmosphere. Reading surfaces should not inherit moving
+                        // contrast from the decorative background.
+                        containerColor = MaterialTheme.colorScheme.background,
+                        scrolledContainerColor = MaterialTheme.colorScheme.background,
+                        titleContentColor = MaterialTheme.colorScheme.onBackground,
+                        navigationIconContentColor = MaterialTheme.colorScheme.onBackground,
+                        actionIconContentColor = MaterialTheme.colorScheme.onBackground
                     )
                 )
             },
@@ -736,11 +742,13 @@ fun PunlaApp(
                         Modifier
                             .fillMaxWidth()
                             .navigationBarsPadding()
-                            .padding(horizontal = 16.dp, vertical = 10.dp)
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
                             .glassCard(
                                 shape = RoundedCornerShape(28.dp),
-                                tintAlpha = 0.9f,
-                                elevation = 8.dp
+                                // Opaque on purpose: the default AMBIENT background
+                                // must never bleed through navigation labels/icons.
+                                tintAlpha = 1f,
+                                elevation = 6.dp
                             )
                     ) {
                         NavigationBar(
