@@ -53,6 +53,7 @@ import com.uplb.punla.data.Building
 import com.uplb.punla.data.CampusDirectory
 import com.uplb.punla.data.LocationFailure
 import com.uplb.punla.data.OpenFreeMap
+import com.uplb.punla.data.PunlaDatabase
 import com.uplb.punla.data.RoutePlan
 import com.uplb.punla.data.WalkingRoute
 import com.uplb.punla.data.fetchOneShotLocation
@@ -68,6 +69,7 @@ import com.uplb.punla.data.walkingEtaMinutes
 import com.uplb.punla.ui.PunlaViewModel
 import kotlin.math.roundToInt
 import com.uplb.punla.ui.theme.PunlaMono
+import kotlinx.coroutines.flow.flowOf
 import org.maplibre.android.MapLibre
 import org.maplibre.android.annotations.MarkerOptions
 import org.maplibre.android.annotations.Polygon
@@ -133,6 +135,18 @@ fun CampusFullMapScreen(vm: PunlaViewModel) {
     var userLoc by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var locateFailure by remember { mutableStateOf<LocationFailure?>(null) }
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
+
+    val walkDao = remember(context.applicationContext) {
+        PunlaDatabase.get(context.applicationContext).walkRecordingDao()
+    }
+    val activeWalk by walkDao.observeActiveSession().collectAsStateWithLifecycle(initialValue = null)
+    val activeWalkPointsFlow = remember(activeWalk?.id) {
+        activeWalk?.id?.let { walkDao.observePoints(it) } ?: flowOf(emptyList())
+    }
+    val activeWalkPoints by activeWalkPointsFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+    val recordedWalkPoints = remember(activeWalkPoints) {
+        activeWalkPoints.map { it.lat to it.lon }
+    }
 
     val nextClass by vm.nextClassFlow.collectAsStateWithLifecycle(initialValue = null)
     val nextClassBuilding = remember(nextClass) {
@@ -286,6 +300,7 @@ fun CampusFullMapScreen(vm: PunlaViewModel) {
             userLoc = userLoc,
             nextClassBuilding = nextClassBuilding,
             routePoints = displayRoutePoints,
+            recordedWalkPoints = recordedWalkPoints,
             onMapReady = { map = it },
             onBuildingTap = { selectedBuilding = it },
             modifier = Modifier.fillMaxSize()
@@ -518,6 +533,7 @@ private fun CampusFullMapView(
     userLoc: Pair<Double, Double>?,
     nextClassBuilding: Building?,
     routePoints: List<Pair<Double, Double>>?,
+    recordedWalkPoints: List<Pair<Double, Double>>,
     onMapReady: (MapLibreMap) -> Unit,
     onBuildingTap: (Building) -> Unit,
     modifier: Modifier = Modifier
@@ -527,8 +543,10 @@ private fun CampusFullMapView(
     var readyMap by remember { mutableStateOf<MapLibreMap?>(null) }
     val highlightHolder = remember { arrayOfNulls<Polygon>(1) }
     val lineHolder = remember { arrayOfNulls<Polyline>(1) }
+    val walkLineHolder = remember { arrayOfNulls<Polyline>(1) }
 
     val primaryColor = MaterialTheme.colorScheme.primary.toArgb()
+    val walkColor = MaterialTheme.colorScheme.secondary.toArgb()
 
     AndroidView(
         modifier = modifier,
@@ -615,6 +633,15 @@ private fun CampusFullMapView(
                 val options = PolylineOptions()
                 routePoints.forEach { (lat, lon) -> options.add(LatLng(lat, lon)) }
                 map.addPolyline(options.color(primaryColor).width(4f))
+            } else null
+
+            // Separate overlay for the route Punla is currently recording.
+            // It never replaces navigation directions; both can be visible at once.
+            walkLineHolder[0]?.let { map.removePolyline(it) }
+            walkLineHolder[0] = if (recordedWalkPoints.size >= 2) {
+                val options = PolylineOptions()
+                recordedWalkPoints.forEach { (lat, lon) -> options.add(LatLng(lat, lon)) }
+                map.addPolyline(options.color(walkColor).width(5f))
             } else null
         }
     )
