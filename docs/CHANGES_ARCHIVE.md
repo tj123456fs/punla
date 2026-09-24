@@ -1,0 +1,600 @@
+## Session 35H — Main-thread scheduler merge
+
+- Moved persistent worker scheduling/recovery off the Android main thread.
+- Boot/time/package recovery now uses `goAsync()` plus a background coroutine.
+- System Health job repair no longer blocks the interaction frame.
+- Preserved Phase 0D Battery/Idle, restore-verification, and 7-day stability validation features.
+- Removed duplicate Activity-level cold-start scheduling; Application owns the startup repair path.
+- Version 2.9.6 (30).
+
+# Session 35D — Scroll-aware animation smoothing
+
+- Replaced the hard animated-background freeze during scrolling with adaptive slow motion.
+- Added a continuous virtual animation clock so background motion does not stop/jump around scroll gestures.
+- Eases toward ~32% background playback speed while scrolling and back to full speed afterward.
+- Caps decorative background publishing to ~12 FPS during active scrolling while preserving the existing idle cadence.
+- Clamps large resume-time deltas to prevent atmosphere jumps after app sleep/backgrounding.
+- Bumped app version to 2.9.3 (27).
+- No database migration and no new dependencies.
+
+# Session 35C — Phase 0B System Health
+
+- Added a local System Health screen for notifications, exact alarms, background restrictions, battery optimization, WorkManager jobs, database integrity, backup freshness, and diagnostics.
+- Added in-app diagnostic log viewing, text export, and confirmed clearing.
+- Added direct Android settings shortcuts for actionable reliability problems.
+- Standard notification channels are now created at application startup so channel health is immediately inspectable.
+- Bumped app version to 2.9.2 (26).
+- No database migration and no new dependencies.
+
+# Session 35B — Smooth interaction pass
+
+- Isolated the animated procedural background into its own `graphicsLayer` so atmosphere redraws do not re-record the foreground app tree.
+- Pauses decorative background animation during active Compose scroll/fling gestures, then resumes afterward.
+- Vsync-aligned the existing 15–25 FPS background ticker with `withFrameNanos`.
+- Migrated Compose screen Flow subscriptions to lifecycle-aware collection (`collectAsStateWithLifecycle`).
+- Moved/serialized Glance widget refresh work off the UI dispatcher.
+- Cached Settings background preview rasters and made the theme chooser lazy.
+- Memoized palette/color-scheme/typography resolution and simplified sibling-tab transitions to short fades.
+- No Room/backup schema change. Version **2.9.1** (`versionCode 25`).
+
+# Session 34g — Campus map compile fix
+
+- Fixed `CampusFullMapScreen.kt` compile failure (`Unresolved reference: context`) in the MapLibre `AndroidView` update block.
+- The location-component activation now uses the active `MapView` context (`it.context`), which is guaranteed to be in scope inside `AndroidView.update`.
+- No feature or database-schema changes.
+- Version bumped to **2.8.3** (`versionCode 23`).
+
+# Session 34 — Course Learning Path
+
+- Bumped app to **2.8.0 / versionCode 20**.
+- Upgraded the Study Hub so every course can follow a consistent learning sequence:
+  - Module Review → Module Flashcards → Module Quiz
+  - then Overall Review → Overall Flashcards → Comprehensive Quiz.
+- Top-level Study Topics now act as ordered course modules; nested topics remain subtopics inside the module.
+- Added persistent reviewer-completion tracking without locking later study steps.
+- Flashcard decks and quizzes can now be attached to a module (`topicId`) or left course-level for Overall Review.
+- Added module-scoped opening for Flashcards and Quizzes from Study Hub.
+- Added manual module assignment in Flashcard Deck and Quiz editors.
+- Creating or importing decks/quizzes from a module now keeps that module/course scope by default; quiz-from-flashcards also stays inside the active module.
+- Added module/topic ordering (`sortOrder`) and migration **v11 → v12**.
+- Updated backup/restore to preserve module links, topic order, and reviewer completion.
+- Extended study-pack JSON import with optional `topicKey` on flashcard decks/quizzes and `sortOrder` on topics while keeping schemaVersion 1 backward compatible.
+
+---
+
+# Session 33b — Study System 3.0 build fix
+
+- Fixed missing ArrowForward, Image, and layout.height imports.
+- Fixed nullable QuizQuestion editor initialization accesses.
+- Bumped app to 2.7.1 / versionCode 19.
+
+# Punla changes
+
+## v2.6 — Crash-safe JSON imports
+
+- Reworked Flashcard JSON imports into an awaited, atomic flow instead of fire-and-forget database jobs.
+- Room/import failures are now caught and shown as an in-app error; failed transactions roll back instead of terminating Punla.
+- The UI opens an imported deck only after the database transaction has actually succeeded.
+- Import buttons lock while a save is running, preventing double-taps from starting overlapping transactions.
+- Added a bounded JSON reader so Punla never reads an arbitrarily large selected file into memory before applying its size limit.
+- Flashcard and Quiz JSON reading/parsing now runs off the main thread.
+- Hardened duplicate-content history checks so storage/query failures surface as recoverable import errors.
+- Applied the same transaction/error protections to Quiz JSON imports to avoid the same crash class there.
+- No Room schema change; existing decks, quizzes, attempts, and import IDs remain compatible.
+- App version: `2.6` (`versionCode 17`).
+
+## v2.5 — Atmospheric Background Engine 2.0
+
+- Rebuilt Rain with gravity-dominant motion and stable per-drop x anchors so the scene no longer feels like the camera is moving through the weather.
+- Added explicit far/mid/near rain layers, tiny independent breeze wobble, sparse near-drop splashes, and a subtle stationary haze layer.
+- Rebuilt Aurora from thick stroked curves into four broad filled gradient curtains with independently deforming top/bottom edges and soft inner glow.
+- Slowed and softened Ocean Waves, Fireflies, Sakura, Snow, Bubbles, and Starfield motion so animated backgrounds feel atmospheric rather than like a moving viewport.
+- Preserved the shared renderer used by the live app, Settings previews, and frozen widget frames; no new dependency or database migration.
+- App version: `2.5` (`versionCode 16`).
+
+## v2.4 — Flashcards 2.0 + Quiz Maker
+
+- Upgraded Flashcards with cloze cards, reverse-direction study, tags, starred cards, and Smart Study filters for Due / Weak / New / Starred / All.
+- Added strict flashcard JSON v2 export/import with `punla.flashcards.deck`, schema versioning, UUID content IDs, re-import warnings, and exact-card duplicate skipping.
+- Added **Quizzes** as a drawer destination with manual quiz/question editing, multiple choice, true/false, identification, passing score, shuffling, explanations, scoring, attempt history, and retry-mistakes flow.
+- Added **Create quiz from flashcards** and **Make flashcards from quiz mistakes**.
+- Added strict quiz JSON v1 import/export with `punla.quiz` and UUID content IDs.
+- Added `punla.backup` to newly exported full backups so the three JSON import surfaces can reject files intended for another Punla feature. Older backups remain readable.
+- Added Room migration 9→10 for flashcard metadata, quizzes, attempts, and JSON import records.
+- Backup format v6 now preserves upgraded flashcards, quizzes, quiz questions, attempts, and imported-content IDs.
+- App version: `2.4` (`versionCode 15`).
+
+# Punla 2.3 — Flashcard JSON Import
+
+- Added JSON flashcard-deck import through Android's document picker.
+- Added import preview and readable validation errors.
+- Added canonical `punla-flashcards` format v1 for ChatGPT-generated decks.
+- Supports common field aliases and bare card arrays.
+- Importing from the library creates a new deck; importing from a deck adds cards there.
+- Imported cards always start as fresh reviews; external mastery/history values are ignored.
+- Added import size/card-count guardrails and invalid-card skipping.
+- Added atomic deck + card insertion for new-deck imports.
+- Fixed a duplicate `tint` argument in the flashcard hero icon found during validation.
+- Version bumped to 2.3 (`versionCode 14`).
+
+# Punla Changes
+
+## Session 28 — Flashcard Maker (v2.2)
+
+- Added an offline-first Flashcards destination with deck creation, optional course labels, descriptions, and deck-level progress.
+- Added manual card create/edit/delete and deck search.
+- Added bulk card import using `front :: back` or tab-separated lines.
+- Added a focused study mode with answer reveal and `Again`, `Hard`, `Good` ratings.
+- Added lightweight spaced repetition and per-card mastery/review metadata.
+- Added due-card counts plus `Study due` and `Study all` flows.
+- Added Room entities/DAO and migration `8 -> 9`; deck deletion cascades safely to its cards.
+- Added flashcards to Punla backup/restore; backup format version is now 5.
+- Added scheduler unit tests.
+- Bundled the GitHub Actions fixes for the Compose `animateColorAsState` import/dependency and nullable `initialExpense?.ruleId`.
+- Version bumped to `2.2` (`versionCode 13`).
+
+
+## Session 27 — UI/UX 2.1
+
+- Added responsive, centered content gutters across primary screens so tablet/foldable and landscape layouts no longer stretch cards edge-to-edge.
+- Navigation rail now activates at 600 dp, while compact phones retain the floating bottom navigation.
+- Switched the root app bar from centered to left-aligned for better title/action balance.
+- Redesigned shared section headers with clearer sentence-case hierarchy and optional contextual actions.
+- Dashboard section headers now link directly to Schedule, Budget, and Deadlines.
+- Added actionable empty states for Schedule, Budget, Deadlines, Grades, and Checklist.
+- Replaced ambiguous plus-only FABs with labeled extended FABs on Budget, Deadlines, Grades, and Checklist.
+- Removed duplicate in-screen titles from Settings, Checklist, Study Analysis, Assistant, and Campus.
+- Added animated segmented-control and day-pill selection transitions.
+- Normalized Dashboard stat-tile heights for cleaner scanning.
+- Version bumped to `2.1` (`versionCode 12`).
+
+## Session 26 — Budgeting System Upgrade (v2.0)
+
+- Added a **Safe to Spend Today** planner that uses the tighter active weekly/monthly limit and spreads the remaining discretionary budget across the days left in the period.
+- Monthly safe-spend calculations now reserve upcoming **fixed recurring commitments** before treating money as discretionary.
+- Added optional **monthly category limits** for Food / Allowance, Transportation, Mobile Load / Internet, Supplies, Org / Activities, and Miscellaneous. Category cards now show amount left or amount over the configured cap.
+- Added **expense editing** for amount, category, note, date, and fixed status.
+- Added **backdated expense logging** with Today/Yesterday shortcuts and future-date validation.
+- Editing a generated recurring occurrence changes only that occurrence; the future recurrence rule is preserved.
+- Backdated recurring rules now catch up immediately after creation instead of waiting for the next app launch.
+- Home and the tall Budget widget now surface the safe-to-spend figure.
+- Budget threshold notifications now include actionable daily-pace guidance and expanded text.
+- Category limits are preference-backed (no Room migration) and are included in backup/restore. Backup format version is now 4.
+
+
+## v1.9 — Notification system upgrade
+
+- Centralized notification channels, groups, stable IDs, and routine quiet-hour policy.
+- Fixed cross-feature notification ID collisions and moved push notifications into the shared ID/channel policy.
+- Kept the ongoing class-day card silent while restoring one intentional 15-minute class-start alert with Schedule/Navigate actions and 20-minute expiry.
+- Added a quiet 7:15 AM Morning agenda with today's class count, first room/time, and deadlines due today; it is deduplicated once per date.
+- Added Settings controls for Morning agenda and 10 PM–7 AM Quiet hours, plus a shortcut to Android's per-category notification controls.
+- Quiet hours suppress routine checklist, budget, backup, and daily-brief nudges while preserving class, Pomodoro, and deadline alerts.
+- Learned routine reminder hours are kept outside quiet hours.
+- Deadline alerts remain deduplicated until the urgent deadline snapshot changes.
+- Ongoing class cards prioritize at most three useful actions for the current state.
+- Backup/restore now preserves Morning agenda and Quiet hours preferences.
+- Validation: 85 Kotlin files parsed with zero syntax errors; notification policy compiled against local stubs and passed quiet-hour/ID tests.
+
+# Version 1.8 — Schedule Today Auto-Focus
+
+- Schedule List now resets to the current weekday whenever the destination is reopened, even when bottom-navigation state restoration retained an older day.
+- Automatically scrolls to the class happening now.
+- Before or between classes, automatically scrolls to the next class today.
+- After the final class, opens at the last class and labels the day complete.
+- Adds clear `HAPPENING NOW`, `UP NEXT`, and `DAY COMPLETE` emphasis without changing the user's saved schedule.
+- Manual browsing remains stable: attendance changes and Room emissions no longer pull the list away after the initial focus request.
+- Added pure schedule-focus regression tests for boundaries, empty days, adjacent classes, and Sunday fallback behavior.
+
+# Version 1.7 — Attendance Check-In
+
+- Added **Attended** and **Absent** actions to the ongoing class notification.
+- Attendance remains available for the class that just ended during break and end-of-day states.
+- Added deterministic per-occurrence attendance records, preventing duplicate rows from repeated notification taps.
+- Switching Absent -> Attended automatically reverses the class absence tally; switching Attended -> Absent increments it once.
+- Added today's attendance controls and per-class attended/absent totals to Schedule.
+- Replaced Dashboard's one-way “Mark absent” shortcut with Attended and Absent choices.
+- Added Room database migration 7 -> 8 and backup format v3 support for attendance history.
+- Deleting a class also deletes its linked attendance history.
+
+# Version 1.6 — Ongoing Class-Day Notification
+
+- Added one silent notification that evolves through pre-class, ongoing class, between-class break, and end-of-day states.
+- Added Android chronometer countdowns for class start/end without minute-by-minute background work.
+- Added Navigate, Schedule, Start focus, and Hide today actions.
+- Added a dedicated Settings toggle and backup support.
+- Added WorkManager boundary scheduling plus 15-minute recovery checks.
+- Added pure timeline regression tests.
+
+---
+
+# Punla Android — Change Log
+
+## Session 21 — Procedural background engine
+
+- **Shared renderer** — introduced `paintBackgroundFrame()` as the single drawing dispatcher used by the live Compose app, Settings previews, and frozen Glance widget frames.
+- **Seven new choices** — added Theme Match, Aurora, Ocean Waves, Fireflies, Sakura, Snow, and Bubbles alongside the existing Minimal, Ambient, Rain, Starfield, and Paper Grain styles.
+- **Theme Match** — added intentional signature mappings for all 16 curated/custom themes without changing the previous Ambient default for existing installs.
+- **Rain upgrade** — replaced uniform streaks with depth-based speed, alpha, width, length, brighter heads, wind drift, and tiny bottom-edge splashes.
+- **Static picker previews** — every Settings option now shows a representative frozen thumbnail without running twelve animations at once.
+- **Performance discipline** — no new runtime dependency, video, WebView, or game engine; only the selected animated style owns an animation clock, while Minimal and Paper Grain remain static.
+- **Widget parity** — widgets now resolve Theme Match with the active theme and render the same effect code as the app.
+- **Tests and attribution** — added `BackgroundEngineTest.kt`, implementation notes, and Apache-2.0 third-party notices for the reviewed `skydoves/compose-animations` rain sample.
+- **Version** — bumped to `1.5` (`versionCode 6`).
+
+---
+
+## Session 20 — Canonical room and building locations
+
+- **Complete canonical map snapshot** — replaced the 39-marker legacy directory with all 52 current buildings from `uplbtools/room-tba`.
+- **Coordinate corrections** — updated every retained marker to the reviewed canonical coordinates, including PTCF, LHKCB, Hydraulics, IABE, ASI, IE, Graduate School, AFBED, ICropS, IRNR, CEM, CHE, Physical Sciences, and the remaining lower-drift locations.
+- **Room overrides** — moved ABC rooms to AMPED, PSLH rooms to Physical Sciences, ASR/ASLH rooms to Animal Husbandry, MB rooms to New Math, HL rooms to Hydraulics, Fronda rooms to Fronda Hall, and split veterinary and Forestry rooms into their specific buildings.
+- **CHE/ChE resolver fix** — numbered Chemical Engineering room aliases now resolve to Chemical Engineering while Human Ecology rooms such as `CHE MPH` remain at CHE.
+- **Conservative matching** — removed unsafe prefix guessing. Exact aliases are preferred, punctuation-tolerant matching is used only when unambiguous, and `TBA`, `Online`, and incomplete room codes remain unresolved.
+- **Source traceability** — bundled the repository/blob metadata and the reviewed audit date in `CampusDirectory`.
+- **Regression tests** — added `CampusDirectoryTest.kt` for canonical marker count, coordinates, reviewed overrides, collision prevention, and unresolved-room behavior.
+- **Version** — bumped to `1.4` (`versionCode 5`).
+
+---
+
+## Session 19 — Full theme collection
+
+- **All 14 documented themes** — added Aurora Borealis, Sunset Sky, Ocean Depths, Forest Mist, Lavender Night, Golden Dawn, Coffee Shop, Lo-fi Night, Paper & Ink, Library Mode, Cyber Neon, Pastel Bloom, Frost Glass, and Galaxy using the exact colors in `PUNLA_THEME_COLLECTION.md`.
+- **Richer Appearance picker** — replaced the small legacy swatches with theme preview cards showing the palette, intended mode, category, description, and selected state.
+- **Accessible accent labels** — buttons, chips, and other filled accents choose the higher-contrast theme text role, preserving soft pastel palettes without sacrificing readability.
+- **Light/dark override support** — every curated theme keeps its exact intended-mode palette and receives a derived readable companion palette for the opposite mode.
+- **Widget/background integration** — home-screen widgets, Ambient, Starfield, Paper Grain, and Rain continue resolving from the same selected palette.
+- **Saved-theme migration** — legacy `ocean`, `sunset`, `orchid`, and `slate` preferences map to Ocean Depths, Sunset Sky, Lavender Night, and Paper & Ink.
+- **Regression tests** — added `ThemeCollectionTest.kt` to verify catalog completeness and all 84 documented color values.
+- **Version** — bumped to `1.3` (`versionCode 4`).
+
+---
+
+
+## Session 17 — Pomodoro PiP, background alarm, and custom sounds
+
+- **Picture-in-Picture timer** — an optional compact countdown appears when a running Pomodoro leaves the foreground. Android 12+ uses smooth auto-enter; Android 8–11 enters PiP from the Home/app-switch gesture.
+- **Background-safe completion alarm** — every running phase schedules an `AlarmManager` deadline, so focus and break alerts still fire after the activity or process is removed. Pausing/stopping cancels it, resuming schedules a new deadline, and reboot/app-update recovery restores it.
+- **Exact-alarm fallback** — Settings shows whether Android's *Alarms & reminders* access is granted. Punla uses exact while-idle delivery when allowed and an inexact while-idle fallback otherwise.
+- **Custom sounds** — Focus-complete and Break-complete sounds can be selected independently from the device ringtone picker. Sound and vibration can also be disabled separately.
+- **Duplicate protection** — the visible clock and background receiver share one completion coordinator, preventing duplicate session rows or duplicate alerts when both wake together.
+- **Version** — bumped to `1.1` (`versionCode 2`) for install-over-update compatibility.
+
+---
+This build merges two parallel sessions that both started from the same
+base and independently implemented the same roadmap items. Rather than
+keep two divergent copies, this is one consolidated codebase: the newer
+session's refactors were kept where they were a strict improvement, and
+one regression it introduced was fixed by restoring the older session's
+behavior.
+
+---
+
+## Session 1 (shared baseline, both branches identical here)
+
+- **Build warnings** — `DeadlinesScreen.kt` now uses the `AutoMirrored`
+  arrow icons; `ScheduleScreen.kt` dropped the unused `onNavigateToMap`
+  parameter.
+- **Bottom nav bar removed** — `MainActivity.kt` navigation is now
+  side-drawer only.
+- **Quick Add FAB rebuilt** — rotating "+" → "×" icon, dismiss scrim,
+  staggered fan-out, haptics on tap.
+- **Home screen widgets not loading** — all three `appwidget-provider`
+  XML files were missing `android:initialLayout`; added
+  `res/layout/widget_loading.xml` and wired it in.
+- **Theme toggle fixed** — `MainActivity` now reads the Compose-observable
+  `vm.themeMode` instead of a plain `SharedPreferences`-backed var, so the
+  theme icon actually triggers recomposition.
+
+## Session 2 (roadmap items #3–#6 + UI polish C/D — two independent takes, merged)
+
+Both later sessions implemented the same four roadmap items and two
+polish items. Where one session's version was a clear improvement over
+the other (cleaner architecture, direct SQL updates instead of
+copy+upsert, better docs), that version was kept. Where the newer
+session had regressed a working behavior from the older one, the older
+behavior was restored.
+
+- **#3 — Schedule conflict detection (warn-only)**: `ScheduleScreen.kt`
+  recomputes an overlap check live as the day/start/end fields change and
+  shows a warning banner ("You can still save — just double check it's
+  intentional") — saving is **never blocked**. One of the two sessions
+  had reverted this to a blocking check with stale copy; the warn-only
+  behavior has been restored here, along with preserving the class's
+  `absences` count when editing (a session-2 form rebuild had been
+  silently resetting it to 0 on every edit — fixed).
+- **#4 — Attendance tracking**: `ClassSession.absences`, Room v2→v3
+  bump, and `allowedAbsences()` (UP's 20%-of-meetings drop rule, kept as
+  an entity extension function). Uses the newer session's direct
+  `incrementAbsence`/`decrementAbsence` SQL queries in
+  `ClassSessionDao.kt` (avoids a full row re-upsert from the UI layer),
+  its more compact icon-based counter row on `ScheduleScreen`'s
+  `ClassCard`, and its Dashboard "Mark absent" quick action.
+- **#5 — Spending trends**: `BudgetScreen.kt`'s "Spending Trend" card,
+  using the newer session's `Canvas`-based bar chart (highlights the
+  current month, floors zero-spend months to a visible sliver) rather
+  than the older `Box`/`Row`-based bars.
+- **#6 — Backup nudges**: `BackupNudgeWorker` (renamed from
+  `BackupReminderWorker`), with `PunlaRepository.lastBackupNudgeAt`
+  added so the worker doesn't re-nudge every day just because the backup
+  is still stale — a genuine improvement over the older session's
+  simpler daily check. The notification still deep-links into Settings;
+  a session-2 regression that stopped `MainActivity` from accepting
+  `"settings"` as a valid `startRoute` (so the notification tap silently
+  did nothing) has been fixed by restoring that condition.
+
+### UI polish
+
+- **C — Cold-start empty-state flash**: kept the newer session's
+  `isDataReady` naming and more defensive doc comments; behavior is the
+  same as the older session's `initialDataLoaded` — every "No X yet"
+  message is withheld until Room's first real emission on every screen
+  (Dashboard, Schedule, Budget, Deadlines).
+- **D — Haptics on confirm actions**: kept on all the same actions
+  (checking off a deadline, saving a class/expense/grade, marking an
+  absence).
+
+---
+
+## Session 3 — Free-Time Finder & Budget Low-Balance Notification
+
+Implemented per `free-time-and-budget-nudge-plan.md`, scoped against this
+merged codebase.
+
+- **Free-Time Finder**: `ScheduleScreen.kt` gained a pure `freeSlotsFor()`
+  function (gaps ≥30 min between a day's classes, within a 7am–8pm
+  window) and a `FreeTimeRow` chip row rendered under the day pills in
+  list view, using the existing `Tag` component. No DB/schema changes.
+- **Budget Low-Balance Notification**: new `BudgetWorker.kt` (mirrors
+  `BackupNudgeWorker.kt`'s shape exactly — permission check, notify with
+  a `"budget"` deep link, no-op early returns) registered in
+  `MainActivity` as a 24-hour `PeriodicWorkRequestBuilder`, same as the
+  other workers. `PunlaRepository.kt` gained `lastBudgetNudgeAt`,
+  `lastBudgetNudgeThreshold`, and `lastBudgetNudgeMonth` — the last one
+  wasn't in the original plan; it's used to naturally reset the
+  threshold at the start of a new month (if the stored month doesn't
+  match the current one, the threshold is treated as 0) instead of
+  needing a separate scheduled reset job. Nudges once at 80%, once more
+  at 100%, per month.
+
+- **Logo animation on open**: new `LogoIntroScreen.kt` — the leaf mark
+  (reusing `ic_launcher_foreground`, same Ink/LeafLight tones as the
+  launcher icon) grows in with a soft spring bounce and fades in, then the
+  "Punla" wordmark fades in underneath using `headlineLarge`, which was
+  already styled to match the web app's unused `.splash-name` CSS. Wired
+  into `MainActivity`'s `setContent` via `Crossfade` and a
+  `rememberSaveable` flag, so it plays once per process (a fresh app open)
+  but doesn't replay on rotation.
+
+## Not compile-checked
+
+No Android SDK / Gradle access in this environment, so this merge is a
+manual read-through + brace/paren balance check, not a real build. Run
+`./gradlew assembleDebug` before trusting it fully.
+
+---
+
+## Session 4 — Pomodoro Timer (Phase 1 of POMODORO_STUDY_HABITS.md)
+
+- **`StudySession` entity + `StudySessionDao`**, registered in
+  `PunlaDatabase.kt` (`version` bumped 4 → 5, relies on the existing
+  `fallbackToDestructiveMigration()`, no `Migration` object needed).
+- **`PunlaRepository.kt`**: Pomodoro duration settings
+  (`pomodoroWorkMinutes`/`pomodoroShortBreakMinutes`/
+  `pomodoroLongBreakMinutes`/`pomodoroCyclesBeforeLongBreak`/
+  `pomodoroAutoStartNext`) and `StudySession` log passthroughs
+  (`observeStudySessions`/`logStudySession`/`deleteStudySession`).
+- **`PunlaViewModel.kt`**: deadline-based timer state machine
+  (`PomodoroPhase`/`PomodoroUiState` in new `ui/pomodoro/PomodoroState.kt`)
+  — start/pause/resume/stop, auto-advance through WORK → SHORT_BREAK/
+  LONG_BREAK, logs a `StudySession` on natural completion or on an early
+  stop past 60s, notifies via a new `"punla_pomodoro_channel"` (same
+  lazy-create-channel + `POST_NOTIFICATIONS` guard pattern as
+  `ClassReminderWorker`), tapping the notification deep-links to the
+  Focus screen. `onCleared()` now cancels the timer job.
+- **`PomodoroScreen.kt`** (new): course picker (locked while running),
+  countdown ring, phase label, cycle-progress dots, Start/Pause/Resume/Stop
+  controls — wired as a new `"pomodoro"` drawer item ("Focus") and NavHost
+  route in `MainActivity.kt`.
+- **Dashboard entry point**: a "Start a focus session" card in
+  `DashboardScreen.kt`, right after the greeting card.
+- **Settings**: a new "POMODORO" card in `SettingsScreen.kt` for editing
+  the three durations, cycle count, and auto-start-next toggle.
+
+Not yet built: Phase 2 (Study Habits streaks/goals) and Phase 3 (Session
+Analysis screen) from the same guide — only Phase 1 (the timer itself) was
+in scope for this pass.
+
+### Also checked this session
+- **App-open greeting**: `LogoIntroScreen` (Session 3) is already wired
+  correctly into `MainActivity`'s `setContent` — it plays once per cold
+  launch via a `Crossfade` before `PunlaApp`. Nothing was broken here; if
+  it's not showing on a device, the most likely cause is running a build
+  from before Session 3 rather than a wiring bug.
+
+---
+
+## Session 5 — Weekly Budgeting (`WEEKLY_BUDGET_INSTRUCTIONS.md`)
+
+- **`Expense` entity**: new `isFixed: Boolean = false` (rent, tuition,
+  subscriptions — excluded from weekly discretionary totals and the
+  weekly pace calc; monthly figures are unchanged and still include
+  fixed expenses). Also added to `ExpenseRule` so a recurring rule's
+  auto-generated occurrences (`RecurrenceEngine.kt`) inherit the flag,
+  not just the first manually-entered instance. `PunlaDatabase.kt`
+  bumped 5 → 6, relies on the existing `fallbackToDestructiveMigration()`.
+- **`PunlaRepository.kt`**: new `BudgetPeriod` enum (`WEEKLY, MONTHLY,
+  BOTH`), defaulting to `MONTHLY` so an upgrading install sees no change
+  until it opts in — same reasoning as `BackgroundStyle`'s `AMBIENT`
+  default. New settings: `budgetPeriod`, `weekStartDay` (default Monday),
+  `weeklyBudgetOverride` (nullable — null means auto-derived),
+  `weeklyRolloverEnabled` (default off). New pure functions
+  (`currentWeekStart`, `weeklyBudgetDerivedFromList`,
+  `weeklyRolloverCarryFromList`, `weeklyBudgetAmountFromList`,
+  `weeklyBudgetSpentFromList`, `sumInRange`) shaped like the existing
+  `nextClassFromList()`-style helpers — the Budget screen calls them
+  directly against its already-collected Room `Flow`, and the widget's
+  suspend wrappers (`weeklyBudgetAmount()`/`weeklyBudgetSpent()`) fetch
+  the list once and call the same functions, so the two never compute it
+  two different ways.
+- **`PunlaViewModel.kt`**: Compose-observable mirrors and update
+  functions for the four settings above, each refreshing widgets on
+  change (same pattern as `updateBackgroundStyle`).
+- **Settings screen**: new period picker (reusing `BackgroundStyleOptionRow`
+  rather than a new composable), a "Week starts on" dropdown (reusing
+  `PunlaDropdownField`), an optional weekly-budget override field, and a
+  rollover switch — all in the existing Planner Config card, shown only
+  when the period isn't monthly-only.
+- **Budget screen**: a "REMAINING THIS WEEK" card (extracted into a
+  shared `RemainingCard` composable, also used to keep the monthly card
+  pixel-identical to before) renders above "REMAINING THIS MONTH" per
+  the plan's combined framing, each conditioned on the period setting. A
+  weekly pace card sits above the existing ₱/day monthly pace card, using
+  the plan's %-of-budget-vs-%-of-week-elapsed framing instead. The
+  expense form gained a "Fixed / recurring bill" checkbox, and fixed
+  expenses show a small "Fixed" tag in the list.
+- **Widget**: shows the weekly figure, monthly figure, or both stacked
+  ("₱850 left this week" / "₱2,100 left this month") depending on the
+  period setting; the weekly fetch is skipped entirely when the period
+  is monthly-only, so nothing changes for the common case.
+- **`BudgetWorker.kt`**: split into `checkMonthly()`/`checkWeekly()`,
+  run independently based on the period setting, reusing the same
+  notification channel — new `lastWeeklyBudgetNudgeThreshold`/
+  `lastWeeklyBudgetNudgeWeekStart` prefs (keyed by week-start date so it
+  naturally resets every week) mirror the existing monthly ones. Given
+  distinct notification IDs so a monthly and weekly nudge firing in the
+  same run don't overwrite each other.
+- **`BackupManager.kt`**: `isFixed` added to the `Expense`/`ExpenseRule`
+  JSON (de)serialization, and the four new settings added to the backup
+  export/restore, so a restore doesn't silently drop them.
+
+### Decisions on the plan doc's open questions
+- **Weekly figure editable vs. derived**: implemented both — an explicit
+  `weeklyBudgetOverride` if set, otherwise auto-derived from what's left
+  of the monthly budget divided by the remaining weeks in the month
+  (so overspending early in the month visibly tightens later weeks
+  instead of resetting to a flat number each week, per the plan's
+  reasoning).
+- **Rollover accumulation**: implemented as a stateless, one-week
+  lookback (this week's carry = last week's budget minus last week's
+  spend) rather than a persisted ledger that could accumulate
+  indefinitely across many weeks — closer in spirit to the plan's
+  "harder to game" reasoning for defaulting rollover off, and avoids
+  needing a background job to "close out" each week.
+- **Category treatment**: left the existing fixed category list as-is;
+  the plan didn't call for new categories, and `isFixed` is an
+  orthogonal per-expense flag rather than a category.
+- **Trend chart / category breakdown**: left monthly-only (unchanged).
+  The plan doc itself flags a weekly trend view as the lowest-priority,
+  "once core numbers are solid" item — out of scope for this pass.
+
+## Not compile-checked
+
+No Android SDK / Gradle access in this environment — this was a manual
+read-through plus a brace/paren balance check across every touched file,
+not a real build. Run `./gradlew assembleDebug` before trusting it fully.
+
+---
+
+## Session 6 — Free-Time Study Suggestions (Phase 1 of `STUDY_SUGGESTIONS_AND_STREAKS.md`)
+
+Phase 2 of the same guide (streaks/goals) turned out to already be built
+— `currentStudyStreak`, the daily-goal progress bar, both already live on
+the Dashboard and Study Analysis screen — just with a goal-met definition
+of "study day" rather than "any session counts." Left as-is; only Phase 1
+(the free-slot suggestion) was actually missing.
+
+- **`ui/pomodoro/StudySuggestion.kt`** (new): pure `suggestStudySlot()` —
+  matches a free-slot gap against an upcoming deadline (due 0–3 days out,
+  the same window the Dashboard already uses for its red accent). Reuses
+  `ScheduleScreen.kt`'s existing `freeSlotsFor()`/`minutesBetween()`
+  (changed `private` → `internal`) instead of duplicating the gap math.
+  `suggestStudySlotTodayOrTomorrow()` tries today first, falls back to
+  tomorrow so a fully-booked today doesn't hide a good gap tomorrow.
+- **Dashboard**: the existing "Start a focus session" card (Session 4)
+  relabels itself when a genuine match exists — "You have a free slot
+  today · 2:00–3:30 · start a focus session for 'Problem Set 3'?" — with
+  an X to dismiss for the day. Falls back to the generic card otherwise.
+- **Dismiss/snooze**: `PunlaRepository.lastStudySuggestionDismissedAt`,
+  same SharedPreferences-timestamp pattern as `lastBackupNudgeAt` — no
+  new Room table.
+- **Deep link to Pomodoro**: tapping the suggestion navigates to
+  `pomodoro?course={code}` with the course pre-picked in the dropdown.
+  `PomodoroScreen.kt` gained a `preselectedCourse` param and includes it
+  in `courseOptions` even if no class row shares that exact code (a
+  deadline's course string doesn't have to match one).
+- **Schedule screen**: an optional "Study here?" chip next to the
+  free-time row, for people who browse the day view instead of the
+  Dashboard card. Wired through a new `onStudyHere` callback param.
+
+## Session 7 — UX Polish: Bottom Bar + Opaque Glass Cards (`UX_POLISH_NAV_GLASS_MOTION.md`)
+
+Scoped to steps 1–3 of the plan's suggested build order (nav switch,
+opaque glass treatment). Motion/animation polish (steps 4–5) and a real
+blur library for the bottom bar specifically (step 6, contingent on the
+plain-tint version not feeling distinctive enough) were left for a later
+pass — the latter needs a README pasted in and an explicit dependency
+choice per `BRIEFING_AI_AGENTS_NEW_LIBRARIES.md`'s checklist first.
+
+- **Quick check**: `CHANGES.md` Session 1's "Bottom nav bar removed" entry
+  has no stated reasoning, confirming the plan doc's own guess — not a
+  blocker to reintroducing one.
+- **Bottom bar (`MainActivity.kt`)**: the old 6-item `TABS` split into a
+  5-item `BOTTOM_TABS` (Home, Schedule, Deadlines, Budget, Grades) shown
+  in a `NavigationBar` in Scaffold's `bottomBar` slot, and `DRAWER_ITEMS`
+  narrowed to Campus, Checklist, Focus, Settings — the low-frequency
+  stuff. Campus already has a Dashboard shortcut card
+  (`onOpenNextClassOnMap`, Dashboard Redesign era), which answers the
+  plan doc's open question about losing one-tap access. Quick-add FAB
+  moved from a manually-aligned overlay `Box` into Scaffold's own
+  `floatingActionButton` slot so it auto-offsets above the new bar.
+  `currentTitle`/`showBackArrow`/the widget deep-link route check
+  (`EXTRA_START_ROUTE`) all updated for the new route split.
+- **Opaque glass cards (`PunlaWidgets.kt`)**: new `Modifier.glassCard()` +
+  `GlassCard` composable — 0.78 tint alpha (plan's 0.6–0.85 opaque range),
+  a vertical-gradient top-edge highlight, the same soft-shadow pattern
+  `BudgetScreen.kt`'s `SpendingInsightsCard` already used. Deliberately
+  zero new dependencies and no blur, per the plan's own recommendation to
+  start there first. Applied to two proof-of-concept spots:
+  `SpendingInsightsCard` in `BudgetScreen.kt` (the plan doc's own
+  reference card) and the Dashboard's focus-session card (Session 4/6) —
+  not rolled out to every card yet, matching the plan's "verify one
+  before rolling out everywhere" approach.
+
+## Session 8 — Real Glass Library, Bottom-Nav Animation, Motion Polish
+(`GLASSMORPHISM_BOTTOM_NAV_AGENT_BRIEFING.md`, `BRIEFING_AI_AGENTS_NEW_LIBRARIES.md`,
+`UX_POLISH_NAV_GLASS_MOTION.md` steps 4–5)
+
+Picks up exactly where Session 7 stopped: the zero-dependency opaque glass
+treatment (steps 1–3) was already done; this session does the pieces Session
+7 explicitly deferred — the real blur library for the bottom bar specifically,
+plus the motion-polish steps.
+
+- **Real LiquidGlass library, per the briefing doc's checklist**: fetched and
+  read `https://github.com/Abdullajon1881/LiquidGlass`'s actual README before
+  writing any code (not from memory — the briefing's own instruction). New
+  `ui/screens/GlassBottomBar.kt` uses the library's real, documented
+  primitives — `rememberLiquidGlassProviderState()`, `Modifier.liquidGlassProvider()`,
+  `Modifier.liquidGlass()`, `GlassStyle`, `GlassShape`, `GlassRefraction`,
+  `GlassHighlight`, `.tinted()` — configured opaque per the briefing's exact
+  instruction (minimal blur radius, 0.80 tint alpha, thin top edge highlight,
+  saturation/chromatic aberration left neutral so the 5 labels stay legible).
+  No tier is forced; `LocalLiquidGlassTier` is left untouched so the library's
+  own SHADER/BLUR/SCRIM auto-detection runs as intended.
+  - **Two honest gaps, documented in the file itself**: (1) the README names
+    a ready-made `GlassBottomBar` component but never publishes its parameter
+    signature, and this environment's browser is blocked by GitHub's
+    robots.txt from reading the source tree directly — rather than invent a
+    signature, the bar is built from the *documented* lower-level primitives
+    instead, with a note to swap to the real `GlassBottomBar` later if its
+    actual signature is a superset of what's here. (2) the README's code
+    samples never show an `import` line, so the package name used
+    (`io.github.abdullajon1881.liquidglass`) is inferred from the Maven
+    groupId convention, not verified — flagged as the first thing to check
+    if a real build reports an unresolved import.
+  - **Not yet buildable as-is**: the library's own README states Maven
+    Central publishing is configured but not live — consuming it requires
+    cloning the repo and running `./gradlew publishToMavenLocal` once.
+    `settings.gradle.kts` gained a `mavenLocal()` repository entry and
+    `app/build.gradle.kts` gained the dependency line, both commented with
+    this requirement. This can't be verified end-to-end in this environment
