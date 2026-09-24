@@ -47,8 +47,6 @@ fun StudentOsScreen(vm: PunlaViewModel, initialTab: Int = 0, onOpen: (String, St
     var tab by rememberSaveable(initialTab) { mutableIntStateOf(initialTab.coerceIn(0, 5)) }
     var form by remember { mutableStateOf<OsForm?>(null) }
     var convert by remember { mutableStateOf<InboxCapture?>(null) }
-    var captureText by rememberSaveable { mutableStateOf("") }
-    var captureSaving by remember { mutableStateOf(false) }
     var selectedDateRaw by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
     var selectedBlockId by rememberSaveable { mutableStateOf<String?>(null) }
     var showTasks by rememberSaveable { mutableStateOf(false) }
@@ -112,10 +110,10 @@ fun StudentOsScreen(vm: PunlaViewModel, initialTab: Int = 0, onOpen: (String, St
                     val selectedDate = LocalDate.parse(selectedDateRaw)
                     item { PlannerDates(today, selectedDate) { selectedDateRaw = it.toString() } }
                     item { OsCard(selectedDate.format(DateTimeFormatter.ofPattern("EEEE, MMMM d")),
-                        "Classes and personal time stay protected. Tap a study block to make changes.") {
+                        "Your classes, commitments and study time.") {
                         OsActions {
                             Button(onClick = { os.generatePlan(); selectedDateRaw = today.toString() }) { Text("Plan today") }
-                            TextButton(onClick = { tab = 4 }) { Text("Hours & commitments") }
+                            TextButton(onClick = { tab = 4 }) { Text("Edit hours") }
                         }
                     } }
                     val agenda = agendaForDate(snap.agenda, snap.blocks, snap.windows, selectedDate, zone)
@@ -157,22 +155,17 @@ fun StudentOsScreen(vm: PunlaViewModel, initialTab: Int = 0, onOpen: (String, St
                     }
                 }
                 1 -> {
-                    item { OsCard("Capture something", "Save a rough task, note, link, or shared material. Confirm details before converting.") {
-                        OutlinedTextField(captureText, { captureText = it }, enabled = !captureSaving, label = { Text("e.g. MATH 27 exercise due Friday 11:59 PM") }, modifier = Modifier.fillMaxWidth())
-                        Button(onClick = {
-                            captureSaving = true
-                            os.capture(captureText) { error -> captureSaving = false; if (error == null) captureText = "" }
-                        }, enabled = captureText.isNotBlank() && !captureSaving) { Text(if (captureSaving) "Saving…" else "Save to Inbox") }
-                        OsActions {
-                            TextButton(onClick = { onOpen("schedule?quickAdd=true&quickAddToken=${System.currentTimeMillis()}", null) }) { Text("Add class") }
-                            TextButton(onClick = { onOpen("budget?quickAdd=true&quickAddToken=${System.currentTimeMillis()}", null) }) { Text("Add expense") }
-                            TextButton(onClick = { onOpen("study", null) }) { Text("Import study material") }
-                        }
-                    } }
                     val inbox = snap.captures.filter { !it.processed }
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("${inbox.size} to review", style = MaterialTheme.typography.titleLarge)
+                            Text("Turn a thought into a task, deadline or note. You confirm the details.",
+                                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                     if (inbox.isEmpty()) item { Text("Inbox is clear. You can also choose Punla from Android's Share menu.") }
                     items(inbox, key = { it.id }) { capture ->
-                        OsCard(capture.text.take(500), capture.attachment?.let { "Attachment: $it" } ?: clock(capture.createdAt)) {
+                        OsCard(capture.text.take(180) + if (capture.text.length > 180) "…" else "", capture.attachment?.let { "Attachment: $it" } ?: clock(capture.createdAt)) {
                             OsActions {
                                 TextButton(onClick = { convert = capture }) { Text("Review & convert") }
                                 TextButton(onClick = { os.discard(capture) }) { Text("Archive") }

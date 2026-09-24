@@ -48,7 +48,7 @@ class UiFoundationTest {
         compose.setContent { PunlaTheme(darkTheme = false) { PunlaApp(vm) } }
         compose.onNodeWithTag("nav:dashboard").assertIsSelected()
         screenshot("today-app")
-        compose.onNodeWithText("Capture", useUnmergedTree = true).performClick()
+        compose.onNodeWithTag("quick-capture").performClick()
         compose.onNodeWithTag("capture-input").performTextInput("Review MATH 27 tomorrow")
         screenshot("capture-app")
         compose.onNodeWithText("Save to Inbox").performScrollTo().performClick()
@@ -78,8 +78,8 @@ class UiFoundationTest {
         screenshot("study-app")
         compose.onNodeWithTag("nav:more").performClick()
         screenshot("more-app")
-        compose.onNodeWithText("Schedule", useUnmergedTree = true).performClick()
-        compose.onNodeWithText("Schedule", useUnmergedTree = true).assertExists()
+        compose.onNodeWithTag("more:schedule").performClick()
+        compose.onNodeWithTag("destination-title").assertTextEquals("Schedule")
     }
 
     @Test fun capturePreservesDraftOnFailureAndDisablesDuplicateSave() {

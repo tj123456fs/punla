@@ -460,13 +460,6 @@ private val DRAWER_ITEMS = listOf(
 // EXTRA_START_ROUTE) without hardcoding the route list twice.
 private val ALL_DESTINATIONS = BOTTOM_TABS + DRAWER_ITEMS
 
-// Routes with their own dedicated FAB already (Budget/Deadlines/Grades each
-// have an in-screen "+" for adding). The global quick-add speed dial is
-// hidden on those to avoid two FABs stacking in the same corner. Pomodoro
-// has no add-form of its own — its FAB slot doesn't apply, so it's hidden
-// here too rather than showing an unrelated speed dial over the timer.
-private val ROUTES_WITH_OWN_FAB = setOf("budget", "deadlines", "grades", "checklist", "campus/fullmap", "pomodoro", "study", "flashcards", "quizzes", "assistant", "system-health")
-
 /** Extracts the route template's base segment, ignoring query args, e.g.
  * "schedule?quickAdd=true" -> "schedule". Used to match against TABS/DRAWER_ITEMS. */
 private fun NavBackStackEntry?.baseRoute(): String? =
@@ -682,6 +675,7 @@ fun PunlaApp(
                         Crossfade(targetState = vm.fontChoice, animationSpec = tween(180), label = "topbarFont") { choice ->
                             Text(
                                 currentTitle,
+                                modifier = Modifier.testTag("destination-title"),
                                 style = MaterialTheme.typography.headlineMedium.copy(fontFamily = punlaDisplayFamily(choice))
                             )
                         }
@@ -712,15 +706,8 @@ fun PunlaApp(
                                     Icon(Icons.Default.Inbox, contentDescription = "Inbox, $inboxCount to review")
                                 }
                             }
-                            if (currentRoute in ROUTES_WITH_OWN_FAB) IconButton(onClick = { quickAddOpen = true }) {
+                            IconButton(onClick = { quickAddOpen = true }, modifier = Modifier.testTag("quick-capture")) {
                                 Icon(Icons.Default.Add, contentDescription = "Quick capture")
-                            }
-                            IconButton(onClick = { vm.updateThemeMode(nextThemeMode(vm.themeMode)) }) {
-                                Icon(
-                                    themeModeIcon(vm.themeMode),
-                                    contentDescription = "Theme: ${vm.themeMode.name.lowercase()} (tap to change)",
-                                    tint = MaterialTheme.colorScheme.onBackground
-                                )
                             }
                         }
                     },
@@ -777,13 +764,6 @@ fun PunlaApp(
                             }
                         }
                     }
-                }
-            },
-            // Capture lives above the system and app navigation bars.
-            floatingActionButton = {
-                if (currentRoute !in ROUTES_WITH_OWN_FAB) {
-                    ExtendedFloatingActionButton(onClick = { quickAddOpen = true },
-                        icon = { Icon(Icons.Default.Add, contentDescription = null) }, text = { Text("Capture") })
                 }
             },
             containerColor = Color.Transparent

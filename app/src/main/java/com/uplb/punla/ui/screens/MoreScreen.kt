@@ -9,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 
 internal val MORE_DESTINATIONS = listOf(
@@ -25,7 +26,7 @@ internal fun MoreScreen(onOpen: (String) -> Unit) {
         MORE_DESTINATIONS.forEach { (section, links) ->
             item { Text(section, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp, bottom = 4.dp)) }
             items(links, key = { it.second }) { (label, route) ->
-                Surface(onClick = { onOpen(route) }, shape = MaterialTheme.shapes.medium, tonalElevation = 1.dp) {
+                Surface(onClick = { onOpen(route) }, modifier = Modifier.testTag("more:$route"), shape = MaterialTheme.shapes.medium, tonalElevation = 1.dp) {
                     Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
