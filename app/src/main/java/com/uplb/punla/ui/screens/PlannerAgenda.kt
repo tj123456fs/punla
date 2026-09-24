@@ -3,8 +3,9 @@ package com.uplb.punla.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -14,11 +15,37 @@ import java.time.format.DateTimeFormatter
 
 @Composable
 internal fun PlannerDates(today: LocalDate, selected: LocalDate, onSelect: (LocalDate) -> Unit) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        items((-1L..7L).map { today.plusDays(it) }, key = { it.toString() }) { date ->
-            FilterChip(selected = date == selected, onClick = { onSelect(date) },
+    val dates = remember(today) { (-1L..7L).map { today.plusDays(it) } }
+    val listState = rememberLazyListState()
+
+    // Keep the selected day fully visible after a tap or restored navigation.
+    // Compact date labels also leave an intentional next-item peek on narrow
+    // phones instead of clipping a long "Tomorrow" chip mid-word.
+    LaunchedEffect(selected, dates) {
+        val selectedIndex = dates.indexOf(selected)
+        if (selectedIndex >= 0) {
+            listState.animateScrollToItem((selectedIndex - 1).coerceAtLeast(0))
+        }
+    }
+
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        state = listState,
+        contentPadding = PaddingValues(horizontal = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(dates, key = { it.toString() }) { date ->
+            FilterChip(
+                selected = date == selected,
+                onClick = { onSelect(date) },
                 modifier = Modifier.heightIn(min = 48.dp).testTag("date:$date"),
-                label = { Text(when (date) { today -> "Today"; today.plusDays(1) -> "Tomorrow"; today.minusDays(1) -> "Yesterday"; else -> date.format(DateTimeFormatter.ofPattern("EEE d")) }) })
+                label = {
+                    Text(
+                        if (date == today) "Today"
+                        else date.format(DateTimeFormatter.ofPattern("EEE d"))
+                    )
+                }
+            )
         }
     }
 }
