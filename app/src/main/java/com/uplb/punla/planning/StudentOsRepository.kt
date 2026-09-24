@@ -23,8 +23,7 @@ data class OsSnapshot(
     val settings: Map<String, String> = emptyMap(), val busy: List<TimeWindow> = emptyList(),
     val windows: List<TimeWindow> = emptyList(), val workload: List<Workload> = emptyList(),
     val attention: List<CourseAttention> = emptyList(), val suggestions: List<AutomationSuggestion> = emptyList(),
-    val attendance: List<AttendanceSuggestion> = emptyList(), val timeline: List<TimelineEntry> = emptyList(),
-    val agenda: List<AgendaEntry> = emptyList()
+    val attendance: List<AttendanceSuggestion> = emptyList(), val timeline: List<TimelineEntry> = emptyList()
 ) {
     fun enabled(category: String) = settings["category:$category"] != "false"
     fun profile(id: String): TaskPreferences = preferences.firstOrNull { it.id == id }
@@ -104,7 +103,6 @@ class StudentOsRepository private constructor(context: Context) {
         val busy = mutableListOf<TimeWindow>()
         val attendance = mutableListOf<AttendanceSuggestion>()
         val timeline = mutableListOf<TimelineEntry>()
-        val agenda = mutableListOf<AgendaEntry>()
         val windows = mutableListOf<TimeWindow>()
         for (offset in -7L..7L) {
             val date = today.plusDays(offset)
@@ -117,9 +115,6 @@ class StudentOsRepository private constructor(context: Context) {
                         maxOf(travel, c.travelBufferMinutes ?: travel) else travel
                     busy += TimeWindow(start - buffer * 60000L, end)
                     val key = AttendanceLog.occurrenceKey(cls.id, date, cls.start)
-                    if (buffer > 0) agenda += AgendaEntry("travel:$key", start - buffer * 60000L, start,
-                        "Travel to ${cls.code}", "Reserved travel buffer", "TRAVEL", "campus")
-                    agenda += AgendaEntry("class:$key", start, end, cls.code, "Fixed class · ${cls.room.orEmpty()}", "CLASS", "schedule")
                     val record = a.attendance.firstOrNull { it.occurrenceKey == key }
                     if (end <= now && now - end <= 12 * 3600000L && record == null && settings["dismiss:$key"] == null)
                         attendance += AttendanceSuggestion(cls, date, key)
@@ -133,7 +128,6 @@ class StudentOsRepository private constructor(context: Context) {
                 val end = at(endDate, it.endTime, zone) ?: return@forEach
                 busy += TimeWindow(start, end)
                 if (now in start until end) personalNow = it.title
-                agenda += AgendaEntry("life:${it.id}:$date", start, end, it.title, "Reserved · ${it.category}", "LIFE", "student-os?tab=4")
                 timeline += TimelineEntry("life:${it.id}:$date", start, it.title, it.category, "student-os")
             }
         }
@@ -143,9 +137,7 @@ class StudentOsRepository private constructor(context: Context) {
         val timerEnd = repo.pomodoroRuntimeDeadline
         if (repo.pomodoroRuntimeRunning && timerEnd > now) {
             busy += TimeWindow(now, timerEnd)
-            val timerTitle = if (repo.pomodoroRuntimePhase == "WORK") "Focus session" else "Study break"
-            personalNow = timerTitle
-            agenda += AgendaEntry("active-focus", now, timerEnd, timerTitle, "Remaining timer time", "FOCUS", "pomodoro")
+            personalNow = if (repo.pomodoroRuntimePhase == "WORK") "Focus session" else "Study break"
         }
         val visibleBlocks = s.blocks.map { b ->
             if (b.status != "PLANNED" || b.taskId in validIds) b
@@ -205,7 +197,7 @@ class StudentOsRepository private constructor(context: Context) {
         visibleBlocks.filter { it.startAt >= historyStart }.forEach { timeline += TimelineEntry("block:${it.id}", it.startAt, it.title, "${it.window().minutes} min · ${it.status.lowercase()}", "student-os") }
         val visibleProfiles = s.profiles.map { if (it.id in validIds && it.progress == 100) it.copy(progress = 0) else it }
         return OsSnapshot(true, ctx, tasks, ranked, visibleProfiles, s.captures, visibleBlocks, s.life, settings,
-            busy, windows, workload, attention, suggestions, attendance, timeline.sortedByDescending { it.at }, agenda)
+            busy, windows, workload, attention, suggestions, attendance, timeline.sortedByDescending { it.at })
     }
 
     private suspend fun freshSnapshot(): OsSnapshot = buildSnapshot(
@@ -273,18 +265,9 @@ class StudentOsRepository private constructor(context: Context) {
         val tomorrow = LocalDate.now().plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
         dao.save(freshSnapshot().profile(task.id).copy(dismissedUntil = tomorrow, pinned = false))
     }
-    fun capture(text: String, onResult: (String?) -> Unit = {}) = scope.launch {
-        val error = try {
-            require(text.isNotBlank()) { "Enter something to capture." }
-            require(text.length <= 20000) { "Keep your capture under 20,000 characters." }
-            dao.save(InboxCapture(text = text))
-            null
-        } catch (e: CancellationException) { throw e }
-        catch (e: Exception) {
-            PunlaDiagnostics.warn(app, "StudentOS", "Capture failed", e)
-            (e.message ?: "Could not save. Your draft is still here.").also { _message.value = it }
-        }
-        withContext(Dispatchers.Main) { onResult(error) }
+    fun capture(text: String) = mutate {
+        require(text.isNotBlank()) { "Enter something to capture." }
+        dao.save(InboxCapture(text = text.take(20000)))
     }
     fun discard(item: InboxCapture) = mutate { dao.save(item.copy(processed = true)) }
     fun convert(item: InboxCapture, kind: String, title: String, course: String?, date: String?, time: String, minutes: Int) = mutate {
