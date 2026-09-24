@@ -199,6 +199,9 @@ fun CampusMapScreen(vm: PunlaViewModel, initialSearch: String = "", onOpenFullMa
     ) {
 
         RoutingAttribution()
+        WalkRecorderCard(onOpenMap = onOpenFullMap)
+        Spacer(Modifier.height(10.dp))
+
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
                 value = searchQuery,
