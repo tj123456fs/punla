@@ -46,7 +46,7 @@ class UiFoundationTest {
         compose.setContent { PunlaTheme(darkTheme = false) { PunlaApp(vm) } }
         compose.onNodeWithTag("nav:dashboard").assertIsSelected()
         screenshot("today-app")
-        compose.onNodeWithText("Capture").performClick()
+        compose.onNodeWithText("Capture", useUnmergedTree = true).performClick()
         compose.onNodeWithTag("capture-input").performTextInput("Review MATH 27 tomorrow")
         screenshot("capture-app")
         compose.onNodeWithText("Save to Inbox").performScrollTo().performClick()

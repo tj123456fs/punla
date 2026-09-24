@@ -87,10 +87,7 @@ jobs:
           api-level: 34
           arch: x86_64
           disable-animations: true
-          script: |
-            gradle connectedDebugAndroidTest --no-daemon
-            mkdir -p app/build/ui-qa
-            adb pull /sdcard/Android/data/com.uplb.punla/files/ui-qa/. app/build/ui-qa/
+          script: bash tools/run_android_ui_checks.sh
       - name: Upload Android test results
         if: always()
         uses: actions/upload-artifact@v4
