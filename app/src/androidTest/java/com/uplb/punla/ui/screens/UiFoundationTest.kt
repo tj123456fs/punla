@@ -41,6 +41,7 @@ class UiFoundationTest {
         lateinit var vm: PunlaViewModel
         compose.activityRule.scenario.onActivity { activity ->
             vm = ViewModelProvider(activity, ViewModelProvider.AndroidViewModelFactory.getInstance(activity.application))[PunlaViewModel::class.java]
+            vm.updateBackgroundStyle(com.uplb.punla.data.BackgroundStyle.MINIMAL)
         }
         compose.setContent { PunlaTheme(darkTheme = false) { PunlaApp(vm) } }
         compose.onNodeWithTag("nav:dashboard").assertIsSelected()
@@ -48,15 +49,30 @@ class UiFoundationTest {
         compose.onNodeWithText("Capture").performClick()
         compose.onNodeWithTag("capture-input").performTextInput("Review MATH 27 tomorrow")
         screenshot("capture-app")
-        compose.onNodeWithText("Save to Inbox").performClick()
+        compose.onNodeWithText("Save to Inbox").performScrollTo().performClick()
         compose.waitUntil(10000) { vm.studentOs.state.value.captures.any { it.text == "Review MATH 27 tomorrow" } }
         compose.onNodeWithText("Review", useUnmergedTree = true).performClick()
-        compose.onNodeWithText("Review & convert").assertExists()
+        compose.onNodeWithText("Review & convert").performClick()
+        compose.onNodeWithText("Confirm & save").performClick()
+        compose.waitUntil(10000) { vm.studentOs.state.value.tasks.any { it.title.contains("Review MATH 27") } }
         compose.onNodeWithText("Agenda").performClick()
+        compose.onNodeWithText("Plan today").performClick()
+        compose.waitUntil(10000) { vm.studentOs.state.value.blocks.any { it.status == "PLANNED" } }
+        val block = vm.studentOs.state.value.blocks.first { it.status == "PLANNED" }
         screenshot("plan-app")
+        compose.onNodeWithTag("planner-list").performScrollToNode(hasTestTag("agenda:block:${block.id}"))
+        compose.onNodeWithTag("agenda:block:${block.id}").performClick()
+        compose.onNodeWithText("Lock block").performClick()
+        compose.waitUntil(10000) { vm.studentOs.state.value.blocks.any { it.id == block.id && it.locked } }
+        compose.onNodeWithText("Unlock block").assertExists()
+        screenshot("block-details")
+        compose.onNodeWithText("Mark done").performClick()
+        compose.waitUntil(10000) { vm.studentOs.state.value.blocks.any { it.id == block.id && it.status == "DONE" } }
         compose.onNodeWithTag("nav:study").performClick()
         compose.onNodeWithTag("nav:study").assertIsSelected()
+        screenshot("study-app")
         compose.onNodeWithTag("nav:more").performClick()
+        screenshot("more-app")
         compose.onNodeWithText("Schedule", useUnmergedTree = true).performClick()
         compose.onNodeWithText("Schedule", useUnmergedTree = true).assertExists()
     }
@@ -72,7 +88,7 @@ class UiFoundationTest {
         } }
         compose.onNodeWithText("Save to Inbox").assertIsNotEnabled()
         compose.onNodeWithTag("capture-input").performTextInput("Read notes")
-        compose.onNodeWithText("Save to Inbox").performClick()
+        compose.onNodeWithText("Save to Inbox").performScrollTo().performClick()
         compose.onNodeWithText("Saving…").assertIsNotEnabled()
         compose.runOnIdle { saving = false; error = "Could not save. Try again." }
         compose.onNodeWithTag("capture-input").assertTextContains("Read notes")

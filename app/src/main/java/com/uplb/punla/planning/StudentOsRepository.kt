@@ -143,8 +143,9 @@ class StudentOsRepository private constructor(context: Context) {
         val timerEnd = repo.pomodoroRuntimeDeadline
         if (repo.pomodoroRuntimeRunning && timerEnd > now) {
             busy += TimeWindow(now, timerEnd)
-            personalNow = if (repo.pomodoroRuntimePhase == "WORK") "Focus session" else "Study break"
-            agenda += AgendaEntry("active-focus", now, timerEnd, personalNow, "Remaining timer time", "FOCUS", "pomodoro")
+            val timerTitle = if (repo.pomodoroRuntimePhase == "WORK") "Focus session" else "Study break"
+            personalNow = timerTitle
+            agenda += AgendaEntry("active-focus", now, timerEnd, timerTitle, "Remaining timer time", "FOCUS", "pomodoro")
         }
         val visibleBlocks = s.blocks.map { b ->
             if (b.status != "PLANNED" || b.taskId in validIds) b

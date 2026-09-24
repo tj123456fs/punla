@@ -511,17 +511,9 @@ fun PunlaApp(
             else -> "Punla"
         }
     val onSettings = currentRoute == "settings" || currentRoute == "system-health"
-    // Drawer-only destinations (reachable via the drawer, not a bottom tab)
-    // get a Back arrow instead of the hamburger menu, same as Settings —
-    // there's no bottom-tab "home" to return to via the drawer itself.
-    // The full campus map is reached by drilling in from the Campus screen
-    // rather than the drawer, but the same logic applies: no bottom-tab
-    // "home" to swipe back to, so it needs an explicit Back arrow too.
-    // Study Analysis is a drill-down from Pomodoro, same story.
-    // Drawer destinations are top-level destinations and keep the hamburger menu.
-    // Only true drill-down screens use a Back arrow; this keeps Quizzes/Study visible
-    // from Flashcards instead of trapping the user behind a back-only top bar.
-    val showBackArrow = currentRoute == "campus/fullmap" || currentRoute == "study-analysis" || currentRoute == "system-health"
+    // Secondary destinations have an explicit route back to the daily tabs.
+    val showBackArrow = currentRoute != null && BOTTOM_TABS.none { it.route == currentRoute }
+    val selectedTabRoute = if (BOTTOM_TABS.any { it.route == currentRoute }) currentRoute else "more"
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -613,7 +605,7 @@ fun PunlaApp(
                 }
                 HorizontalDivider()
                 Spacer(Modifier.height(6.dp))
-                DRAWER_ITEMS.forEach { item ->
+                (BOTTOM_TABS + DRAWER_ITEMS).forEach { item ->
                     NavigationDrawerItem(
                         icon = { Icon(item.icon, contentDescription = null) },
                         label = { Text(item.label) },
@@ -667,7 +659,7 @@ fun PunlaApp(
                     BOTTOM_TABS.forEach { tab ->
                         NavigationRailItem(
                             modifier = Modifier.testTag("nav:${tab.route}"),
-                            selected = currentRoute == tab.route,
+                            selected = selectedTabRoute == tab.route,
                             onClick = { navigateTo(tab.route) },
                             icon = { Icon(tab.icon, contentDescription = tab.label) },
                             label = { Text(tab.label) },
@@ -738,13 +730,9 @@ fun PunlaApp(
                     )
                 )
             },
-            // UX polish plan (nav section) — hybrid drawer/bottom-bar switch.
-            // Only shown on the 5 daily-use destinations; drawer-only screens
-            // (Campus, Checklist, Focus, Settings, and their drill-downs)
-            // keep the existing Back-arrow top bar with no bottom bar at all,
-            // same as before this change.
+            // Keep the four main destinations within reach on secondary screens.
             bottomBar = {
-                if (!useNavigationRail && BOTTOM_TABS.any { it.route == currentRoute }) {
+                if (!useNavigationRail && currentRoute !in setOf("campus/fullmap", "study-analysis", "system-health", "pomodoro")) {
                     // UX polish plan (glass + nav sections) — the bar now
                     // floats as a rounded, inset "glass" pill instead of a
                     // flush edge-to-edge strip, reusing the same opaque
@@ -776,7 +764,7 @@ fun PunlaApp(
                             BOTTOM_TABS.forEach { tab ->
                                 NavigationBarItem(
                                     modifier = Modifier.testTag("nav:${tab.route}"),
-                            selected = currentRoute == tab.route,
+                            selected = selectedTabRoute == tab.route,
                                     onClick = { navigateTo(tab.route) },
                                     icon = { Icon(tab.icon, contentDescription = null) },
                                     label = { Text(tab.label) },
@@ -791,10 +779,7 @@ fun PunlaApp(
                     }
                 }
             },
-            // Quick-add speed dial moved into Scaffold's own FAB slot instead
-            // of a manually-aligned overlay Box — Scaffold offsets this above
-            // the new bottom bar automatically, so it doesn't need its own
-            // bottom-bar-aware padding math.
+            // Capture lives above the system and app navigation bars.
             floatingActionButton = {
                 if (currentRoute !in ROUTES_WITH_OWN_FAB) {
                     ExtendedFloatingActionButton(onClick = { quickAddOpen = true },
@@ -979,6 +964,7 @@ fun PunlaApp(
                         vm = vm,
                         initialCourse = entry.arguments?.getString("course")?.takeIf { it.isNotBlank() },
                         initialSection = entry.arguments?.getString("section"),
+                        onOpenPulse = { navController.navigate("student-os?tab=2") },
                         onOpenFlashcards = { course, topicId, overall ->
                             val c = course?.let { android.net.Uri.encode(it) }.orEmpty()
                             val t = topicId?.let { android.net.Uri.encode(it) }.orEmpty()

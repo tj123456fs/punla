@@ -10,6 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.uplb.punla.context.EnergyLevel
@@ -103,7 +104,7 @@ fun StudentOsScreen(vm: PunlaViewModel, initialTab: Int = 0, onOpen: (String, St
         }
         if (!snap.ready) {
             Column(Modifier.padding(24.dp)) { CircularProgressIndicator(); Text("Loading your day…") }
-        } else LazyColumn(Modifier.fillMaxWidth().widthIn(max = 840.dp).align(Alignment.CenterHorizontally),
+        } else LazyColumn(Modifier.fillMaxWidth().widthIn(max = 840.dp).testTag("planner-list").align(Alignment.CenterHorizontally),
             contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             message?.let { text -> item { OsCard("Update", text) { TextButton(onClick = os::clearMessage) { Text("Dismiss") } } } }
             when (tab) {
