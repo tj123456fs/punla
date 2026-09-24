@@ -5,12 +5,11 @@
 The UI/UX foundation continues the existing app with Today, Plan, Study and More navigation, text-first capture, and a dated agenda. Start with [SESSION42_UI_UX_FOUNDATION.md](SESSION42_UI_UX_FOUNDATION.md), [STUDENT_OS_PHASE_STATUS.md](STUDENT_OS_PHASE_STATUS.md) for roadmap gates, and [UI_UX_IMPROVEMENT_PLAN.md](UI_UX_IMPROVEMENT_PLAN.md) for design priorities. The Android study-rendering crash fix from 3.5.1 is retained.
 Clone or pull this repository to continue development; older session ZIPs are historical patches.
 
-> **UI pass (this update):** theme, typography, and every screen were reworked to
-> match the web app's field-notebook look (cream paper, crop green, UP maroon,
-> mango accents). See "UI design system" below for details.
+> **Design system:** cream paper, crop green, UP maroon and mango accents preserve
+> Punla's field-notebook look. See "UI design system" below for details.
 
-A from-scratch Android Studio project (Kotlin + Jetpack Compose + Room + Glance)
-recreating the core of the original Punla web app, with **three real home-screen
+An Android Studio project (Kotlin + Jetpack Compose + Room + Glance)
+continuing the original Punla web app, with **three real home-screen
 widgets**: Next Class, Budget Remaining, and Next Deadline. It also includes a
 local-first personal intelligence layer and an optional private assistant.
 

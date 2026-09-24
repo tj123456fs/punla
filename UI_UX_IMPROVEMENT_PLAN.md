@@ -2,6 +2,10 @@
 
 Research date: 2026-09-23. These are recommendations, not UI changes shipped in 3.5.1.
 
+## Implemented foundation — 3.6.0
+
+The first implementation is merged in [PR #3](https://github.com/tj123456fs/punla/pull/3): Today hierarchy, four primary destinations, top-bar capture, an Inbox focused on review, a dated agenda and block detail sheets. Parsed capture details are editable during conversion. Exact recovery previews/undo, course-first Study and the reader redesign remain. See [SESSION42_UI_UX_FOUNDATION.md](SESSION42_UI_UX_FOUNDATION.md) for validation and the precise release boundary.
+
 ## Direction
 
 Keep Punla's field-notebook identity: cream paper, crop green, restrained UP maroon and mango accents. Give the current action the strongest emphasis. Use a readable body font for reviewers, equations, dates, and task lists; keep decorative type optional for headings. Atmospheric effects should sit behind stable, opaque reading surfaces and respect the existing motion controls.
