@@ -246,9 +246,37 @@ fun DashboardScreen(
             val dateLabel = remember(today) {
                 today.format(DateTimeFormatter.ofPattern("EEEE, MMMM d"))
             }
-            Column(Modifier.padding(horizontal = 4.dp, vertical = 4.dp)) {
-                Text(dateLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(displayGreeting, style = MaterialTheme.typography.titleLarge)
+            // Greeting card — merges what used to be a bare headline sitting
+            // above the quote card into one card, so the whole "welcome
+            // back" moment reads as a single unit on open.
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 6.dp)
+                    .shadow(1.dp, MaterialTheme.shapes.medium, ambientColor = LocalPunlaPalette.current.shadowInk.copy(alpha = 0.05f), spotColor = LocalPunlaPalette.current.shadowInk.copy(alpha = 0.05f)),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                shape = MaterialTheme.shapes.medium,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+            ) {
+                Column(Modifier.padding(14.dp)) {
+                    Text(
+                        dateLabel.uppercase(),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        displayGreeting,
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "\"${vm.getQuoteOfTheDay()}\"",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic),
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
             }
             Spacer(Modifier.height(10.dp))
         }
@@ -261,7 +289,6 @@ fun DashboardScreen(
                 state = (if (osSnapshot.ready) osSnapshot.context else studentState).let { shared ->
                     if (vm.pomodoroState.isRunning) shared.copy(currentCommitmentTitle = "Focus timer · ${vm.pomodoroState.remainingSeconds / 60} min left") else shared
                 },
-                focusRunning = vm.pomodoroState.isRunning,
                 recommendationTitle = primaryWork?.task?.title,
                 recommendationDetail = primaryWork?.reasons?.joinToString(" · "),
                 recommendationCourse = primaryWork?.task?.course,
