@@ -46,6 +46,7 @@ jobs:
       - name: Migration schema and GPX regressions
         run: |
           python3 tools/check_planning_migration.py
+          python3 tools/check_walk_migration.py
           python3 -m unittest discover -s tools -p 'test_*.py' -v
 
       - name: Upload test results

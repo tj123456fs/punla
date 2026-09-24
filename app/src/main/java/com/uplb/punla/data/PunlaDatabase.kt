@@ -19,6 +19,7 @@ import com.uplb.punla.data.dao.JsonImportDao
 import com.uplb.punla.data.dao.StudySessionDao
 import com.uplb.punla.data.dao.StudyMaterialDao
 import com.uplb.punla.data.dao.IntelligenceDao
+import com.uplb.punla.data.dao.WalkRecordingDao
 import com.uplb.punla.data.entity.Archive
 import com.uplb.punla.data.entity.AttendanceRecord
 import com.uplb.punla.data.entity.ChecklistItem
@@ -48,6 +49,8 @@ import com.uplb.punla.data.entity.StudyReviewProgress
 import com.uplb.punla.data.entity.QuizAnswerResult
 import com.uplb.punla.data.entity.FlashcardReviewEvent
 import com.uplb.punla.data.entity.QuestionBankItem
+import com.uplb.punla.data.entity.WalkPoint
+import com.uplb.punla.data.entity.WalkSession
 
 @Database(
     entities = [
@@ -80,11 +83,13 @@ import com.uplb.punla.data.entity.QuestionBankItem
         StudyReviewProgress::class,
         FlashcardReviewEvent::class,
         QuizAnswerResult::class,
-        QuestionBankItem::class
+        QuestionBankItem::class,
+        WalkSession::class,
+        WalkPoint::class
     ],
     // v7 -> v8: per-occurrence attendance history used by the ongoing
     // class notification and the schedule/dashboard attendance controls.
-    version = 13,
+    version = 14,
     exportSchema = false
 )
 abstract class PunlaDatabase : RoomDatabase() {
@@ -101,6 +106,7 @@ abstract class PunlaDatabase : RoomDatabase() {
     abstract fun quizDao(): QuizDao
     abstract fun jsonImportDao(): JsonImportDao
     abstract fun studyMaterialDao(): StudyMaterialDao
+    abstract fun walkRecordingDao(): WalkRecordingDao
 
     companion object {
         @Volatile private var INSTANCE: PunlaDatabase? = null
@@ -399,6 +405,40 @@ abstract class PunlaDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS `walk_sessions` (
+                        `id` TEXT NOT NULL,
+                        `startedAt` INTEGER NOT NULL,
+                        `endedAt` INTEGER,
+                        `status` TEXT NOT NULL,
+                        `pausedAt` INTEGER,
+                        `accumulatedPauseMillis` INTEGER NOT NULL,
+                        `distanceMeters` REAL NOT NULL,
+                        `pointCount` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )""".trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_walk_sessions_status` ON `walk_sessions` (`status`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_walk_sessions_startedAt` ON `walk_sessions` (`startedAt`)")
+
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS `walk_points` (
+                        `sessionId` TEXT NOT NULL,
+                        `sequence` INTEGER NOT NULL,
+                        `lat` REAL NOT NULL,
+                        `lon` REAL NOT NULL,
+                        `accuracyMeters` REAL,
+                        `capturedAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`sessionId`, `sequence`),
+                        FOREIGN KEY(`sessionId`) REFERENCES `walk_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )""".trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_walk_points_sessionId` ON `walk_points` (`sessionId`)")
+            }
+        }
+
         fun get(context: Context): PunlaDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -406,7 +446,7 @@ abstract class PunlaDatabase : RoomDatabase() {
                     PunlaDatabase::class.java,
                     "punla.db"
                 )
-                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
+                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
                     // Very old development installs never had migration specs.
                     // Preserve current v6+ personal data; only pre-v6 schemas
                     // may still be recreated rather than crashing at launch.
