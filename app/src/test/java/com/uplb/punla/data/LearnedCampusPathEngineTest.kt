@@ -117,6 +117,37 @@ class LearnedCampusPathEngineTest {
     }
 
     @Test
+    fun migratedWalksSplitOnLegacyTimestampGaps() {
+        val points = listOf(
+            point(0, 14.1700, 121.2400, segment = 0, capturedAt = 0L),
+            point(1, 14.1700, 121.2401, segment = 0, capturedAt = 3_000L),
+            point(2, 14.1710, 121.2410, segment = 0, capturedAt = 60_000L),
+            point(3, 14.1710, 121.2411, segment = 0, capturedAt = 63_000L)
+        )
+        val learned = LearnedCampusPathEngine.applyWalk(
+            points,
+            emptyList(),
+            emptyList(),
+            observedAt = 1_000L,
+            nodeIdFactory = ::ids
+        )
+        val graph = LearnedCampusPathEngine.buildTrustedGraph(
+            learned.state.nodes,
+            learned.state.edges,
+            minimumObservations = 1
+        ) ?: error("expected low-confidence graph")
+
+        assertNull(
+            findLocalCampusRoute(
+                graph,
+                from = 14.1700 to 121.2400,
+                to = 14.1710 to 121.2411,
+                maxSnapMeters = 20.0
+            )
+        )
+    }
+
+    @Test
     fun crossingRecordedPathsShareAJunction() {
         val horizontal = listOf(
             point(0, 14.1700, 121.2400),

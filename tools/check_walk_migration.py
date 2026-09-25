@@ -8,6 +8,7 @@ import sqlite3
 
 ROOT = Path(__file__).resolve().parents[1]
 TABLES = {"walk_sessions", "walk_points"}
+NEWER_TABLES = {"learned_path_nodes", "learned_path_edges", "learned_walk_sessions"}
 
 
 def quoted_sql_statements(text):
@@ -58,7 +59,7 @@ def main():
         if not (sql.startswith("CREATE TABLE") or sql.startswith("CREATE INDEX")):
             continue
         full.execute(sql)
-        if not any(f"`{name}`" in sql for name in TABLES):
+        if not any(f"`{name}`" in sql for name in TABLES | NEWER_TABLES):
             upgraded.execute(sql)
 
     # Prove an unrelated v13 row survives the upgrade.
@@ -72,7 +73,12 @@ def main():
             upgraded.execute(sql)
 
     for table in TABLES:
-        assert full.execute(f"PRAGMA table_info(`{table}`)").fetchall() == upgraded.execute(
+        expected_columns = full.execute(f"PRAGMA table_info(`{table}`)").fetchall()
+        if table == "walk_points":
+            # Room's current v15 schema has the segment column added by 14→15.
+            # Remove it here so this checker deliberately validates the v14 shape.
+            expected_columns = [row for row in expected_columns if row[1] != "segment"]
+        assert expected_columns == upgraded.execute(
             f"PRAGMA table_info(`{table}`)"
         ).fetchall(), table
         assert full.execute(f"PRAGMA foreign_key_list(`{table}`)").fetchall() == upgraded.execute(
