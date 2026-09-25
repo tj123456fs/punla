@@ -11,20 +11,25 @@ Items in this file were observed during the repo-cleanup pass and deliberately l
 
 ## Data and persistence
 - Several Room entities store calendar dates as ISO strings. Converting those fields to epoch-day or another typed representation requires a dedicated schema migration and is explicitly out of scope here.
-- `RecurrenceEngine` currently calls `ExpenseDao.getAll()` and `DeadlineDao.getAll()`, then filters/scans the full snapshots by `ruleId`. Phase 2 is intended to replace those reads with rule-scoped DAO queries without changing recurrence behavior.
+- Recurrence generation now uses rule-scoped DAO queries, but `expenses.ruleId` and `deadlines.ruleId` are not Room-indexed. Adding indexes would require a schema migration and belongs in a dedicated persistence change.
 - The 3.5.2 walk recorder added Room migration 13→14 and `tools/check_walk_migration.py`; any future CI-equivalent verification should include that check in addition to the older planning migration check.
 
 ## Assistant parsing and cloud usage
-- `LocalAssistant` uses substring checks such as `q.contains("class")`, so unrelated words containing a keyword can select an intent.
-- Expense parsing currently accepts the first numeric match allowed by its regex, rather than explicitly prioritizing an amount after a ₱/PHP marker or after the add command.
-- The ten-call cloud limit is already enforced in `PunlaRepository` through `assistantDailyCallLimit`, `consumeAssistantCall()`, and `assistantCallsUsedToday()`.
-- `PunlaViewModel.askCloudAssistant()` also hard-codes the number 10 in its user-facing limit message. A later cleanup can decide whether a helper is warranted without introducing a second source of truth.
+- The ten-call cloud limit remains enforced in one place: `PunlaRepository` through `assistantDailyCallLimit`, `consumeAssistantCall()`, and `assistantCallsUsedToday()`.
+- `PunlaViewModel` now displays that same configured limit instead of repeating the numeric value.
+- Local keyword matching remains intentionally English-only; expanding language support would be a feature, not a cleanup.
 
 ## Capture and shared content
-- `CaptureActivity` already caps shared text at 20,000 characters and attachment copies at 8 MB.
-- Attachment capture requires a `content://` URI, but `CaptureAttachments.copy()` does not independently enforce the manifest's advertised SEND MIME set.
-- Attachment extension selection trusts the provider-reported MIME type and otherwise falls back to `.bin`; file signatures are not inspected.
-- Malformed/unopenable content is surfaced through the existing exception/Toast path and temporary files are deleted, but MIME/content mismatch handling should be reviewed separately rather than changed during cleanup.
+- The detailed Phase 2 audit is in `docs/CAPTURE_ACTIVITY_AUDIT.md`.
+- `CaptureActivity` caps shared text at 20,000 characters and each copied attachment at 8 MB, but there is no cumulative Inbox-directory cap at capture time.
+- Runtime attachment handling still does not independently enforce the manifest's advertised SEND MIME allowlist or inspect file signatures.
+- Provider-reported MIME determines the copied extension when known; unknown MIME falls back to `.bin`.
+
+## UI/UX
+- Current screens can feel visually crowded, especially where many equally prominent actions compete inside one surface.
+- Dark mode has reported cases where text does not have enough contrast against its container/background; this needs a dedicated color/semantic-token audit rather than one-off hard-coded fixes.
+- Interaction affordances must not drift toward text-only clickable labels. Future UI cleanup should prefer clear Material buttons, icon buttons, cards, rows, or chips with visible states and adequate touch targets.
+- The pre-3.6 navigation/visual baseline remains the preferred direction; future cleanup should simplify hierarchy incrementally rather than reintroducing a broad navigation redesign.
 
 ## Large files and test seams
 - `PunlaViewModel.kt` is about 2,297 lines / 105 KB and mixes settings, assistant, import/export, study, planning, grades, budget, and Pomodoro responsibilities.
