@@ -1,5 +1,6 @@
 package com.uplb.punla.data.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -46,6 +47,7 @@ data class WalkPoint(
     val sequence: Int,
     val lat: Double,
     val lon: Double,
+    @ColumnInfo(defaultValue = "0") val segment: Int = 0,
     val accuracyMeters: Float?,
     val capturedAt: Long
 )

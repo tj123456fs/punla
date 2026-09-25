@@ -1,0 +1,32 @@
+package com.uplb.punla.data.dao
+
+import androidx.room.Dao
+import androidx.room.Query
+import androidx.room.Upsert
+import com.uplb.punla.data.entity.LearnedPathEdge
+import com.uplb.punla.data.entity.LearnedPathNode
+import com.uplb.punla.data.entity.LearnedWalkSession
+
+@Dao
+interface LearnedCampusPathDao {
+    @Query("SELECT * FROM learned_path_nodes")
+    suspend fun getAllNodes(): List<LearnedPathNode>
+
+    @Query("SELECT * FROM learned_path_edges")
+    suspend fun getAllEdges(): List<LearnedPathEdge>
+
+    @Query("SELECT * FROM learned_path_edges WHERE observationCount >= :minimumObservations")
+    suspend fun getTrustedEdges(minimumObservations: Int): List<LearnedPathEdge>
+
+    @Query("SELECT * FROM learned_walk_sessions WHERE sessionId = :sessionId LIMIT 1")
+    suspend fun getProcessedSession(sessionId: String): LearnedWalkSession?
+
+    @Upsert
+    suspend fun upsertNodes(nodes: List<LearnedPathNode>)
+
+    @Upsert
+    suspend fun upsertEdges(edges: List<LearnedPathEdge>)
+
+    @Upsert
+    suspend fun upsertProcessedSession(session: LearnedWalkSession)
+}

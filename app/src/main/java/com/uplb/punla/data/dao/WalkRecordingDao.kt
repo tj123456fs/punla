@@ -37,6 +37,9 @@ interface WalkRecordingDao {
     @Query("SELECT * FROM walk_points WHERE sessionId = :sessionId ORDER BY sequence ASC")
     suspend fun getPoints(sessionId: String): List<WalkPoint>
 
+    @Query("SELECT * FROM walk_sessions WHERE id = :sessionId LIMIT 1")
+    suspend fun getSession(sessionId: String): WalkSession?
+
     @Query("SELECT * FROM walk_points WHERE sessionId = :sessionId ORDER BY sequence DESC LIMIT 1")
     suspend fun getLastPoint(sessionId: String): WalkPoint?
 
