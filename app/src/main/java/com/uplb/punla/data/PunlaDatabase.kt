@@ -20,6 +20,7 @@ import com.uplb.punla.data.dao.StudySessionDao
 import com.uplb.punla.data.dao.StudyMaterialDao
 import com.uplb.punla.data.dao.IntelligenceDao
 import com.uplb.punla.data.dao.WalkRecordingDao
+import com.uplb.punla.data.dao.LearnedCampusPathDao
 import com.uplb.punla.data.entity.Archive
 import com.uplb.punla.data.entity.AttendanceRecord
 import com.uplb.punla.data.entity.ChecklistItem
@@ -51,6 +52,9 @@ import com.uplb.punla.data.entity.FlashcardReviewEvent
 import com.uplb.punla.data.entity.QuestionBankItem
 import com.uplb.punla.data.entity.WalkPoint
 import com.uplb.punla.data.entity.WalkSession
+import com.uplb.punla.data.entity.LearnedPathNode
+import com.uplb.punla.data.entity.LearnedPathEdge
+import com.uplb.punla.data.entity.LearnedWalkSession
 
 @Database(
     entities = [
@@ -85,11 +89,14 @@ import com.uplb.punla.data.entity.WalkSession
         QuizAnswerResult::class,
         QuestionBankItem::class,
         WalkSession::class,
-        WalkPoint::class
+        WalkPoint::class,
+        LearnedPathNode::class,
+        LearnedPathEdge::class,
+        LearnedWalkSession::class
     ],
     // v7 -> v8: per-occurrence attendance history used by the ongoing
     // class notification and the schedule/dashboard attendance controls.
-    version = 14,
+    version = 15,
     exportSchema = false
 )
 abstract class PunlaDatabase : RoomDatabase() {
@@ -107,6 +114,7 @@ abstract class PunlaDatabase : RoomDatabase() {
     abstract fun jsonImportDao(): JsonImportDao
     abstract fun studyMaterialDao(): StudyMaterialDao
     abstract fun walkRecordingDao(): WalkRecordingDao
+    abstract fun learnedCampusPathDao(): LearnedCampusPathDao
 
     companion object {
         @Volatile private var INSTANCE: PunlaDatabase? = null
@@ -439,6 +447,56 @@ abstract class PunlaDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Track segments prevent pause/restart gaps from becoming invented walkable edges.
+                db.execSQL("ALTER TABLE `walk_points` ADD COLUMN `segment` INTEGER NOT NULL DEFAULT 0")
+
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS `learned_path_nodes` (
+                        `id` TEXT NOT NULL,
+                        `lat` REAL NOT NULL,
+                        `lon` REAL NOT NULL,
+                        `observationCount` INTEGER NOT NULL,
+                        `firstSeenAt` INTEGER NOT NULL,
+                        `lastSeenAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )""".trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_learned_path_nodes_lastSeenAt` ON `learned_path_nodes` (`lastSeenAt`)")
+
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS `learned_path_edges` (
+                        `id` TEXT NOT NULL,
+                        `fromNodeId` TEXT NOT NULL,
+                        `toNodeId` TEXT NOT NULL,
+                        `distanceMeters` REAL NOT NULL,
+                        `observationCount` INTEGER NOT NULL,
+                        `firstSeenAt` INTEGER NOT NULL,
+                        `lastSeenAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`),
+                        FOREIGN KEY(`fromNodeId`) REFERENCES `learned_path_nodes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                        FOREIGN KEY(`toNodeId`) REFERENCES `learned_path_nodes`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )""".trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_learned_path_edges_fromNodeId` ON `learned_path_edges` (`fromNodeId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_learned_path_edges_toNodeId` ON `learned_path_edges` (`toNodeId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_learned_path_edges_observationCount` ON `learned_path_edges` (`observationCount`)")
+
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS `learned_walk_sessions` (
+                        `sessionId` TEXT NOT NULL,
+                        `processedAt` INTEGER NOT NULL,
+                        `acceptedPointCount` INTEGER NOT NULL,
+                        `learnedEdgeCount` INTEGER NOT NULL,
+                        PRIMARY KEY(`sessionId`),
+                        FOREIGN KEY(`sessionId`) REFERENCES `walk_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )""".trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_learned_walk_sessions_processedAt` ON `learned_walk_sessions` (`processedAt`)")
+            }
+        }
+
         fun get(context: Context): PunlaDatabase =
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -446,7 +504,7 @@ abstract class PunlaDatabase : RoomDatabase() {
                     PunlaDatabase::class.java,
                     "punla.db"
                 )
-                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
+                    .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
                     // Very old development installs never had migration specs.
                     // Preserve current v6+ personal data; only pre-v6 schemas
                     // may still be recreated rather than crashing at launch.

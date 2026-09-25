@@ -6,8 +6,9 @@ import android.content.Context
  * One routing entry point for campus walking directions.
  *
  * 1) surveyed offline graph, when campus_waypoints.json covers both endpoints;
- * 2) existing OSRM walking route;
- * 3) null, preserving each caller's existing straight-line fallback.
+ * 2) repeated paths learned locally from the user's recorded walks;
+ * 3) existing OSRM walking route;
+ * 4) null, preserving each caller's existing straight-line fallback.
  */
 object CampusRoutingResolver {
     @Volatile var recentRoute: com.uplb.punla.context.TravelRouteContext? = null
@@ -42,7 +43,14 @@ object CampusRoutingResolver {
         to: Pair<Double, Double>
     ): WalkingRoute? {
         val local = localRoute(context, from, to)
+        val learned = if (local == null) {
+            LearnedCampusPathRepository.loadTrustedGraph(context)
+                ?.let { findLocalCampusRoute(it, from, to) }
+        } else {
+            null
+        }
         val route = local?.let { WalkingRoute(it.points, it.distanceMeters, it.durationSeconds, "Offline campus") }
+            ?: learned?.let { WalkingRoute(it.points, it.distanceMeters, it.durationSeconds, "Learned campus") }
             ?: fetchWalkingRoute(from, to)
         if (route != null) {
             recentRoute = com.uplb.punla.context.TravelRouteContext(from.first, from.second, to.first, to.second,

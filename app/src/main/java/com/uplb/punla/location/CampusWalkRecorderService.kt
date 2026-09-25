@@ -31,6 +31,7 @@ import com.uplb.punla.data.entity.WalkSession
 import com.uplb.punla.data.entity.WalkSessionStatus
 import com.uplb.punla.data.fmtDistance
 import com.uplb.punla.data.haversineMeters
+import com.uplb.punla.worker.WalkPathLearningWorker
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -57,6 +58,7 @@ class CampusWalkRecorderService : Service() {
     @Volatile private var activeSession: WalkSession? = null
     private var lastPoint: WalkPoint? = null
     private var nextSequence: Int = 0
+    private var activeSegment: Int = 0
 
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
@@ -117,8 +119,11 @@ class CampusWalkRecorderService : Service() {
         val existing = dao.getActiveSession()
         if (existing != null) {
             activeSession = existing
-            nextSequence = (dao.getLastPoint(existing.id)?.sequence ?: -1) + 1
-            // Do not bridge a process-restart gap with a guessed walking segment.
+            val persistedLast = dao.getLastPoint(existing.id)
+            nextSequence = (persistedLast?.sequence ?: -1) + 1
+            // A restored service starts a fresh segment so process downtime never
+            // becomes an invented path between two unrelated GPS fixes.
+            activeSegment = (persistedLast?.segment ?: -1) + 1
             lastPoint = null
             if (existing.status == WalkSessionStatus.PAUSED) {
                 client.removeLocationUpdates(locationCallback)
@@ -138,6 +143,7 @@ class CampusWalkRecorderService : Service() {
         activeSession = session
         lastPoint = null
         nextSequence = 0
+        activeSegment = 0
         startLocationUpdates()
         showForeground(summary(session), paused = false)
     }
@@ -184,7 +190,9 @@ class CampusWalkRecorderService : Service() {
         dao.updateSession(updated)
         activeSession = updated
         lastPoint = null
-        nextSequence = (dao.getLastPoint(updated.id)?.sequence ?: -1) + 1
+        val persistedLast = dao.getLastPoint(updated.id)
+        nextSequence = (persistedLast?.sequence ?: -1) + 1
+        activeSegment = (persistedLast?.segment ?: -1) + 1
         startLocationUpdates()
         showForeground(summary(updated), paused = false)
     }
@@ -199,14 +207,15 @@ class CampusWalkRecorderService : Service() {
             } else {
                 0L
             }
-            dao.updateSession(
-                session.copy(
-                    endedAt = now,
-                    status = WalkSessionStatus.COMPLETED,
-                    pausedAt = null,
-                    accumulatedPauseMillis = session.accumulatedPauseMillis + finalPause
-                )
+            val completed = session.copy(
+                endedAt = now,
+                status = WalkSessionStatus.COMPLETED,
+                pausedAt = null,
+                accumulatedPauseMillis = session.accumulatedPauseMillis + finalPause
             )
+            dao.updateSession(completed)
+            // Learning runs after recording stops so location capture stays lightweight.
+            WalkPathLearningWorker.enqueue(applicationContext, completed.id)
         }
         activeSession = null
         lastPoint = null
@@ -252,6 +261,7 @@ class CampusWalkRecorderService : Service() {
             sequence = nextSequence,
             lat = location.latitude,
             lon = location.longitude,
+            segment = activeSegment,
             accuracyMeters = location.accuracy.takeIf { location.hasAccuracy() },
             capturedAt = capturedAt
         )

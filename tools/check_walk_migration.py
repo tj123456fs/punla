@@ -8,6 +8,7 @@ import sqlite3
 
 ROOT = Path(__file__).resolve().parents[1]
 TABLES = {"walk_sessions", "walk_points"}
+NEWER_TABLES = {"learned_path_nodes", "learned_path_edges", "learned_walk_sessions"}
 
 
 def quoted_sql_statements(text):
@@ -37,12 +38,21 @@ def migration_sql_statements(text):
     return [sql for _, sql in sorted(statements, key=lambda item: item[0])]
 
 
+def column_shape(rows, excluded=None):
+    excluded = excluded or set()
+    return {
+        row[1]: (row[2], row[3], row[4], row[5])
+        for row in rows
+        if row[1] not in excluded
+    }
+
+
 def main():
     generated = ROOT / "app/build/generated/ksp/debug/java/com/uplb/punla/data/PunlaDatabase_Impl.java"
     generated_sql = quoted_sql_statements(generated.read_text())
 
     source = (ROOT / "app/src/main/java/com/uplb/punla/data/PunlaDatabase.kt").read_text()
-    migration_source = source.split("val MIGRATION_13_14 =", 1)[1].split("fun get(context:", 1)[0]
+    migration_source = source.split("val MIGRATION_13_14 =", 1)[1].split("val MIGRATION_14_15 =", 1)[0]
     migration_sql = migration_sql_statements(migration_source)
 
     assert len(migration_sql) == 5, (
@@ -58,7 +68,7 @@ def main():
         if not (sql.startswith("CREATE TABLE") or sql.startswith("CREATE INDEX")):
             continue
         full.execute(sql)
-        if not any(f"`{name}`" in sql for name in TABLES):
+        if not any(f"`{name}`" in sql for name in TABLES | NEWER_TABLES):
             upgraded.execute(sql)
 
     # Prove an unrelated v13 row survives the upgrade.
@@ -72,9 +82,15 @@ def main():
             upgraded.execute(sql)
 
     for table in TABLES:
-        assert full.execute(f"PRAGMA table_info(`{table}`)").fetchall() == upgraded.execute(
-            f"PRAGMA table_info(`{table}`)"
-        ).fetchall(), table
+        excluded = {"segment"} if table == "walk_points" else set()
+        expected_columns = column_shape(
+            full.execute(f"PRAGMA table_info(`{table}`)").fetchall(),
+            excluded,
+        )
+        actual_columns = column_shape(
+            upgraded.execute(f"PRAGMA table_info(`{table}`)").fetchall()
+        )
+        assert expected_columns == actual_columns, table
         assert full.execute(f"PRAGMA foreign_key_list(`{table}`)").fetchall() == upgraded.execute(
             f"PRAGMA foreign_key_list(`{table}`)"
         ).fetchall(), table
