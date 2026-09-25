@@ -42,7 +42,7 @@ def main():
     generated_sql = quoted_sql_statements(generated.read_text())
 
     source = (ROOT / "app/src/main/java/com/uplb/punla/data/PunlaDatabase.kt").read_text()
-    migration_source = source.split("val MIGRATION_13_14 =", 1)[1].split("fun get(context:", 1)[0]
+    migration_source = source.split("val MIGRATION_13_14 =", 1)[1].split("val MIGRATION_14_15 =", 1)[0]
     migration_sql = migration_sql_statements(migration_source)
 
     assert len(migration_sql) == 5, (
