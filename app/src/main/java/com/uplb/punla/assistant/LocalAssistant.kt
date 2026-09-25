@@ -113,8 +113,16 @@ object LocalAssistant {
                 }
                 else -> YearMonth.from(data.today).atDay(1) to YearMonth.from(data.today).atEndOfMonth()
             }
-            val category = listOf("food", "transport", "school", "shopping", "health", "bills", "other")
-                .firstOrNull { containsAssistantKeyword(q, it) }
+            val category = when {
+                containsAssistantKeyword(q, "food", "meal", "meals") -> "food"
+                containsAssistantKeyword(q, "transport", "transportation", "fare", "fares") -> "transport"
+                containsAssistantKeyword(q, "school", "academic") -> "school"
+                containsAssistantKeyword(q, "shopping") -> "shopping"
+                containsAssistantKeyword(q, "health", "medicine", "medicines") -> "health"
+                containsAssistantKeyword(q, "bill", "bills", "subscription", "subscriptions") -> "bills"
+                containsAssistantKeyword(q, "other") -> "other"
+                else -> null
+            }
             val matching = data.expenses.filter {
                 val date = runCatching { LocalDate.parse(it.date) }.getOrNull()
                 date != null && !date.isBefore(range.first) && !date.isAfter(range.second) &&
