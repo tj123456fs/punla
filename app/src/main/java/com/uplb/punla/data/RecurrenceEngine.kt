@@ -36,11 +36,11 @@ object RecurrenceEngine {
     suspend fun generateRecurringExpenses(dao: ExpenseDao) {
         val rules = dao.getAllRules()
         if (rules.isEmpty()) return
-        val existing = dao.getAll()
         val today = LocalDate.now()
 
         for (rule in rules) {
             if (!rule.amount.isFinite() || rule.amount <= 0.0 || rule.category.isBlank() || rule.repeat !in setOf("weekly", "monthly")) continue
+            val existing = dao.getByRuleId(rule.id)
             val startDate = runCatching { LocalDate.parse(rule.startDate) }.getOrNull() ?: continue
             val persistedCursor = runCatching { LocalDate.parse(rule.lastGenerated) }.getOrNull()
             // Old/corrupt rows can contain a cursor before the rule start. Never
@@ -52,7 +52,7 @@ object RecurrenceEngine {
             var guard = 0
             while (!next.isAfter(today) && guard < 200) {
                 val nextStr = next.toString()
-                val alreadyExists = existing.any { it.ruleId == rule.id && it.date == nextStr }
+                val alreadyExists = existing.any { it.date == nextStr }
                 if (!alreadyExists) {
                     dao.upsert(
                         Expense(
@@ -79,15 +79,14 @@ object RecurrenceEngine {
     suspend fun generateRecurringDeadlines(dao: DeadlineDao) {
         val rules = dao.getAllRules()
         if (rules.isEmpty()) return
-        var existing = dao.getAll()
         val today = LocalDate.now()
         val horizon = today.plusDays(DEADLINE_HORIZON_DAYS)
 
         for (rule in rules) {
             if (rule.title.isBlank() || rule.type.isBlank() || rule.priority !in setOf("Low", "Medium", "High") ||
                 rule.repeat !in setOf("weekly", "monthly")) continue
+            var existing = dao.getByRuleId(rule.id)
             var lastDue = existing
-                .filter { it.ruleId == rule.id }
                 .mapNotNull { runCatching { LocalDate.parse(it.due) }.getOrNull() }
                 .maxOrNull()
                 ?: runCatching { LocalDate.parse(rule.startDate) }.getOrNull()
@@ -96,7 +95,7 @@ object RecurrenceEngine {
             var guard = 0
             while (guard < 12) {
                 val lastDueStr = lastDue.toString()
-                val lastInstance = existing.find { it.ruleId == rule.id && it.due == lastDueStr }
+                val lastInstance = existing.find { it.due == lastDueStr }
                 val shouldAdvance = lastInstance == null || lastInstance.done || lastDue.isBefore(today)
                 if (!shouldAdvance) break
 
@@ -104,7 +103,7 @@ object RecurrenceEngine {
                 if (next.isAfter(horizon)) break
                 val nextStr = next.toString()
 
-                if (existing.none { it.ruleId == rule.id && it.due == nextStr }) {
+                if (existing.none { it.due == nextStr }) {
                     val created = Deadline(
                         title = rule.title,
                         course = rule.course,

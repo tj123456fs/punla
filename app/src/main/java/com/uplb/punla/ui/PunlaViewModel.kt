@@ -1894,7 +1894,7 @@ class PunlaViewModel(app: Application) : AndroidViewModel(app) {
         if (!repo.cloudAssistantEnabled) return AssistantApiResult.Failure("Cloud assistant is disabled in Settings.")
         val key = repo.assistantApiKey ?: return AssistantApiResult.Failure("Add your API key in Settings first.")
         if (!repo.consumeAssistantCall()) {
-            return AssistantApiResult.Failure("Today's 10-call cloud limit has been reached. Local commands still work.")
+            return AssistantApiResult.Failure("Today's ${repo.assistantDailyCallLimit}-call cloud limit has been reached. Local commands still work.")
         }
         val snapshot = AssistantSnapshot(classes.value, deadlines.value, expenses.value, studySessions.value, repo)
         return AssistantApi.ask(key, repo.assistantModel, query, LocalAssistant.compactCloudContext(snapshot, query))

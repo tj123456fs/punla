@@ -43,6 +43,29 @@ private val dayNames = mapOf(
 )
 private val readableDate = DateTimeFormatter.ofPattern("MMM d")
 
+// Intent routing is English-only by design, but keywords still need token
+// boundaries so words such as "classical" do not accidentally mean "class".
+internal fun containsAssistantKeyword(text: String, vararg keywords: String): Boolean =
+    keywords.any { keyword ->
+        Regex("""(?<![A-Za-z0-9_])${Regex.escape(keyword)}(?![A-Za-z0-9_])""", RegexOption.IGNORE_CASE)
+            .containsMatchIn(text)
+    }
+
+private val assistantCurrencyAmount = Regex(
+    """(?:₱\s*|(?<![A-Za-z0-9_])php(?![A-Za-z0-9_])\s*)(\d+(?:\.\d{1,2})?)""",
+    RegexOption.IGNORE_CASE
+)
+private val assistantPlainAmount = Regex("""\d+(?:\.\d{1,2})?""")
+private val assistantAddKeyword = Regex("""(?<![A-Za-z0-9_])add(?![A-Za-z0-9_])""", RegexOption.IGNORE_CASE)
+
+internal fun parseAssistantExpenseAmount(query: String): Double? {
+    // A currency marker is the strongest amount signal. Without one, use the
+    // first number after the explicit "add" command rather than an earlier date.
+    assistantCurrencyAmount.find(query)?.groupValues?.get(1)?.toDoubleOrNull()?.let { return it }
+    val add = assistantAddKeyword.find(query) ?: return null
+    return assistantPlainAmount.find(query, add.range.last + 1)?.value?.toDoubleOrNull()
+}
+
 object LocalAssistant {
     fun answer(rawQuery: String, data: AssistantSnapshot): LocalAssistantAnswer {
         val q = rawQuery.lowercase().trim()
@@ -56,8 +79,8 @@ object LocalAssistant {
             )
         }
 
-        if (listOf("class", "schedule", "subject").any(q::contains)) {
-            val date = if (q.contains("tomorrow")) data.today.plusDays(1) else data.today
+        if (containsAssistantKeyword(q, "class", "classes", "schedule", "schedules", "subject", "subjects")) {
+            val date = if (containsAssistantKeyword(q, "tomorrow")) data.today.plusDays(1) else data.today
             val day = dayNames[date.dayOfWeek]
             val classes = data.classes.filter { it.day == day }.sortedBy { it.start }
             return LocalAssistantAnswer(
@@ -68,10 +91,10 @@ object LocalAssistant {
             )
         }
 
-        if (listOf("deadline", "due", "requirement", "assignment").any(q::contains)) {
+        if (containsAssistantKeyword(q, "deadline", "deadlines", "due", "requirement", "requirements", "assignment", "assignments")) {
             val pending = data.deadlines.filter { !it.done }.sortedBy { it.due }
             val selected = when {
-                q.contains("week") -> pending.filter { runCatching { LocalDate.parse(it.due) }.getOrNull() in data.today..data.today.plusDays(7) }
+                containsAssistantKeyword(q, "week", "weekly") -> pending.filter { runCatching { LocalDate.parse(it.due) }.getOrNull() in data.today..data.today.plusDays(7) }
                 else -> pending.take(5)
             }
             return LocalAssistantAnswer(
@@ -82,16 +105,24 @@ object LocalAssistant {
             )
         }
 
-        if (listOf("spend", "spent", "expense", "budget", "money").any(q::contains)) {
+        if (containsAssistantKeyword(q, "spend", "spent", "expense", "expenses", "budget", "budgets", "money")) {
             val range = when {
-                q.contains("week") -> {
+                containsAssistantKeyword(q, "week", "weekly") -> {
                     val start = data.today.with(TemporalAdjusters.previousOrSame(data.repo.weekStartDay))
                     start to start.plusDays(6)
                 }
                 else -> YearMonth.from(data.today).atDay(1) to YearMonth.from(data.today).atEndOfMonth()
             }
-            val category = listOf("food", "transport", "school", "shopping", "health", "bills", "other")
-                .firstOrNull { q.contains(it) }
+            val category = when {
+                containsAssistantKeyword(q, "food", "meal", "meals") -> "food"
+                containsAssistantKeyword(q, "transport", "transportation", "fare", "fares") -> "transport"
+                containsAssistantKeyword(q, "school", "academic") -> "school"
+                containsAssistantKeyword(q, "shopping") -> "shopping"
+                containsAssistantKeyword(q, "health", "medicine", "medicines") -> "health"
+                containsAssistantKeyword(q, "bill", "bills", "subscription", "subscriptions") -> "bills"
+                containsAssistantKeyword(q, "other") -> "other"
+                else -> null
+            }
             val matching = data.expenses.filter {
                 val date = runCatching { LocalDate.parse(it.date) }.getOrNull()
                 date != null && !date.isBefore(range.first) && !date.isAfter(range.second) &&
@@ -104,9 +135,9 @@ object LocalAssistant {
             )
         }
 
-        if (listOf("absence", "attendance", "absent").any(q::contains)) {
+        if (containsAssistantKeyword(q, "absence", "absences", "attendance", "absent")) {
             val matched = data.classes.filter { c -> q.contains(c.code.lowercase()) }
-                .ifEmpty { data.classes.filter { it.absences > 0 || q.contains("all") }.ifEmpty { data.classes } }
+                .ifEmpty { data.classes.filter { it.absences > 0 || containsAssistantKeyword(q, "all") }.ifEmpty { data.classes } }
             return LocalAssistantAnswer(
                 if (matched.isEmpty()) "There are no classes to check yet."
                 else matched.distinctBy { it.id }.joinToString(separator = "; ") {
@@ -116,7 +147,7 @@ object LocalAssistant {
             )
         }
 
-        if (listOf("study", "focus", "pomodoro", "free time", "when should").any(q::contains)) {
+        if (containsAssistantKeyword(q, "study", "focus", "pomodoro", "free time", "when should")) {
             val suggestion = suggestStudySlotTodayOrTomorrow(
                 data.classes, data.deadlines, data.repo.pomodoroWorkMinutes, data.today, data.sessions
             )
@@ -137,12 +168,22 @@ object LocalAssistant {
 
     fun compactCloudContext(data: AssistantSnapshot, rawQuery: String = ""): String {
         val q = rawQuery.lowercase()
-        val includePlanning = q.isBlank() || listOf("plan", "week", "overwhelmed", "behind", "prioritize").any(q::contains)
-        val includeSchedule = includePlanning || listOf("class", "schedule", "subject", "room", "today", "tomorrow").any(q::contains)
-        val includeDeadlines = includePlanning || listOf("deadline", "due", "assignment", "requirement", "task").any(q::contains)
-        val includeSpending = listOf("spend", "spent", "expense", "budget", "money", "cost").any(q::contains)
-        val includeAttendance = listOf("absence", "attendance", "absent", "cut").any(q::contains)
-        val includeStudy = includePlanning || listOf("study", "focus", "pomodoro", "habit", "streak").any(q::contains)
+        val includePlanning = q.isBlank() || containsAssistantKeyword(
+            q, "plan", "plans", "planning", "week", "weekly", "overwhelmed", "behind", "prioritize"
+        )
+        val includeSchedule = includePlanning || containsAssistantKeyword(
+            q, "class", "classes", "schedule", "schedules", "subject", "subjects", "room", "rooms", "today", "tomorrow"
+        )
+        val includeDeadlines = includePlanning || containsAssistantKeyword(
+            q, "deadline", "deadlines", "due", "assignment", "assignments", "requirement", "requirements", "task", "tasks"
+        )
+        val includeSpending = containsAssistantKeyword(
+            q, "spend", "spent", "expense", "expenses", "budget", "budgets", "money", "cost", "costs"
+        )
+        val includeAttendance = containsAssistantKeyword(q, "absence", "absences", "attendance", "absent", "cut", "cuts")
+        val includeStudy = includePlanning || containsAssistantKeyword(
+            q, "study", "focus", "pomodoro", "habit", "habits", "streak", "streaks"
+        )
 
         val sections = mutableListOf("Today: ${data.today}")
         if (includeSchedule) {
@@ -184,22 +225,23 @@ object LocalAssistant {
     }
 
     private fun parseFocus(q: String): AssistantAction.StartFocus? {
-        if (!(q.contains("start") && (q.contains("focus") || q.contains("pomodoro")))) return null
+        if (!(containsAssistantKeyword(q, "start") && containsAssistantKeyword(q, "focus", "pomodoro"))) return null
         val minutes = Regex("(\\d{1,3})\\s*(?:minute|min)").find(q)?.groupValues?.get(1)?.toIntOrNull() ?: 25
         return AssistantAction.StartFocus(minutes.coerceIn(5, 180))
     }
 
     private fun parseExpense(q: String): AssistantAction.AddExpense? {
-        if (!(q.contains("add") && (q.contains("expense") || q.contains("spent") || q.contains("₱") || q.contains("php")))) return null
-        val amount = Regex("(?:₱|php\\s*)?(\\d+(?:\\.\\d{1,2})?)", RegexOption.IGNORE_CASE)
-            .find(q)?.groupValues?.get(1)?.toDoubleOrNull() ?: return null
+        val hasCurrencyMarker = q.contains("₱") || containsAssistantKeyword(q, "php")
+        if (!(containsAssistantKeyword(q, "add") &&
+                (containsAssistantKeyword(q, "expense", "expenses", "spent") || hasCurrencyMarker))) return null
+        val amount = parseAssistantExpenseAmount(q) ?: return null
         val category = when {
-            q.contains("food") || q.contains("meal") -> "Food"
-            q.contains("transport") || q.contains("fare") -> "Transportation"
-            q.contains("school") || q.contains("academic") -> "School"
-            q.contains("bill") || q.contains("subscription") -> "Bills"
-            q.contains("health") || q.contains("medicine") -> "Health"
-            q.contains("shopping") -> "Shopping"
+            containsAssistantKeyword(q, "food", "meal", "meals") -> "Food"
+            containsAssistantKeyword(q, "transport", "transportation", "fare", "fares") -> "Transportation"
+            containsAssistantKeyword(q, "school", "academic") -> "School"
+            containsAssistantKeyword(q, "bill", "bills", "subscription", "subscriptions") -> "Bills"
+            containsAssistantKeyword(q, "health", "medicine", "medicines") -> "Health"
+            containsAssistantKeyword(q, "shopping") -> "Shopping"
             else -> "Other"
         }
         val note = q.substringAfter(" for ", "").takeIf { it.isNotBlank() }

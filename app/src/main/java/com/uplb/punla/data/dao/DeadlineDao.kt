@@ -13,6 +13,11 @@ interface DeadlineDao {
     @Query("SELECT * FROM deadlines ORDER BY due")
     suspend fun getAll(): List<Deadline>
 
+    // Recurrence only needs rows from one rule; keep generation work bounded
+    // by that rule instead of loading every deadline into memory.
+    @Query("SELECT * FROM deadlines WHERE ruleId = :ruleId ORDER BY due")
+    suspend fun getByRuleId(ruleId: String): List<Deadline>
+
     @Query("SELECT * FROM deadlines WHERE done = 0 ORDER BY due ASC LIMIT 1")
     suspend fun getNextPending(): Deadline?
 
