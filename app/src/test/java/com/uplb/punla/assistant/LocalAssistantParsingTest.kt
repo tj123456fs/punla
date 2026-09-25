@@ -16,13 +16,13 @@ class LocalAssistantParsingTest {
 
     @Test
     fun expenseAmountPrefersCurrencyMarker() {
-        assertEquals(120.0, parseAssistantExpenseAmount("add 2 meals php 120"), 0.0)
-        assertEquals(85.5, parseAssistantExpenseAmount("add expense ₱85.50 for lunch"), 0.0)
+        assertEquals(120.0, parseAssistantExpenseAmount("add 2 meals php 120") ?: error("missing amount"), 0.0)
+        assertEquals(85.5, parseAssistantExpenseAmount("add expense ₱85.50 for lunch") ?: error("missing amount"), 0.0)
     }
 
     @Test
     fun expenseAmountFallsBackToFirstNumberAfterAdd() {
-        assertEquals(75.0, parseAssistantExpenseAmount("yesterday 12 add 75 expense for fare"), 0.0)
+        assertEquals(75.0, parseAssistantExpenseAmount("yesterday 12 add 75 expense for fare") ?: error("missing amount"), 0.0)
         assertNull(parseAssistantExpenseAmount("expense 75 without an add command"))
     }
 }
