@@ -18,6 +18,11 @@ interface ExpenseDao {
     @Query("SELECT * FROM expenses ORDER BY date DESC")
     suspend fun getAll(): List<Expense>
 
+    // Recurrence only needs rows from one rule; avoid materializing the entire
+    // expense history as it grows over multiple semesters.
+    @Query("SELECT * FROM expenses WHERE ruleId = :ruleId ORDER BY date DESC")
+    suspend fun getByRuleId(ruleId: String): List<Expense>
+
     /**
      * Sums amounts for a given "YYYY-MM" prefix directly in SQL, instead of
      * pulling every expense row into memory and filtering in Kotlin. [date]
