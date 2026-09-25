@@ -38,6 +38,22 @@ def table_indexes(db, table):
     return {row[1] for row in db.execute(f"PRAGMA index_list(`{table}`)").fetchall()}
 
 
+def column_shape(db, table):
+    # Room validates column metadata by name; ALTER TABLE appends columns and
+    # therefore does not preserve the declaration order of a fresh database.
+    return {
+        row[1]: (row[2], row[3], row[4], row[5])
+        for row in db.execute(f"PRAGMA table_info(`{table}`)").fetchall()
+    }
+
+
+def foreign_key_shape(db, table):
+    return sorted(
+        (row[2], row[3], row[4], row[5], row[6], row[7])
+        for row in db.execute(f"PRAGMA foreign_key_list(`{table}`)").fetchall()
+    )
+
+
 def main():
     generated = ROOT / "app/build/generated/ksp/debug/java/com/uplb/punla/data/PunlaDatabase_Impl.java"
     generated_sql = quoted_sql_statements(generated.read_text())
@@ -96,12 +112,8 @@ def main():
             upgraded.execute(sql)
 
     for table in CHECK_TABLES:
-        assert full.execute(f"PRAGMA table_info(`{table}`)").fetchall() == upgraded.execute(
-            f"PRAGMA table_info(`{table}`)"
-        ).fetchall(), table
-        assert full.execute(f"PRAGMA foreign_key_list(`{table}`)").fetchall() == upgraded.execute(
-            f"PRAGMA foreign_key_list(`{table}`)"
-        ).fetchall(), table
+        assert column_shape(full, table) == column_shape(upgraded, table), table
+        assert foreign_key_shape(full, table) == foreign_key_shape(upgraded, table), table
         assert table_indexes(full, table) == table_indexes(upgraded, table), table
 
     assert upgraded.execute(

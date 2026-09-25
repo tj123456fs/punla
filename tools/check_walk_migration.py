@@ -38,6 +38,15 @@ def migration_sql_statements(text):
     return [sql for _, sql in sorted(statements, key=lambda item: item[0])]
 
 
+def column_shape(rows, excluded=None):
+    excluded = excluded or set()
+    return {
+        row[1]: (row[2], row[3], row[4], row[5])
+        for row in rows
+        if row[1] not in excluded
+    }
+
+
 def main():
     generated = ROOT / "app/build/generated/ksp/debug/java/com/uplb/punla/data/PunlaDatabase_Impl.java"
     generated_sql = quoted_sql_statements(generated.read_text())
@@ -73,14 +82,15 @@ def main():
             upgraded.execute(sql)
 
     for table in TABLES:
-        expected_columns = full.execute(f"PRAGMA table_info(`{table}`)").fetchall()
-        if table == "walk_points":
-            # Room's current v15 schema has the segment column added by 14→15.
-            # Remove it here so this checker deliberately validates the v14 shape.
-            expected_columns = [row for row in expected_columns if row[1] != "segment"]
-        assert expected_columns == upgraded.execute(
-            f"PRAGMA table_info(`{table}`)"
-        ).fetchall(), table
+        excluded = {"segment"} if table == "walk_points" else set()
+        expected_columns = column_shape(
+            full.execute(f"PRAGMA table_info(`{table}`)").fetchall(),
+            excluded,
+        )
+        actual_columns = column_shape(
+            upgraded.execute(f"PRAGMA table_info(`{table}`)").fetchall()
+        )
+        assert expected_columns == actual_columns, table
         assert full.execute(f"PRAGMA foreign_key_list(`{table}`)").fetchall() == upgraded.execute(
             f"PRAGMA foreign_key_list(`{table}`)"
         ).fetchall(), table
