@@ -11,6 +11,9 @@ import android.content.Context
  * 4) null, preserving each caller's existing straight-line fallback.
  */
 object CampusRoutingResolver {
+    // Learned traces are intentionally less permissive than a curated survey graph:
+    // do not jump across a road/building just because a remembered path is nearby.
+    private const val LEARNED_ROUTE_MAX_SNAP_METERS = 30.0
     @Volatile var recentRoute: com.uplb.punla.context.TravelRouteContext? = null
         private set
     @Volatile private var graphLoaded = false
@@ -45,7 +48,7 @@ object CampusRoutingResolver {
         val local = localRoute(context, from, to)
         val learned = if (local == null) {
             LearnedCampusPathRepository.loadTrustedGraph(context)
-                ?.let { findLocalCampusRoute(it, from, to) }
+                ?.let { findLocalCampusRoute(it, from, to, maxSnapMeters = LEARNED_ROUTE_MAX_SNAP_METERS) }
         } else {
             null
         }

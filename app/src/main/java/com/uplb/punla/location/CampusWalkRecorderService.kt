@@ -30,7 +30,6 @@ import com.uplb.punla.data.entity.WalkPoint
 import com.uplb.punla.data.entity.WalkSession
 import com.uplb.punla.data.entity.WalkSessionStatus
 import com.uplb.punla.data.fmtDistance
-import com.uplb.punla.data.haversineMeters
 import com.uplb.punla.worker.WalkPathLearningWorker
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
@@ -77,6 +76,9 @@ class CampusWalkRecorderService : Service() {
         client = LocationServices.getFusedLocationProviderClient(this)
         dao = PunlaDatabase.get(this).walkRecordingDao()
         ensureChannel()
+        // Older completed recordings should become useful without requiring
+        // the user to export/re-import or manually replay them.
+        WalkPathLearningWorker.enqueueBackfill(applicationContext)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -236,39 +238,42 @@ class CampusWalkRecorderService : Service() {
         var session = activeSession ?: dao.getActiveSession() ?: return
         if (session.status != WalkSessionStatus.RECORDING) return
 
-        if (!location.latitude.isFinite() || !location.longitude.isFinite()) return
-        if (location.latitude !in -90.0..90.0 || location.longitude !in -180.0..180.0) return
-        if (location.hasAccuracy() && location.accuracy > MAX_ACCEPTED_ACCURACY_METERS) return
+        val now = System.currentTimeMillis()
+        val capturedAt = location.time.takeIf { it > 0L } ?: now
+        val candidate = WalkGpsSample(
+            lat = location.latitude,
+            lon = location.longitude,
+            accuracyMeters = location.accuracy.takeIf { location.hasAccuracy() },
+            capturedAt = capturedAt
+        )
+        val previous = lastPoint?.let {
+            WalkGpsSample(
+                lat = it.lat,
+                lon = it.lon,
+                accuracyMeters = it.accuracyMeters,
+                capturedAt = it.capturedAt
+            )
+        }
+        val decision = WalkGpsFilter.evaluate(previous, candidate, now)
+        if (decision !is WalkGpsDecision.Accept) return
 
-        val capturedAt = location.time.takeIf { it > 0L } ?: System.currentTimeMillis()
-        val previous = lastPoint
-        var addedDistance = 0.0
-
-        if (previous != null) {
-            val elapsedMillis = capturedAt - previous.capturedAt
-            if (elapsedMillis <= 0L) return
-
-            val segment = haversineMeters(previous.lat, previous.lon, location.latitude, location.longitude)
-            if (segment < MIN_RECORDED_SEGMENT_METERS) return
-
-            val speedMetersPerSecond = segment / (elapsedMillis / 1000.0)
-            if (speedMetersPerSecond > MAX_PLAUSIBLE_WALK_SPEED_MPS) return
-            addedDistance = segment
+        if (decision.startNewSegment) {
+            activeSegment += 1
         }
 
         val point = WalkPoint(
             sessionId = session.id,
             sequence = nextSequence,
-            lat = location.latitude,
-            lon = location.longitude,
+            lat = candidate.lat,
+            lon = candidate.lon,
             segment = activeSegment,
-            accuracyMeters = location.accuracy.takeIf { location.hasAccuracy() },
-            capturedAt = capturedAt
+            accuracyMeters = candidate.accuracyMeters,
+            capturedAt = candidate.capturedAt
         )
         dao.insertPoint(point)
 
         session = session.copy(
-            distanceMeters = session.distanceMeters + addedDistance,
+            distanceMeters = session.distanceMeters + decision.addedDistanceMeters,
             pointCount = session.pointCount + 1
         )
         dao.updateSession(session)
@@ -360,8 +365,5 @@ class CampusWalkRecorderService : Service() {
         private const val LOCATION_INTERVAL_MS = 3_000L
         private const val MIN_LOCATION_INTERVAL_MS = 1_500L
         private const val MIN_UPDATE_DISTANCE_METERS = 2.0f
-        private const val MAX_ACCEPTED_ACCURACY_METERS = 45f
-        private const val MIN_RECORDED_SEGMENT_METERS = 1.5
-        private const val MAX_PLAUSIBLE_WALK_SPEED_MPS = 12.0
     }
 }

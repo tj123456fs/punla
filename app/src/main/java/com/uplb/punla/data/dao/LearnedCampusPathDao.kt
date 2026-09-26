@@ -21,6 +21,18 @@ interface LearnedCampusPathDao {
     @Query("SELECT * FROM learned_walk_sessions WHERE sessionId = :sessionId LIMIT 1")
     suspend fun getProcessedSession(sessionId: String): LearnedWalkSession?
 
+    @Query(
+        """
+        SELECT ws.id
+        FROM walk_sessions AS ws
+        LEFT JOIN learned_walk_sessions AS learned ON learned.sessionId = ws.id
+        WHERE ws.status = 'COMPLETED' AND learned.sessionId IS NULL
+        ORDER BY ws.startedAt ASC
+        LIMIT :limit
+        """
+    )
+    suspend fun getUnprocessedCompletedSessionIds(limit: Int): List<String>
+
     @Upsert
     suspend fun upsertNodes(nodes: List<LearnedPathNode>)
 

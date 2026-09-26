@@ -63,7 +63,30 @@ object LearnedCampusPathRepository {
         }
     }
 
+    suspend fun processPendingCompletedWalks(
+        context: Context,
+        limit: Int = 50
+    ): Int = withContext(Dispatchers.IO) {
+        require(limit > 0) { "limit must be > 0" }
+        val app = context.applicationContext
+        val pendingIds = PunlaDatabase.get(app)
+            .learnedCampusPathDao()
+            .getUnprocessedCompletedSessionIds(limit)
+
+        var processed = 0
+        pendingIds.forEach { sessionId ->
+            if (processCompletedWalk(app, sessionId) == WalkLearningStatus.PROCESSED) {
+                processed += 1
+            }
+        }
+        processed
+    }
+
     suspend fun loadTrustedGraph(context: Context): CampusPathGraph? = withContext(Dispatchers.IO) {
+        // Opportunistically backfill a few legacy recordings so upgrading users
+        // benefit from old walks without blocking a route request for a large archive.
+        processPendingCompletedWalks(context.applicationContext, limit = ROUTE_BACKFILL_LIMIT)
+
         val dao = PunlaDatabase.get(context.applicationContext).learnedCampusPathDao()
         val edges = dao.getTrustedEdges(LearnedCampusPathEngine.MIN_TRUSTED_OBSERVATIONS)
         if (edges.isEmpty()) return@withContext null
@@ -72,4 +95,6 @@ object LearnedCampusPathRepository {
             edges = edges
         )
     }
+
+    private const val ROUTE_BACKFILL_LIMIT = 4
 }
