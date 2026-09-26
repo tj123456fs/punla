@@ -6,12 +6,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircleOutline
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -31,6 +33,7 @@ internal fun CampusSelector(
     automatic: Boolean,
     onAutomatic: () -> Unit,
     onSelect: (CampusProfile) -> Unit,
+    onDelete: (CampusProfile) -> Unit,
     onNewCampus: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -71,6 +74,21 @@ internal fun CampusSelector(
                     leadingIcon = {
                         if (!automatic && activeProfile?.id == profile.id) {
                             Icon(Icons.Default.Check, contentDescription = null)
+                        }
+                    },
+                    trailingIcon = {
+                        if (!profile.builtIn) {
+                            IconButton(
+                                onClick = {
+                                    expanded = false
+                                    onDelete(profile)
+                                }
+                            ) {
+                                Icon(
+                                    Icons.Default.DeleteOutline,
+                                    contentDescription = "Delete ${profile.name}"
+                                )
+                            }
                         }
                     },
                     onClick = {

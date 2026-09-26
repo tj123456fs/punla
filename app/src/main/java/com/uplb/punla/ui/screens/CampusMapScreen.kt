@@ -29,6 +29,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.uplb.punla.data.Building
 import com.uplb.punla.data.CampusDirectory
+import com.uplb.punla.data.CampusProfileStore
+import com.uplb.punla.data.CampusProfiles
 import com.uplb.punla.data.LocationFailure
 import com.uplb.punla.data.RoutePlan
 import com.uplb.punla.data.RoutePlanLeg
@@ -56,6 +58,12 @@ fun CampusMapScreen(vm: PunlaViewModel, initialSearch: String = "", onOpenFullMa
     var searchQuery by remember { mutableStateOf(initialSearch) }
     var expandedBuildingName by remember { mutableStateOf<String?>(null) }
     var mapBuilding by remember { mutableStateOf<Building?>(null) }
+    val campusStore = remember(context.applicationContext) {
+        CampusProfileStore(context.applicationContext)
+    }
+    var campusRevision by remember { mutableIntStateOf(0) }
+    var pendingNewCampus by remember { mutableStateOf(false) }
+    var showNewCampusDialog by remember { mutableStateOf(false) }
 
     // ---- Multi-stop route planning ----
     var selectedStops by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -73,13 +81,22 @@ fun CampusMapScreen(vm: PunlaViewModel, initialSearch: String = "", onOpenFullMa
     var locating by remember { mutableStateOf(false) }
     var locateFailure by remember { mutableStateOf<LocationFailure?>(null) }
 
+    val campusProfiles = remember(campusRevision) { campusStore.allProfiles() }
+    val selectedCampusId = remember(campusRevision) { campusStore.selectedCampusId }
+    val activeCampus = remember(campusRevision, userLoc) { campusStore.activeProfile(userLoc) }
+    val campusBuildings = remember(activeCampus?.id) { CampusProfiles.buildingsFor(activeCampus) }
+
     fun fetchLocation() {
         locating = true
         locateFailure = null
         fetchOneShotLocation(
             context,
             onResult = { lat, lon, _ -> userLoc = lat to lon; locating = false },
-            onError = { reason -> locating = false; locateFailure = reason }
+            onError = { reason ->
+                locating = false
+                locateFailure = reason
+                pendingNewCampus = false
+            }
         )
     }
 
@@ -101,6 +118,22 @@ fun CampusMapScreen(vm: PunlaViewModel, initialSearch: String = "", onOpenFullMa
             permanentlyDenied -> openAppLocationSettings(context)
             else -> locationPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
         }
+    }
+
+    LaunchedEffect(Unit) {
+        if (hasLocationPermission(context)) fetchLocation()
+    }
+
+    LaunchedEffect(userLoc, pendingNewCampus) {
+        if (pendingNewCampus && userLoc != null) {
+            pendingNewCampus = false
+            showNewCampusDialog = true
+        }
+    }
+
+    LaunchedEffect(activeCampus?.id) {
+        selectedStops = emptySet()
+        expandedBuildingName = null
     }
 
     /**
@@ -129,7 +162,7 @@ fun CampusMapScreen(vm: PunlaViewModel, initialSearch: String = "", onOpenFullMa
             onLocateMeTapped()
             return
         }
-        val stops = CampusDirectory.BUILDINGS
+        val stops = campusBuildings
             .filter { it.name in selectedStops }
             .map { RouteStop(it.name, it.lat, it.lon) }
         if (stops.isEmpty()) return
@@ -157,12 +190,12 @@ fun CampusMapScreen(vm: PunlaViewModel, initialSearch: String = "", onOpenFullMa
         }
     }
 
-    val filteredBuildings = remember(searchQuery, userLoc) {
+    val filteredBuildings = remember(searchQuery, userLoc, campusBuildings) {
         val base = if (searchQuery.isBlank()) {
-            CampusDirectory.BUILDINGS
+            campusBuildings
         } else {
             val query = searchQuery.lowercase().trim()
-            CampusDirectory.BUILDINGS.filter { b ->
+            campusBuildings.filter { b ->
                 b.name.lowercase().contains(query) ||
                         (b.aka != null && b.aka.lowercase().contains(query)) ||
                         b.rooms.any { r -> r.lowercase().contains(query) }
@@ -176,10 +209,10 @@ fun CampusMapScreen(vm: PunlaViewModel, initialSearch: String = "", onOpenFullMa
         }
     }
 
-    LaunchedEffect(initialSearch) {
-        if (initialSearch.isNotBlank()) {
+    LaunchedEffect(initialSearch, activeCampus?.id) {
+        if (initialSearch.isNotBlank() && campusBuildings.isNotEmpty()) {
             searchQuery = initialSearch
-            val matches = CampusDirectory.BUILDINGS.filter { b ->
+            val matches = campusBuildings.filter { b ->
                 b.name.lowercase().contains(initialSearch.lowercase()) ||
                         (b.aka != null && b.aka.lowercase().contains(initialSearch.lowercase())) ||
                         b.rooms.any { r -> r.lowercase().contains(initialSearch.lowercase()) }
@@ -199,10 +232,38 @@ fun CampusMapScreen(vm: PunlaViewModel, initialSearch: String = "", onOpenFullMa
     ) {
 
         RoutingAttribution()
+        CampusSelector(
+            profiles = campusProfiles,
+            activeProfile = activeCampus,
+            automatic = selectedCampusId == null,
+            onAutomatic = {
+                campusStore.selectedCampusId = null
+                campusRevision += 1
+                if (hasLocationPermission(context)) fetchLocation()
+            },
+            onSelect = { profile ->
+                campusStore.selectedCampusId = profile.id
+                campusRevision += 1
+            },
+            onDelete = { profile ->
+                if (campusStore.deleteCustomCampus(profile.id)) campusRevision += 1
+            },
+            onNewCampus = {
+                pendingNewCampus = true
+                if (userLoc != null) {
+                    pendingNewCampus = false
+                    showNewCampusDialog = true
+                } else {
+                    onLocateMeTapped()
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(10.dp))
         WalkRecorderCard(onOpenMap = onOpenFullMap)
         Spacer(Modifier.height(10.dp))
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        if (campusBuildings.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
@@ -328,7 +389,13 @@ fun CampusMapScreen(vm: PunlaViewModel, initialSearch: String = "", onOpenFullMa
         if (filteredBuildings.isEmpty()) {
             EmptyState(
                 icon = Icons.Default.Info,
-                message = "No matching buildings or rooms found."
+                message = when {
+                    activeCampus == null ->
+                        "You're outside saved campuses. Record walks here or add this area as a campus from the selector."
+                    campusBuildings.isEmpty() ->
+                        "${activeCampus.name} uses your GPS and learned paths. No built-in building directory is installed for this campus yet."
+                    else -> "No matching buildings or rooms found."
+                }
             )
         } else {
             LazyColumn(
@@ -438,6 +505,24 @@ fun CampusMapScreen(vm: PunlaViewModel, initialSearch: String = "", onOpenFullMa
                 }
                 item { Spacer(Modifier.height(80.dp)) }
             }
+        }
+    }
+
+    if (showNewCampusDialog) {
+        val loc = userLoc
+        if (loc != null) {
+            val suggested = "Campus ${campusStore.customProfiles().size + 1}"
+            NewCampusDialog(
+                suggestedName = suggested,
+                onDismiss = { showNewCampusDialog = false },
+                onSave = { name ->
+                    campusStore.addCustomCampus(name, loc.first, loc.second)
+                    showNewCampusDialog = false
+                    campusRevision += 1
+                }
+            )
+        } else {
+            showNewCampusDialog = false
         }
     }
 
