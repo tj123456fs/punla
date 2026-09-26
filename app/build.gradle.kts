@@ -22,8 +22,8 @@ android {
         applicationId = "com.uplb.punla"
         minSdk = 26
         targetSdk = 34
-        versionCode = 44
-        versionName = "3.5.4"
+        versionCode = 45
+        versionName = "3.5.5"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
