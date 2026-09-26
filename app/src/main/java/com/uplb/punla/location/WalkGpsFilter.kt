@@ -78,7 +78,7 @@ internal object WalkGpsFilter {
             MIN_MOVEMENT_METERS,
             min(
                 MAX_JITTER_GATE_METERS,
-                (previousAccuracy + accuracy) * ACCURACY_GATE_FACTOR
+                (previousAccuracy + accuracy).toDouble() * ACCURACY_GATE_FACTOR
             )
         )
         if (distance < jitterGate) return WalkGpsDecision.Ignore
