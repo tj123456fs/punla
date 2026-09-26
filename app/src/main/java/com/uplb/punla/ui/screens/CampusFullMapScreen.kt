@@ -51,6 +51,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.uplb.punla.data.Building
 import com.uplb.punla.data.CampusDirectory
+import com.uplb.punla.data.CampusProfileStore
+import com.uplb.punla.data.CampusProfiles
 import com.uplb.punla.data.LocationFailure
 import com.uplb.punla.data.OpenFreeMap
 import com.uplb.punla.data.PunlaDatabase
@@ -135,6 +137,16 @@ fun CampusFullMapScreen(vm: PunlaViewModel) {
     var userLoc by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var locateFailure by remember { mutableStateOf<LocationFailure?>(null) }
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
+    val campusStore = remember(context.applicationContext) {
+        CampusProfileStore(context.applicationContext)
+    }
+    val activeCampus = remember(userLoc) { campusStore.activeProfile(userLoc) }
+    val campusBuildings = remember(activeCampus?.id) { CampusProfiles.buildingsFor(activeCampus) }
+    val campusCenter = remember(activeCampus?.id, userLoc) {
+        activeCampus?.let { LatLng(it.centerLat, it.centerLon) }
+            ?: userLoc?.let { LatLng(it.first, it.second) }
+            ?: CAMPUS_CENTER
+    }
 
     val walkDao = remember(context.applicationContext) {
         PunlaDatabase.get(context.applicationContext).walkRecordingDao()
@@ -149,8 +161,12 @@ fun CampusFullMapScreen(vm: PunlaViewModel) {
     }
 
     val nextClass by vm.nextClassFlow.collectAsStateWithLifecycle(initialValue = null)
-    val nextClassBuilding = remember(nextClass) {
-        nextClass?.let { CampusDirectory.findBuildingForRoom(it.room) }
+    val nextClassBuilding = remember(nextClass, activeCampus?.id) {
+        if (activeCampus?.id == CampusProfiles.UPLB_ID) {
+            nextClass?.let { CampusDirectory.findBuildingForRoom(it.room) }
+        } else {
+            null
+        }
     }
     val routePlan by vm.routePlan.collectAsStateWithLifecycle()
 
@@ -293,18 +309,28 @@ fun CampusFullMapScreen(vm: PunlaViewModel) {
         }
     }
 
+    LaunchedEffect(activeCampus?.id) {
+        if (activeCampus?.id != CampusProfiles.UPLB_ID && routePlan != null) {
+            vm.setRoutePlan(null)
+        }
+    }
+
     Column(Modifier.fillMaxSize()) {
     Box(Modifier.weight(1f).fillMaxWidth()) {
-        CampusFullMapView(
-            hasLocationPermission = hasPermission,
-            userLoc = userLoc,
-            nextClassBuilding = nextClassBuilding,
-            routePoints = displayRoutePoints,
-            recordedWalkPoints = recordedWalkPoints,
-            onMapReady = { map = it },
-            onBuildingTap = { selectedBuilding = it },
-            modifier = Modifier.fillMaxSize()
-        )
+        key(activeCampus?.id ?: "current-area") {
+            CampusFullMapView(
+                hasLocationPermission = hasPermission,
+                userLoc = userLoc,
+                campusCenter = campusCenter,
+                buildings = campusBuildings,
+                nextClassBuilding = nextClassBuilding,
+                routePoints = displayRoutePoints,
+                recordedWalkPoints = recordedWalkPoints,
+                onMapReady = { map = it },
+                onBuildingTap = { selectedBuilding = it },
+                modifier = Modifier.fillMaxSize()
+            )
+        }
 
         if (hasPermission && !hasFinePermission && locateFailure == null) {
             Card(
@@ -531,6 +557,8 @@ fun CampusFullMapScreen(vm: PunlaViewModel) {
 private fun CampusFullMapView(
     hasLocationPermission: Boolean,
     userLoc: Pair<Double, Double>?,
+    campusCenter: LatLng,
+    buildings: List<Building>,
     nextClassBuilding: Building?,
     routePoints: List<Pair<Double, Double>>?,
     recordedWalkPoints: List<Pair<Double, Double>>,
@@ -557,14 +585,14 @@ private fun CampusFullMapView(
             mapView.onCreate(null)
             mapView.getMapAsync { map ->
                 map.setStyle(OpenFreeMap.STYLE_URL) {
-                    val focusTarget = nextClassBuilding?.let { LatLng(it.lat, it.lon) } ?: CAMPUS_CENTER
+                    val focusTarget = nextClassBuilding?.let { LatLng(it.lat, it.lon) } ?: campusCenter
                     val focusZoom = if (nextClassBuilding != null) FOCUS_ZOOM else CAMPUS_ZOOM
                     map.cameraPosition = CameraPosition.Builder()
                         .target(focusTarget)
                         .zoom(focusZoom)
                         .build()
 
-                    CampusDirectory.BUILDINGS.forEach { b ->
+                    buildings.forEach { b ->
                         map.addMarker(
                             MarkerOptions()
                                 .position(LatLng(b.lat, b.lon))
@@ -572,7 +600,7 @@ private fun CampusFullMapView(
                         )
                     }
                     map.setOnMarkerClickListener { marker ->
-                        val match = CampusDirectory.BUILDINGS.firstOrNull { it.name == marker.title }
+                        val match = buildings.firstOrNull { it.name == marker.title }
                         if (match != null) {
                             onBuildingTap(match)
                             true
