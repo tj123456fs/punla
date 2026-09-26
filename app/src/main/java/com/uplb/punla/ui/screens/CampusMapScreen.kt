@@ -105,6 +105,7 @@ fun CampusMapScreen(vm: PunlaViewModel, initialSearch: String = "", onOpenFullMa
     ) { results ->
         if (results.values.any { it } || hasLocationPermission(context)) fetchLocation() else {
             locating = false
+            pendingNewCampus = false
             locateFailure = LocationFailure.PERMISSION_DENIED
         }
     }

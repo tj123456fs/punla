@@ -311,6 +311,10 @@ fun CampusFullMapScreen(vm: PunlaViewModel) {
     }
 
     LaunchedEffect(activeCampus?.id) {
+        // The MapView is recreated for a campus switch; do not keep a handle
+        // to the disposed previous map while the new style is loading.
+        map = null
+        selectedBuilding = null
         if (activeCampus?.id != CampusProfiles.UPLB_ID && routePlan != null) {
             vm.setRoutePlan(null)
         }

@@ -2,6 +2,7 @@ package com.uplb.punla.ui.screens
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.weight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircleOutline
 import androidx.compose.material.icons.filled.Check
@@ -38,6 +39,7 @@ internal fun CampusSelector(
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var deleteCandidate by remember { mutableStateOf<CampusProfile?>(null) }
     val label = if (automatic) {
         "Automatic · ${activeProfile?.name ?: "Current area"}"
     } else {
@@ -81,7 +83,7 @@ internal fun CampusSelector(
                             IconButton(
                                 onClick = {
                                     expanded = false
-                                    onDelete(profile)
+                                    deleteCandidate = profile
                                 }
                             ) {
                                 Icon(
@@ -107,6 +109,26 @@ internal fun CampusSelector(
                 }
             )
         }
+    }
+
+    val candidate = deleteCandidate
+    if (candidate != null) {
+        AlertDialog(
+            onDismissRequest = { deleteCandidate = null },
+            title = { Text("Delete campus?") },
+            text = { Text("Remove ${candidate.name} from your saved campuses? Recorded GPS walks stay on this device.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        deleteCandidate = null
+                        onDelete(candidate)
+                    }
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteCandidate = null }) { Text("Cancel") }
+            }
+        )
     }
 }
 
