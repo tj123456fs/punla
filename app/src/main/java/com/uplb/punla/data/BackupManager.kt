@@ -71,6 +71,7 @@ object BackupManager {
     suspend fun buildBackupJson(context: Context): String = withContext(Dispatchers.IO) {
         val db = PunlaDatabase.get(context)
         val repo = PunlaRepository(context)
+        val campusStore = CampusProfileStore(context)
 
         val schedule = db.classSessionDao().getAll()
         val expenses = db.expenseDao().getAll()
@@ -165,6 +166,8 @@ object BackupManager {
             put("categoryBudgetLimits", JSONObject().apply {
                 repo.categoryBudgetLimits.forEach { (category, amount) -> put(category, amount) }
             })
+            put("campusProfiles", campusStore.exportCustomProfiles())
+            put("campusSelection", campusStore.selectedCampusId ?: "auto")
             put("termStartDate", repo.termStartDate.toString())
             put("termEndDate", repo.termEndDate.toString())
             put("cloudAssistantEnabled", repo.cloudAssistantEnabled)
@@ -245,6 +248,7 @@ object BackupManager {
 
         val db = PunlaDatabase.get(context)
         val repo = PunlaRepository(context)
+        val campusStore = CampusProfileStore(context)
 
         val planningJson = root.optJSONObject("studentOs")
         if ((backupVersion >= 10 || root.has("studentOs")) && planningJson == null)
@@ -742,6 +746,12 @@ object BackupManager {
         repo.weeklyBudgetOverride = restoredWeeklyOverride
         repo.weeklyRolloverEnabled = root.optBoolean("weeklyRolloverEnabled", false)
         repo.categoryBudgetLimits = restoredCategoryLimits
+        if (root.has("campusProfiles") || root.has("campusSelection")) {
+            campusStore.restore(
+                customProfiles = root.optJSONArray("campusProfiles"),
+                selection = root.optString("campusSelection", "auto")
+            )
+        }
         restoredTermStart?.let { repo.termStartDate = it }
         restoredTermEnd?.let { repo.termEndDate = it }
         repo.cloudAssistantEnabled = root.optBoolean("cloudAssistantEnabled", false)
