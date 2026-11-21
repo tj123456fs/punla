@@ -196,6 +196,22 @@ internal fun deriveTodayRecommendationPresentation(
     )
 }
 
+/** Verb-first label for the single filled button on the Now block. Null means no button. */
+internal fun todayPrimaryActionLabel(kind: TodayNowKind, action: TodayAction): String? = when (action) {
+    TodayAction.NONE -> null
+    TodayAction.MAP -> if (kind == TodayNowKind.LEAVE_SOON) "Leave now" else "Open map"
+    TodayAction.FOCUS -> "Start focus"
+    TodayAction.STUDY -> "Study now"
+    TodayAction.SCHEDULE -> "Open schedule"
+    TodayAction.DEADLINES -> "View deadlines"
+}
+
+/** The suggestion row is hidden when it would only repeat the Now block. */
+internal fun todayShowsRecommendation(
+    now: TodayNowPresentation,
+    recommendation: TodayRecommendationPresentation
+): Boolean = recommendation.title != now.title
+
 internal fun relativeDayLabel(todayRaw: String, occurrenceRaw: String): String {
     val today = runCatching { LocalDate.parse(todayRaw) }.getOrNull()
     val occurrence = runCatching { LocalDate.parse(occurrenceRaw) }.getOrNull()

@@ -22,6 +22,20 @@ class TodayOverviewStateTest {
         endsAtEpochMillis = 0L
     )
 
+    @Test fun primaryButtonUsesVerbFirstLabels() {
+        assertEquals("Leave now", todayPrimaryActionLabel(TodayNowKind.LEAVE_SOON, TodayAction.MAP))
+        assertEquals("Start focus", todayPrimaryActionLabel(TodayNowKind.FREE_TIME, TodayAction.FOCUS))
+        assertEquals("Open schedule", todayPrimaryActionLabel(TodayNowKind.IN_CLASS, TodayAction.SCHEDULE))
+        assertEquals(null, todayPrimaryActionLabel(TodayNowKind.COMMITMENT, TodayAction.NONE))
+    }
+
+    @Test fun suggestionHiddenWhenItRepeatsNow() {
+        val state = base().copy(nextClass = nextToday, freeMinutesBeforeNextCommitment = 12, travelBufferMinutes = 10, usableFreeMinutes = 2)
+        val now = deriveTodayNowPresentation(state)
+        val suggestion = deriveTodayRecommendationPresentation(state, null, null)
+        assertEquals(false, todayShowsRecommendation(now, suggestion))
+    }
+
     @Test fun inClassWinsNowState() {
         val state = base().copy(currentClass = nextToday.copy(startTime = "09:00", endTime = "10:30"))
         assertEquals(TodayNowKind.IN_CLASS, deriveTodayNowPresentation(state).kind)

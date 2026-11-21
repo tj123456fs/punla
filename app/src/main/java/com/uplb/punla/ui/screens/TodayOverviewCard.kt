@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.NearMe
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -33,13 +34,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.uplb.punla.context.StudentState
 
 /**
  * Phase 2C Today surface. StudentState remains the source of truth; this layer
  * only turns that shared context into readable, actionable presentation states.
+ *
+ * Layout: NOW is the strongest block (large title + one filled action button).
+ * Suggestion, NEXT and LATER are compact rows so the card scans top to bottom.
  */
 @Composable
 internal fun TodayOverviewCard(
@@ -82,7 +88,7 @@ internal fun TodayOverviewCard(
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 1.dp
     ) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 15.dp)) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     Icons.Default.AutoAwesome,
@@ -91,43 +97,48 @@ internal fun TodayOverviewCard(
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(Modifier.size(9.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("Today", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "One glance at what matters right now.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                Text("Today", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             }
-            Spacer(Modifier.height(6.dp))
-            TodayStatusChip(now.kind, now.statusLabel)
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(12.dp))
 
             Crossfade(
                 targetState = now,
                 animationSpec = tween(durationMillis = 220),
                 label = "today_now_state"
             ) { shown ->
-                TodayContextRow(
-                    label = "NOW",
-                    icon = nowIcon(shown.kind),
-                    title = shown.title,
-                    detail = shown.detail,
-                    actionLabel = actionLabel(shown.action),
-                    enabled = shown.action != TodayAction.NONE,
-                    onClick = { runAction(shown.action) }
-                )
+                TodayNowBlock(shown) { runAction(shown.action) }
             }
 
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            if (todayShowsRecommendation(now, recommendation)) {
+                Spacer(Modifier.height(4.dp))
+                Crossfade(
+                    targetState = recommendation,
+                    animationSpec = tween(durationMillis = 220),
+                    label = "today_recommendation"
+                ) { shown ->
+                    TodayCompactRow(
+                        label = "SUGGESTED",
+                        icon = recommendationIcon(shown.action),
+                        title = shown.title,
+                        detail = shown.detail,
+                        actionLabel = shortActionLabel(shown.action),
+                        enabled = shown.action != TodayAction.NONE,
+                        onClick = { runAction(shown.action) }
+                    )
+                }
+            }
+
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 4.dp),
+                color = MaterialTheme.colorScheme.outlineVariant
+            )
 
             val nextTitle = next?.let { "${it.code} · ${formatTodayClock(it.startTime)}" } ?: "No upcoming class"
             val nextDetail = next?.let {
                 val day = relativeDayLabel(state.localDate, it.occurrenceDate)
                 listOfNotNull(day, it.room?.takeIf(String::isNotBlank), state.travelBufferMinutes?.let { minutes -> "$minutes min travel · ${state.travelRouteSource}" }).joinToString(" · ")
             } ?: "Nothing else is scheduled in the current look-ahead."
-            TodayContextRow(
+            TodayCompactRow(
                 label = "NEXT",
                 icon = Icons.Default.School,
                 title = nextTitle,
@@ -136,26 +147,6 @@ internal fun TodayOverviewCard(
                 enabled = next != null,
                 onClick = onOpenSchedule
             )
-
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-
-            Crossfade(
-                targetState = recommendation,
-                animationSpec = tween(durationMillis = 220),
-                label = "today_recommendation"
-            ) { shown ->
-                TodayContextRow(
-                    label = "RECOMMENDED",
-                    icon = recommendationIcon(shown.action),
-                    title = shown.title,
-                    detail = shown.detail,
-                    actionLabel = actionLabel(shown.action),
-                    enabled = shown.action != TodayAction.NONE,
-                    onClick = { runAction(shown.action) }
-                )
-            }
-
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
             val laterTitle = later?.let { deadline ->
                 listOfNotNull(deadline.courseCode?.takeIf(String::isNotBlank), deadline.title).joinToString(" · ")
@@ -169,7 +160,7 @@ internal fun TodayOverviewCard(
                 val more = (state.upcomingDeadlines.size - 1).coerceAtLeast(0)
                 if (more > 0) "$dueText · +$more more this week" else dueText
             } ?: "Your near-term deadline window is clear."
-            TodayContextRow(
+            TodayCompactRow(
                 label = "LATER",
                 icon = Icons.Default.Flag,
                 title = laterTitle,
@@ -178,6 +169,40 @@ internal fun TodayOverviewCard(
                 enabled = later != null,
                 onClick = onOpenDeadlines
             )
+        }
+    }
+}
+
+/** Strongest part of the card: status chip, large title, detail, and one filled button. */
+@Composable
+private fun TodayNowBlock(now: TodayNowPresentation, onAction: () -> Unit) {
+    Column(Modifier.fillMaxWidth()) {
+        TodayStatusChip(now.kind, now.statusLabel)
+        Spacer(Modifier.height(10.dp))
+        Text(
+            now.title,
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            now.detail,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        val buttonLabel = todayPrimaryActionLabel(now.kind, now.action)
+        if (buttonLabel != null) {
+            Spacer(Modifier.height(14.dp))
+            Button(
+                onClick = onAction,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+            ) {
+                Icon(nowIcon(now.kind), contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.size(8.dp))
+                Text(buttonLabel, style = MaterialTheme.typography.labelLarge)
+            }
         }
     }
 }
@@ -216,13 +241,14 @@ private fun TodayStatusChip(kind: TodayNowKind, label: String) {
         Text(
             label,
             style = MaterialTheme.typography.labelSmall,
-            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
         )
     }
 }
 
+/** Quiet secondary row: small icon, label, one-line title, short detail, optional chevron. */
 @Composable
-private fun TodayContextRow(
+private fun TodayCompactRow(
     label: String,
     icon: ImageVector,
     title: String,
@@ -235,36 +261,41 @@ private fun TodayContextRow(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(vertical = 11.dp),
-        horizontalArrangement = Arrangement.spacedBy(11.dp),
-        verticalAlignment = Alignment.Top
+            .clickable(enabled = enabled, role = Role.Button, onClickLabel = actionLabel, onClick = onClick)
+            .padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Surface(
-            shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-        ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.padding(8.dp).size(18.dp))
-        }
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(20.dp)
+        )
         Column(Modifier.weight(1f)) {
             Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.height(2.dp))
-            Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(2.dp))
-            Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                detail,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
         }
-        if (enabled && actionLabel != null) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(actionLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                Spacer(Modifier.size(3.dp))
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowForward,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(14.dp)
-                )
-            }
+        if (enabled) {
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp)
+            )
         }
     }
 }
@@ -288,11 +319,12 @@ private fun recommendationIcon(action: TodayAction): ImageVector = when (action)
     TodayAction.NONE -> Icons.Default.AutoAwesome
 }
 
-private fun actionLabel(action: TodayAction): String? = when (action) {
+/** Short noun label used as the screen-reader click label on compact rows. */
+private fun shortActionLabel(action: TodayAction): String? = when (action) {
     TodayAction.NONE -> null
-    TodayAction.SCHEDULE -> "Schedule"
-    TodayAction.MAP -> "Map"
-    TodayAction.FOCUS -> "Focus"
-    TodayAction.STUDY -> "Study"
-    TodayAction.DEADLINES -> "Deadlines"
+    TodayAction.SCHEDULE -> "Open schedule"
+    TodayAction.MAP -> "Open map"
+    TodayAction.FOCUS -> "Start focus"
+    TodayAction.STUDY -> "Open study"
+    TodayAction.DEADLINES -> "Open deadlines"
 }
