@@ -30,6 +30,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -907,7 +908,7 @@ private fun HomeQuickAction(
     Surface(
         modifier = modifier
             .heightIn(min = 68.dp)
-            .clickable(onClick = onClick),
+            .clickable(role = Role.Button, onClick = onClick),
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surfaceVariant,
         tonalElevation = 1.dp
@@ -935,7 +936,7 @@ private fun HomeStudyPulse(
     val goal = dailyGoalMinutes.coerceAtLeast(1)
     val progress = (todayMinutes.toFloat() / goal).coerceIn(0f, 1f)
     Surface(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenStudy),
+        modifier = Modifier.fillMaxWidth().clickable(onClickLabel = "Open study", role = Role.Button, onClick = onOpenStudy),
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surface.copy(alpha = .94f),
         tonalElevation = 1.dp
@@ -979,7 +980,11 @@ private fun HomeMoreToggle(
     onToggle: () -> Unit
 ) {
     Surface(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle),
+        modifier = Modifier.fillMaxWidth().clickable(
+            onClickLabel = if (expanded) "Hide details" else "Show details",
+            role = Role.Button,
+            onClick = onToggle
+        ),
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .7f)
     ) {
