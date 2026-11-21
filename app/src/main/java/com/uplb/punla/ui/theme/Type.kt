@@ -175,12 +175,12 @@ fun punlaTypography(fontChoice: FontChoice = FontChoice.DEFAULT): Typography {
     // .empty { font-size: 13px }
     bodyMedium = TextStyle(fontFamily = Body, fontWeight = FontWeight.Normal, fontSize = 13.sp, lineHeight = 19.sp),
     // .class-time (font-mono 12px/600) / .muted (12.5px) cluster around 12px
-    bodySmall = TextStyle(fontFamily = Body, fontWeight = FontWeight.Normal, fontSize = 12.sp, lineHeight = 16.sp),
+    bodySmall = TextStyle(fontFamily = Body, fontWeight = FontWeight.Normal, fontSize = 12.sp, lineHeight = 18.sp),
     // .week-day-label { 11.5px / 700 / uppercase / letter-spacing 0.4px }
     labelLarge = TextStyle(fontFamily = Body, fontWeight = FontWeight.Bold, fontSize = 11.5.sp, letterSpacing = 0.4.sp),
     // .seed-label { 11.5px } (Android also uses this for the stat-box "l" style)
     labelMedium = TextStyle(fontFamily = Body, fontWeight = FontWeight.Medium, fontSize = 11.5.sp, letterSpacing = 0.3.sp),
-    // .badge { 10px / 600 / letter-spacing 0.3px }
-    labelSmall = TextStyle(fontFamily = Body, fontWeight = FontWeight.SemiBold, fontSize = 10.sp, letterSpacing = 0.3.sp),
+    // .badge { 10px / 600 / letter-spacing 0.3px } — raised to 11sp so badges stay legible at default text size.
+    labelSmall = TextStyle(fontFamily = Body, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.3.sp),
     )
 }

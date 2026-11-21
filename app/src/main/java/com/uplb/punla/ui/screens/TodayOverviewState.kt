@@ -42,7 +42,7 @@ internal fun deriveTodayNowPresentation(state: StudentState): TodayNowPresentati
     if (state.localDate.isBlank()) {
         return TodayNowPresentation(
             kind = TodayNowKind.LOADING,
-            statusLabel = "SYNCING",
+            statusLabel = "Syncing",
             title = "Loading today…",
             detail = "Punla is building your current context."
         )
@@ -52,7 +52,7 @@ internal fun deriveTodayNowPresentation(state: StudentState): TodayNowPresentati
         val room = current.room?.takeIf(String::isNotBlank)?.let { " · $it" }.orEmpty()
         return TodayNowPresentation(
             kind = TodayNowKind.IN_CLASS,
-            statusLabel = "IN CLASS",
+            statusLabel = "In class",
             title = current.code,
             detail = "Until ${formatTodayClock(current.endTime)}$room",
             action = TodayAction.SCHEDULE
@@ -60,7 +60,7 @@ internal fun deriveTodayNowPresentation(state: StudentState): TodayNowPresentati
     }
 
     state.currentCommitmentTitle?.let {
-        return TodayNowPresentation(TodayNowKind.COMMITMENT, "RESERVED TIME", it,
+        return TodayNowPresentation(TodayNowKind.COMMITMENT, "Reserved time", it,
             "Your plan protects this time. Open Plan to change the commitment.", TodayAction.NONE)
     }
 
@@ -75,7 +75,7 @@ internal fun deriveTodayNowPresentation(state: StudentState): TodayNowPresentati
         if (travel > 0 && free != null && free <= travel + 5) {
             return TodayNowPresentation(
                 kind = TodayNowKind.LEAVE_SOON,
-                statusLabel = "LEAVE SOON",
+                statusLabel = "Leave soon",
                 title = "Head to ${next.code}",
                 detail = "${formatTodayClock(next.startTime)}$room · about $travel min travel",
                 action = TodayAction.MAP
@@ -85,7 +85,7 @@ internal fun deriveTodayNowPresentation(state: StudentState): TodayNowPresentati
         if (usable != null && usable >= 20) {
             return TodayNowPresentation(
                 kind = TodayNowKind.FREE_TIME,
-                statusLabel = "FREE TIME",
+                statusLabel = "Free time",
                 title = "Free for ${formatTodayDuration(usable)}",
                 detail = "Before ${next.code} at ${formatTodayClock(next.startTime)}$room",
                 action = TodayAction.FOCUS
@@ -94,7 +94,7 @@ internal fun deriveTodayNowPresentation(state: StudentState): TodayNowPresentati
 
         return TodayNowPresentation(
             kind = TodayNowKind.NEXT_SOON,
-            statusLabel = "NEXT SOON",
+            statusLabel = "Next soon",
             title = "${next.code} starts soon",
             detail = "${formatTodayClock(next.startTime)}$room",
             action = TodayAction.SCHEDULE
@@ -109,7 +109,7 @@ internal fun deriveTodayNowPresentation(state: StudentState): TodayNowPresentati
 
     return TodayNowPresentation(
         kind = TodayNowKind.DAY_COMPLETE,
-        statusLabel = "DAY COMPLETE",
+        statusLabel = "Day complete",
         title = "Classes are done for today",
         detail = nextDetail,
         action = if (next != null) TodayAction.SCHEDULE else TodayAction.NONE

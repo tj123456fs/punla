@@ -117,7 +117,7 @@ internal fun TodayOverviewCard(
                     label = "today_recommendation"
                 ) { shown ->
                     TodayCompactRow(
-                        label = "SUGGESTED",
+                        label = "Suggested",
                         icon = recommendationIcon(shown.action),
                         title = shown.title,
                         detail = shown.detail,
@@ -139,7 +139,7 @@ internal fun TodayOverviewCard(
                 listOfNotNull(day, it.room?.takeIf(String::isNotBlank), state.travelBufferMinutes?.let { minutes -> "$minutes min travel · ${state.travelRouteSource}" }).joinToString(" · ")
             } ?: "Nothing else is scheduled in the current look-ahead."
             TodayCompactRow(
-                label = "NEXT",
+                label = "Next class",
                 icon = Icons.Default.School,
                 title = nextTitle,
                 detail = nextDetail,
@@ -161,7 +161,7 @@ internal fun TodayOverviewCard(
                 if (more > 0) "$dueText · +$more more this week" else dueText
             } ?: "Your near-term deadline window is clear."
             TodayCompactRow(
-                label = "LATER",
+                label = "Due soon",
                 icon = Icons.Default.Flag,
                 title = laterTitle,
                 detail = laterDetail,
@@ -201,7 +201,7 @@ private fun TodayNowBlock(now: TodayNowPresentation, onAction: () -> Unit) {
             ) {
                 Icon(nowIcon(now.kind), contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.size(8.dp))
-                Text(buttonLabel, style = MaterialTheme.typography.labelLarge)
+                Text(buttonLabel, style = MaterialTheme.typography.titleMedium)
             }
         }
     }
